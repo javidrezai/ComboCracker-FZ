@@ -8,6 +8,7 @@
 #include <notification/notification.h>
 #include <notification/notification_messages.h>
 #include <input/input.h>
+#include <stdarg.h>
 #include "combo_cracker_icons.h"
 
 #define TAG "ComboLockCracker"
@@ -15,25 +16,93 @@
 #define BACKLIGHT_ON 1
 
 #define MAX_VALUES 10
+#define MAX_API_KEY_LENGTH 256
+#define MAX_MENU_ITEMS 6
 
-// thank you derek jamison! ;)
+typedef struct {
+    char* buffer;
+    size_t capacity;
+    size_t current_pos;
+    bool overflow;
+} StringBuffer;
+
+StringBuffer* string_buffer_alloc(size_t capacity) {
+    StringBuffer* sb = (StringBuffer*)malloc(sizeof(StringBuffer));
+    sb->buffer = (char*)malloc(capacity);
+    sb->capacity = capacity;
+    sb->current_pos = 0;
+    sb->overflow = false;
+    memset(sb->buffer, 0, capacity);
+    return sb;
+}
+
+void string_buffer_free(StringBuffer* sb) {
+    if(sb) {
+        if(sb->buffer) free(sb->buffer);
+        free(sb);
+    }
+}
+
+void string_buffer_append(StringBuffer* sb, const char* format, ...) {
+    if(!sb || sb->overflow) return;
+
+    va_list args;
+    va_start(args, format);
+    int written = vsnprintf(
+        sb->buffer + sb->current_pos,
+        sb->capacity - sb->current_pos,
+        format,
+        args);
+    va_end(args);
+
+    if(written < 0 || written >= (int)(sb->capacity - sb->current_pos)) {
+        sb->overflow = true;
+        return;
+    }
+    sb->current_pos += written;
+}
+
+const char* string_buffer_get(StringBuffer* sb) {
+    return sb ? sb->buffer : "";
+}
+
+void string_buffer_reset(StringBuffer* sb) {
+    if(sb) {
+        sb->current_pos = 0;
+        sb->overflow = false;
+        memset(sb->buffer, 0, sb->capacity);
+    }
+}
+
+typedef struct {
+    char api_key[MAX_API_KEY_LENGTH];
+    bool api_enabled;
+    uint32_t api_config_flags;
+} ApiConfig;
+
 typedef enum {
     ComboViewSubmenu,
     ComboViewCracker,
     ComboViewResults,
     ComboViewTutorial,
+    ComboViewTutorialNumeric,
+    ComboViewTutorialAlpha,
     ComboViewAbout,
+    ComboViewSettings,
 } ComboView;
 
 typedef enum {
     ComboEventIdRedrawScreen = 0,
     ComboEventIdCalculateCombo = 1,
+    ComboEventIdUpdateMenu = 2,
+    ComboEventIdToggleSelection = 3,
 } ComboEventId;
 
 typedef enum {
     ComboSubmenuIndexCracker,
     ComboSubmenuIndexTutorial,
     ComboSubmenuIndexAbout,
+    ComboSubmenuIndexSettings,
 } ComboSubmenuIndex;
 
 typedef enum _ComboLockType {
@@ -119,19 +188,29 @@ typedef struct {
     View* view_cracker;
     Widget* widget_results;
     Widget* widget_tutorial;
+    Widget* widget_tutorial_numeric;
+    Widget* widget_tutorial_alpha;
     Widget* widget_about;
+    Widget* widget_settings;
+
+    ApiConfig* api_config;
+    StringBuffer* ui_buffer;
 
     FuriTimer* timer;
+    uint8_t menu_selected;
+    uint8_t menu_scroll_offset;
 } ComboLockCrackerApp;
 
 typedef struct {
     ComboLockType lock_type;
-    uint8_t first_lock_index; //  Index into gc_lock_string_*
-    uint8_t second_lock_index; // Index into gc_lock_string_*
-    uint8_t resistance_index; //  Index into gc_resistance_string_*
+    uint8_t first_lock_index;
+    uint8_t second_lock_index;
+    uint8_t resistance_index;
 
-    int selected; // tracks which UI element is currently selected?
-    char result[256]; // this is string buffer for UI display of the result ... not the result itself.
+    int selected;
+    char result[256];
+    bool api_used;
+    bool high_confidence;
 } ComboLockCrackerModel;
 
 typedef struct {
@@ -196,6 +275,33 @@ static const char* lock_type_label(const ComboLockCrackerModel* model) {
         return "Numeric";
     }
     return "????";
+}
+
+static void api_config_set_key(ApiConfig* config, const char* api_key) {
+    if(!config || !api_key) return;
+    snprintf(config->api_key, sizeof(config->api_key), "%s", api_key);
+    config->api_enabled = (strlen(api_key) > 0);
+}
+
+static const char* api_config_get_key(ApiConfig* config) {
+    return config ? config->api_key : "";
+}
+
+static void api_config_enable(ApiConfig* config, bool enable) {
+    if(config) config->api_enabled = enable;
+}
+
+static bool api_config_is_enabled(ApiConfig* config) {
+    return config && config->api_enabled && (strlen(config->api_key) > 0);
+}
+
+static void api_config_set_flag(ApiConfig* config, uint32_t flag, bool value) {
+    if(!config) return;
+    if(value) {
+        config->api_config_flags |= flag;
+    } else {
+        config->api_config_flags &= ~flag;
+    }
 }
 
 static int SolutionComparator(const ComboLockCombination* r1, const ComboLockCombination* r2) {
@@ -474,88 +580,45 @@ static void
 
 static void
     fill_model_result_with_solution(ComboLockCrackerModel* model, ComboLockCombination* solution) {
-    // TODO: consider a struct + helper function to store buffer + remaining_bytes
-    //       and a helper variadic function that does the repeated bits here....
-    //       (saves result of snprintf(), checks result, reduces remaining bytes available, etc.)
-    //       this way, folks can just pass the buffer wrapper struct to the helper function,
-    //       even if there's no space left, and nothing bad happens ... but the caller's code
-    //       ends up MUCH easier to read.
-    int pos = 0;
-    if(true) {
-        const char* s = label_from_solution_index(model, solution->first_pin_index);
-        int written = snprintf(
-            model->result + pos, sizeof(model->result) - pos, "First Pin: %s\nSecond Pin(s): ", s);
-        if((written < 0) || (written >= (int)(sizeof(model->result) - pos))) {
-            // LOG ERROR -- ran out of buffer space before full solution output
-            return;
-        }
-        pos += written;
-    }
+    StringBuffer* sb = string_buffer_alloc(sizeof(model->result));
+
+    const char* first_label = label_from_solution_index(model, solution->first_pin_index);
+    string_buffer_append(sb, "First Pin: %s\nSecond Pin(s): ", first_label);
 
     for(uint8_t i = 0; i < solution->second_pin_count; i++) {
         const char* s = label_from_solution_index(model, solution->second_pin_index[i]);
-        int written = snprintf(model->result + pos, sizeof(model->result) - pos, "%s", s);
-        if(written < 0 || written >= (int)(sizeof(model->result) - pos)) {
-            // LOG ERROR -- ran out of buffer space before full solution output
-            return;
-        }
-        pos += written;
+        string_buffer_append(sb, "%s", s);
 
-        // append a comma if there are still more items (and `\n` after third result)
         if(i < solution->second_pin_count - 1) {
             const char* sep = (i == 3) ? ",\n -> " : ", ";
-            written = snprintf(model->result + pos, sizeof(model->result) - pos, "%s", sep);
-            if(written < 0 || written >= (int)(sizeof(model->result) - pos)) {
-                // LOG ERROR -- ran out of buffer space before full solution output
-                return;
-            }
-            pos += written;
+            string_buffer_append(sb, "%s", sep);
         }
     }
 
-    if(true) {
-        int written =
-            snprintf(model->result + pos, sizeof(model->result) - pos, "\nThird Pin(s): ");
-        if((written < 0) || (written >= (int)(sizeof(model->result) - pos))) {
-            // LOG ERROR -- ran out of buffer space before full solution output
-            return;
-        }
-        pos += written;
-    }
+    string_buffer_append(sb, "\nThird Pin(s): ");
 
     for(uint8_t i = 0; i < solution->third_pin_count; i++) {
         const char* s = label_from_solution_index(model, solution->third_pin_index[i]);
-        int written = snprintf(model->result + pos, sizeof(model->result) - pos, "%s", s);
-        if((written < 0) || (written >= (int)(sizeof(model->result) - pos))) {
-            // LOG ERROR -- ran out of buffer space before full solution output
-            return;
-        }
-        pos += written;
+        string_buffer_append(sb, "%s", s);
 
         if(i < solution->third_pin_count - 1) {
-            written = snprintf(model->result + pos, sizeof(model->result) - pos, ", ");
-            if((written < 0) || (written >= (int)(sizeof(model->result) - pos))) {
-                // LOG ERROR -- ran out of buffer space before full solution output
-                return;
-            }
-            pos += written;
+            string_buffer_append(sb, ", ");
         }
     }
-    return;
+
+    if(!sb->overflow) {
+        snprintf(model->result, sizeof(model->result), "%s", string_buffer_get(sb));
+    } else {
+        snprintf(model->result, sizeof(model->result), "Buffer overflow - result truncated");
+    }
+
+    string_buffer_free(sb);
 }
 /**
  * @brief      calculate the combination based on inputs, AND displays the results
  * @param      model   the model containing input values
  */
 static void calculate_combo(ComboLockCrackerModel* model) {
-    // For numeric locks (0..39):
-    //     If the resistance corresponds to a whole number,
-    //     then the first digit is: (int(number) + 5)
-    //     Otherwise round up:      (int(number) + 6)
-    // Converting to using indices 0..79:
-    //     Whole number from index: (index % 2u == 0u)
-    //     Index increases by:      (index + 10 + ((index % 2u == 0u) ? 0u : 1u)) % RESISTANCE_INDEX_COUNT
-
     ComboLockCombination result = {};
     calculate_solution(model, &result);
     if((result.third_pin_count < 1) || (result.second_pin_count < 1)) {
@@ -565,7 +628,6 @@ static void calculate_combo(ComboLockCrackerModel* model) {
     }
 
     fill_model_result_with_solution(model, &result);
-    return;
 }
 
 /**
@@ -608,6 +670,9 @@ static void combo_submenu_callback(void* context, uint32_t index) {
     case ComboSubmenuIndexAbout:
         view_dispatcher_switch_to_view(app->view_dispatcher, ComboViewAbout);
         break;
+    case ComboSubmenuIndexSettings:
+        view_dispatcher_switch_to_view(app->view_dispatcher, ComboViewSettings);
+        break;
     default:
         break;
     }
@@ -627,7 +692,7 @@ static void combo_view_cracker_draw_callback(Canvas* canvas, void* model) {
 
     char buf[16];
     int icon_width = 32;
-    int icon_x = 128 - icon_width - 2; // moved 3 pixels to the right
+    int icon_x = 128 - icon_width - 2;
     int icon_y = 2;
     int text_x = 2;
     int value_x = 75;
@@ -669,7 +734,10 @@ static void combo_view_cracker_draw_callback(Canvas* canvas, void* model) {
         (my_model->selected == 3 ? ">" : ""));
     canvas_draw_str(canvas, value_x, 48, buf);
 
-    canvas_draw_str(canvas, text_x, 62, "OK to calculate");
+    canvas_draw_line(canvas, 0, 57, 128, 57);
+    canvas_set_font(canvas, FontTiny);
+    canvas_draw_str(canvas, 2, 64, "< UP/DOWN > OK:Calculate");
+
     canvas_draw_icon(canvas, icon_x, icon_y, &I_lock32x32);
 }
 
@@ -836,6 +904,15 @@ static bool combo_view_cracker_custom_event_callback(uint32_t event, void* conte
 
 static ComboLockCrackerApp* combo_app_alloc() {
     ComboLockCrackerApp* app = (ComboLockCrackerApp*)malloc(sizeof(ComboLockCrackerApp));
+    memset(app, 0, sizeof(ComboLockCrackerApp));
+
+    app->api_config = (ApiConfig*)malloc(sizeof(ApiConfig));
+    memset(app->api_config, 0, sizeof(ApiConfig));
+    app->api_config->api_enabled = false;
+
+    app->ui_buffer = string_buffer_alloc(512);
+    app->menu_selected = 0;
+    app->menu_scroll_offset = 0;
 
     Gui* gui = furi_record_open(RECORD_GUI);
 
@@ -848,6 +925,8 @@ static ComboLockCrackerApp* combo_app_alloc() {
         app->submenu, "Crack Lock", ComboSubmenuIndexCracker, combo_submenu_callback, app);
     submenu_add_item(
         app->submenu, "Tutorial", ComboSubmenuIndexTutorial, combo_submenu_callback, app);
+    submenu_add_item(
+        app->submenu, "Settings", ComboSubmenuIndexSettings, combo_submenu_callback, app);
     submenu_add_item(app->submenu, "About", ComboSubmenuIndexAbout, combo_submenu_callback, app);
     view_set_previous_callback(submenu_get_view(app->submenu), combo_navigation_exit_callback);
     view_dispatcher_add_view(
@@ -878,11 +957,63 @@ static ComboLockCrackerApp* combo_app_alloc() {
         app->view_dispatcher, ComboViewResults, widget_get_view(app->widget_results));
 
     app->widget_tutorial = widget_alloc();
-    widget_add_text_scroll_element(app->widget_tutorial, 0, 0, 128, 64, gc_instructions_numeric);
+    widget_add_text_scroll_element(
+        app->widget_tutorial,
+        0,
+        0,
+        128,
+        64,
+        "Tutorial - Choose:\n\n"
+        "[1] Numeric Locks (0-39)\n\n"
+        "[2] Alphabetic Locks (Y,A-W)\n\n"
+        "Use UP/DOWN to select\n"
+        "Press OK to view");
     view_set_previous_callback(
         widget_get_view(app->widget_tutorial), combo_navigation_submenu_callback);
     view_dispatcher_add_view(
         app->view_dispatcher, ComboViewTutorial, widget_get_view(app->widget_tutorial));
+
+    app->widget_tutorial_numeric = widget_alloc();
+    widget_add_text_scroll_element(
+        app->widget_tutorial_numeric, 0, 0, 128, 64, gc_instructions_numeric);
+    view_set_previous_callback(
+        widget_get_view(app->widget_tutorial_numeric), combo_navigation_submenu_callback);
+    view_dispatcher_add_view(
+        app->view_dispatcher, ComboViewTutorialNumeric, widget_get_view(app->widget_tutorial_numeric));
+
+    const char* alpha_instructions =
+        "Alphabetic Locks (Y,A-W):\n"
+        "---\n"
+        "Similar to numeric locks but uses letters.\n"
+        "Apply the same technique:\n\n"
+        "1. Find first groove (half letters)\n"
+        "2. Find second groove\n"
+        "3. Apply resistance to find third\n\n"
+        "The algorithm adapts automatically.\n"
+        "https://samy.pl/master/\n";
+
+    app->widget_tutorial_alpha = widget_alloc();
+    widget_add_text_scroll_element(
+        app->widget_tutorial_alpha, 0, 0, 128, 64, alpha_instructions);
+    view_set_previous_callback(
+        widget_get_view(app->widget_tutorial_alpha), combo_navigation_submenu_callback);
+    view_dispatcher_add_view(
+        app->view_dispatcher, ComboViewTutorialAlpha, widget_get_view(app->widget_tutorial_alpha));
+
+    const char* settings_text =
+        "Settings\n"
+        "---\n"
+        "API Key: Not configured\n"
+        "Backlight: ON\n"
+        "Lock Type: Numeric\n\n"
+        "Press OK to configure\n";
+
+    app->widget_settings = widget_alloc();
+    widget_add_text_scroll_element(app->widget_settings, 0, 0, 128, 64, settings_text);
+    view_set_previous_callback(
+        widget_get_view(app->widget_settings), combo_navigation_submenu_callback);
+    view_dispatcher_add_view(
+        app->view_dispatcher, ComboViewSettings, widget_get_view(app->widget_settings));
 
     app->widget_about = widget_alloc();
     widget_add_text_scroll_element(
@@ -891,12 +1022,14 @@ static ComboLockCrackerApp* combo_app_alloc() {
         0,
         128,
         64,
-        "Combo Lock Cracker\n"
+        "Combo Lock Cracker v0.6\n"
         "---\n"
-        "Based on Samy Kamkar's Master Lock research.\n"
-        "Crack Combo Locks in 8 tries\n"
-        "https://samy.pl/master/\n"
-        "README at https://github.com/CharlesTheGreat77/ComboCracker-FZ\n");
+        "Based on Samy Kamkar's research.\n"
+        "Crack locks in 8 attempts or less.\n\n"
+        "GitHub:\n"
+        "github.com/javidrezai/\n"
+        "ComboCracker-FZ\n\n"
+        "https://samy.pl/master/\n");
     view_set_previous_callback(
         widget_get_view(app->widget_about), combo_navigation_submenu_callback);
     view_dispatcher_add_view(
@@ -922,16 +1055,33 @@ static void combo_app_free(ComboLockCrackerApp* app) {
 
     view_dispatcher_remove_view(app->view_dispatcher, ComboViewAbout);
     widget_free(app->widget_about);
+
+    view_dispatcher_remove_view(app->view_dispatcher, ComboViewSettings);
+    widget_free(app->widget_settings);
+
+    view_dispatcher_remove_view(app->view_dispatcher, ComboViewTutorialAlpha);
+    widget_free(app->widget_tutorial_alpha);
+
+    view_dispatcher_remove_view(app->view_dispatcher, ComboViewTutorialNumeric);
+    widget_free(app->widget_tutorial_numeric);
+
     view_dispatcher_remove_view(app->view_dispatcher, ComboViewTutorial);
     widget_free(app->widget_tutorial);
+
     view_dispatcher_remove_view(app->view_dispatcher, ComboViewResults);
     widget_free(app->widget_results);
+
     view_dispatcher_remove_view(app->view_dispatcher, ComboViewCracker);
     view_free(app->view_cracker);
+
     view_dispatcher_remove_view(app->view_dispatcher, ComboViewSubmenu);
     submenu_free(app->submenu);
+
     view_dispatcher_free(app->view_dispatcher);
     furi_record_close(RECORD_GUI);
+
+    if(app->api_config) free(app->api_config);
+    if(app->ui_buffer) string_buffer_free(app->ui_buffer);
 
     free(app);
 }
