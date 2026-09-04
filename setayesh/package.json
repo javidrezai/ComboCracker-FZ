@@ -1,6 +1,6 @@
 {
   "name": "setayesh",
-  "version": "9.9.11",
+  "version": "9.9.12",
   "private": true,
   "main": "index.js",
   "scripts": {

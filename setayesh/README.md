@@ -28,4 +28,8 @@ SETAYESH_HOST=127.0.0.1 npm start
 - گواهی TLS هرگز به‌صورت پیش‌فرض غیرفعال نمی‌شود.
 
 ## نسخه / Version
-9.9.11
+9.9.12
+
+### تغییرات ۹.۹.۱۲ / Changelog 9.9.12
+- کتابخانهٔ سه‌بعدی (`three.min.js`، three.js r128) اکنون همراه اپ عرضه می‌شود؛ نمای «مغز» بدون نصب جداگانه رندر می‌شود و هشدار «three.min.js missing» هنگام شروع حذف شده است.
+- The 3D library (`three.min.js`, three.js r128) now ships with the app, so the "brain" view renders out of the box and the startup "three.min.js missing" warning is gone.
