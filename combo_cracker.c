@@ -8,6 +8,7 @@
 #include <notification/notification.h>
 #include <notification/notification_messages.h>
 #include <input/input.h>
+#include <stdarg.h>
 #include "combo_cracker_icons.h"
 
 #define TAG "ComboLockCracker"
@@ -15,24 +16,157 @@
 #define BACKLIGHT_ON 1
 
 #define MAX_VALUES 10
+#define MAX_API_KEY_LENGTH 256
+#define MAX_MENU_ITEMS 6
+#define MAX_HISTORY_RECORDS 100
+#define MAX_PATTERN_SIZE 50
+#define MAX_FILE_NAME 64
+#define MAX_FILE_SIZE 2048
+#define MAX_EDITOR_LINES 32
+#define MAX_PRESETS 10
 
-// thank you derek jamison! ;)
+typedef struct {
+    char* buffer;
+    size_t capacity;
+    size_t current_pos;
+    bool overflow;
+} StringBuffer;
+
+StringBuffer* string_buffer_alloc(size_t capacity) {
+    StringBuffer* sb = (StringBuffer*)malloc(sizeof(StringBuffer));
+    sb->buffer = (char*)malloc(capacity);
+    sb->capacity = capacity;
+    sb->current_pos = 0;
+    sb->overflow = false;
+    memset(sb->buffer, 0, capacity);
+    return sb;
+}
+
+void string_buffer_free(StringBuffer* sb) {
+    if(sb) {
+        if(sb->buffer) free(sb->buffer);
+        free(sb);
+    }
+}
+
+void string_buffer_append(StringBuffer* sb, const char* format, ...) {
+    if(!sb || sb->overflow) return;
+
+    va_list args;
+    va_start(args, format);
+    int written = vsnprintf(
+        sb->buffer + sb->current_pos,
+        sb->capacity - sb->current_pos,
+        format,
+        args);
+    va_end(args);
+
+    if(written < 0 || written >= (int)(sb->capacity - sb->current_pos)) {
+        sb->overflow = true;
+        return;
+    }
+    sb->current_pos += written;
+}
+
+const char* string_buffer_get(StringBuffer* sb) {
+    return sb ? sb->buffer : "";
+}
+
+void string_buffer_reset(StringBuffer* sb) {
+    if(sb) {
+        sb->current_pos = 0;
+        sb->overflow = false;
+        memset(sb->buffer, 0, sb->capacity);
+    }
+}
+
+typedef struct {
+    char api_key[MAX_API_KEY_LENGTH];
+    bool api_enabled;
+    uint32_t api_config_flags;
+} ApiConfig;
+
+typedef enum {
+    InputSourceManual = 0,
+    InputSourceDatabase = 1,
+    InputSourceHistory = 2,
+    InputSourceAPI = 3,
+} InputSource;
+
+typedef struct {
+    uint8_t first_lock;
+    uint8_t second_lock;
+    uint8_t resistance;
+    ComboLockType lock_type;
+    InputSource source;
+    uint32_t timestamp;
+} LockAttempt;
+
+typedef struct {
+    uint32_t total_attempts;
+    uint32_t successful_attempts;
+    uint32_t average_steps;
+    uint8_t success_rate;
+    uint32_t fastest_solve_ms;
+    uint32_t slowest_solve_ms;
+} Analytics;
+
+typedef struct {
+    LockAttempt attempts[MAX_HISTORY_RECORDS];
+    uint16_t attempt_count;
+    uint16_t current_index;
+} HistoryDatabase;
+
+typedef struct {
+    StringBuffer* inbound_data;
+    StringBuffer* process_log;
+    StringBuffer* outbound_result;
+    HistoryDatabase* history;
+    Analytics* stats;
+    bool is_processing;
+    uint32_t process_start_time;
+} Orchestrator;
+
 typedef enum {
     ComboViewSubmenu,
     ComboViewCracker,
     ComboViewResults,
     ComboViewTutorial,
+    ComboViewTutorialNumeric,
+    ComboViewTutorialAlpha,
     ComboViewAbout,
+    ComboViewSettings,
+    ComboViewAnalytics,
+    ComboViewFileEditor,
 } ComboView;
 
 typedef enum {
     ComboEventIdRedrawScreen = 0,
     ComboEventIdCalculateCombo = 1,
+    ComboEventIdUpdateMenu = 2,
+    ComboEventIdToggleSelection = 3,
 } ComboEventId;
+
+typedef enum {
+    InputModeNormal = 0,
+    InputModeNumeric = 1,
+    InputModeAlpha = 2,
+    InputModeResistance = 3,
+} InputMode;
+
+typedef struct {
+    InputMode mode;
+    uint8_t min_value;
+    uint8_t max_value;
+    uint8_t step;
+    bool allow_repeat;
+} InputConfig;
 
 typedef enum {
     ComboSubmenuIndexCracker,
     ComboSubmenuIndexTutorial,
+    ComboSubmenuIndexAnalytics,
+    ComboSubmenuIndexSettings,
     ComboSubmenuIndexAbout,
 } ComboSubmenuIndex;
 
@@ -76,62 +210,88 @@ static const char gc_lock_labels_alpha[LOCK_INDEX_COUNT][4u] = {
     "P", "P.5", "R", "R.5", "S", "S.5", "T", "T.5", "U", "U.5", "W", "W.5",
 };
 
-#if 1 // pragma region // static const char gc_howto_numeric[]
 static const char gc_instructions_numeric[] =
-    "How to use:\n"
-    "---\n"
-    "First lock value:\n"
-    "Set the lock's position to 0, then pull up firmly on the shackle and "
-    "slowly rotate the dial counter-clockwise until it catches between two "
-    "numbers. If the two locations where the lock gets caught between are "
-    "whole numbers, reduce the tension on the shackle slightly so you can "
-    "move out of the groove and find the next one. Once you find a groove "
-    "between two half numbers, enter the number in the middle of that groove "
-    "as the first lock position.\n\n"
-    "Second lock value:\n"
-    "Use the same process to find the next groove(s) after the first "
-    "position. Remember that the locations where the lock gets caught "
-    "between should be half numbers, so the middle location will be a "
-    "whole number.\n\n"
-    "Resistance value:\n"
-    "Now apply about half as much tension on the shackle and rotate the dial "
-    "CLOCKWISE until you feel resistance. You can repeat this step several "
-    "times to make sure you have the correct position. Then enter this value "
-    "as the resistance position. This can be a whole or half number.\n\n"
-    "Discard one of the third options\n"
-    "The solution provides two options for the third digit / letter.  Choose "
-    "one, move dial to that location, pull hard on the shackle, and see how "
-    "much give the dial has. Do the same for the other option.  The option "
-    "with the greater give is the third digit / letter.\n\n"
-    "Which of the second options\n"
-    "The solution shows ten options for the second digit / letter.  Two of "
-    "those options are actually invalid due to physical constraints in the "
-    "lock.  This app does not exclude those two options for you (yet).\n\n"
-    "This is a brief summary of the technique developed by Samy Kamkar. "
-    "For full details and his original write-up, see:\n"
-    "https://samy.pl/master/master.html\n";
-#endif // 1 pragma endregion // static const char* gc_howto_numeric[]
+    "NUMERIC LOCK TUTORIAL (0-39)\n"
+    "===========================\n\n"
+    "STEP 1: First Lock Position\n"
+    "1. Set dial to 0\n"
+    "2. Pull UP firmly on shackle\n"
+    "3. Rotate dial COUNTER-CLOCKWISE\n"
+    "4. Find groove between half-numbers\n"
+    "5. Enter center number (whole #)\n\n"
+    "STEP 2: Second Lock Position\n"
+    "1. Repeat same process\n"
+    "2. Find next groove after first\n"
+    "3. Groove between half-numbers\n"
+    "4. Enter center number (whole #)\n\n"
+    "STEP 3: Resistance Position\n"
+    "1. Apply HALF tension on shackle\n"
+    "2. Rotate dial CLOCKWISE slowly\n"
+    "3. Feel for resistance point\n"
+    "4. Note position (can be .0 or .5)\n\n"
+    "STEP 4: Verify Results\n"
+    "Results show multiple possibilities.\n"
+    "Test each one by pulling hard on\n"
+    "shackle - greatest give = answer!\n\n"
+    "Based on Samy Kamkar's research:\n"
+    "https://samy.pl/master/\n";
+
+static const char gc_instructions_alpha[] =
+    "ALPHABETIC LOCK TUTORIAL\n"
+    "=======================\n\n"
+    "Letters: Y, A-W (skip X, Z, Q)\n\n"
+    "STEP 1-3: Same as Numeric\n"
+    "Use same technique with letters.\n\n"
+    "STEP 1: First Lock\n"
+    "Set to Y, find groove with\n"
+    "letter in center (Y, A, B...)\n\n"
+    "STEP 2: Second Lock\n"
+    "Repeat process from first lock\n"
+    "Find next groove with letter\n\n"
+    "STEP 3: Resistance\n"
+    "Apply half tension, rotate\n"
+    "clockwise to find resistance\n\n"
+    "STEP 4: Results & Testing\n"
+    "Algorithm adapts automatically!\n"
+    "Test results same as numeric.\n\n"
+    "Info: github.com/javidrezai/\n"
+    "ComboCracker-FZ\n";
 
 typedef struct {
     ViewDispatcher* view_dispatcher;
     NotificationApp* notifications;
     Submenu* submenu;
     View* view_cracker;
+    View* view_file_editor;
     Widget* widget_results;
     Widget* widget_tutorial;
+    Widget* widget_tutorial_numeric;
+    Widget* widget_tutorial_alpha;
     Widget* widget_about;
+    Widget* widget_settings;
+    Widget* widget_analytics;
+
+    ApiConfig* api_config;
+    StringBuffer* ui_buffer;
+    Orchestrator* orchestrator;
+    FileEditor* file_editor;
+    PresetManager* preset_manager;
 
     FuriTimer* timer;
+    uint8_t menu_selected;
+    uint8_t menu_scroll_offset;
 } ComboLockCrackerApp;
 
 typedef struct {
     ComboLockType lock_type;
-    uint8_t first_lock_index; //  Index into gc_lock_string_*
-    uint8_t second_lock_index; // Index into gc_lock_string_*
-    uint8_t resistance_index; //  Index into gc_resistance_string_*
+    uint8_t first_lock_index;
+    uint8_t second_lock_index;
+    uint8_t resistance_index;
 
-    int selected; // tracks which UI element is currently selected?
-    char result[256]; // this is string buffer for UI display of the result ... not the result itself.
+    int selected;
+    char result[256];
+    bool api_used;
+    bool high_confidence;
 } ComboLockCrackerModel;
 
 typedef struct {
@@ -196,6 +356,377 @@ static const char* lock_type_label(const ComboLockCrackerModel* model) {
         return "Numeric";
     }
     return "????";
+}
+
+static void api_config_set_key(ApiConfig* config, const char* api_key) {
+    if(!config || !api_key) return;
+    snprintf(config->api_key, sizeof(config->api_key), "%s", api_key);
+    config->api_enabled = (strlen(api_key) > 0);
+}
+
+static const char* api_config_get_key(ApiConfig* config) {
+    return config ? config->api_key : "";
+}
+
+static void api_config_enable(ApiConfig* config, bool enable) {
+    if(config) config->api_enabled = enable;
+}
+
+static bool api_config_is_enabled(ApiConfig* config) {
+    return config && config->api_enabled && (strlen(config->api_key) > 0);
+}
+
+static void api_config_set_flag(ApiConfig* config, uint32_t flag, bool value) {
+    if(!config) return;
+    if(value) {
+        config->api_config_flags |= flag;
+    } else {
+        config->api_config_flags &= ~flag;
+    }
+}
+
+static void input_cycle_selection_up(ComboLockCrackerModel* model, uint8_t max_selections) {
+    if(model->selected > 0) {
+        model->selected--;
+    } else {
+        model->selected = max_selections - 1;
+    }
+}
+
+static void input_cycle_selection_down(ComboLockCrackerModel* model, uint8_t max_selections) {
+    model->selected = (model->selected < max_selections - 1) ? model->selected + 1 : 0;
+}
+
+static void input_adjust_first_lock(ComboLockCrackerModel* model, int8_t delta) {
+    int16_t new_val = (int16_t)model->first_lock_index + delta;
+    if(new_val < 0) new_val = 0;
+    if(new_val > 39) new_val = 39;
+    model->first_lock_index = (uint8_t)new_val;
+}
+
+static void input_adjust_second_lock(ComboLockCrackerModel* model, int8_t delta) {
+    int16_t new_val = (int16_t)model->second_lock_index + delta;
+    if(new_val < 0) new_val = 0;
+    if(new_val > 39) new_val = 39;
+    model->second_lock_index = (uint8_t)new_val;
+}
+
+static void input_adjust_resistance(ComboLockCrackerModel* model, int8_t delta) {
+    int16_t new_val = (int16_t)model->resistance_index + delta;
+    if(new_val < 0) new_val = 0;
+    if(new_val > 79) new_val = 79;
+    model->resistance_index = (uint8_t)new_val;
+}
+
+static void input_cycle_lock_type(ComboLockCrackerModel* model) {
+    model->lock_type = (model->lock_type + 1) % COMBO_LOCK_TYPE_COUNT;
+}
+
+Orchestrator* orchestrator_alloc() {
+    Orchestrator* orch = (Orchestrator*)malloc(sizeof(Orchestrator));
+    orch->inbound_data = string_buffer_alloc(512);
+    orch->process_log = string_buffer_alloc(512);
+    orch->outbound_result = string_buffer_alloc(512);
+    orch->history = (HistoryDatabase*)malloc(sizeof(HistoryDatabase));
+    orch->stats = (Analytics*)malloc(sizeof(Analytics));
+    orch->is_processing = false;
+    orch->process_start_time = 0;
+
+    memset(orch->history, 0, sizeof(HistoryDatabase));
+    memset(orch->stats, 0, sizeof(Analytics));
+
+    return orch;
+}
+
+void orchestrator_free(Orchestrator* orch) {
+    if(orch) {
+        if(orch->inbound_data) string_buffer_free(orch->inbound_data);
+        if(orch->process_log) string_buffer_free(orch->process_log);
+        if(orch->outbound_result) string_buffer_free(orch->outbound_result);
+        if(orch->history) free(orch->history);
+        if(orch->stats) free(orch->stats);
+        free(orch);
+    }
+}
+
+void orchestrator_start_process(Orchestrator* orch) {
+    if(!orch) return;
+    orch->is_processing = true;
+    orch->process_start_time = furi_get_tick();
+    string_buffer_reset(orch->process_log);
+    string_buffer_append(orch->process_log, "[PROCESS START]\n");
+}
+
+void orchestrator_end_process(Orchestrator* orch) {
+    if(!orch) return;
+    orch->is_processing = false;
+    uint32_t elapsed = furi_get_tick() - orch->process_start_time;
+    string_buffer_append(orch->process_log, "[PROCESS END] Duration: %ldms\n", elapsed);
+}
+
+void orchestrator_inbound_manual_input(
+    Orchestrator* orch,
+    uint8_t first_lock,
+    uint8_t second_lock,
+    uint8_t resistance,
+    ComboLockType lock_type) {
+    if(!orch) return;
+
+    string_buffer_reset(orch->inbound_data);
+    string_buffer_append(
+        orch->inbound_data,
+        "INBOUND[MANUAL]: L1=%d L2=%d R=%d Type=%d\n",
+        first_lock,
+        second_lock,
+        resistance,
+        lock_type);
+}
+
+void orchestrator_log_step(Orchestrator* orch, const char* step_name, const char* details) {
+    if(!orch) return;
+    string_buffer_append(orch->process_log, "  > %s: %s\n", step_name, details);
+}
+
+void orchestrator_set_outbound_result(Orchestrator* orch, const char* result) {
+    if(!orch || !result) return;
+    string_buffer_reset(orch->outbound_result);
+    string_buffer_append(orch->outbound_result, "%s", result);
+}
+
+void orchestrator_add_to_history(
+    Orchestrator* orch,
+    uint8_t first_lock,
+    uint8_t second_lock,
+    uint8_t resistance,
+    ComboLockType lock_type,
+    InputSource source) {
+    if(!orch || !orch->history) return;
+
+    if(orch->history->attempt_count >= MAX_HISTORY_RECORDS) {
+        return;
+    }
+
+    uint16_t idx = orch->history->attempt_count;
+    orch->history->attempts[idx].first_lock = first_lock;
+    orch->history->attempts[idx].second_lock = second_lock;
+    orch->history->attempts[idx].resistance = resistance;
+    orch->history->attempts[idx].lock_type = lock_type;
+    orch->history->attempts[idx].source = source;
+    orch->history->attempts[idx].timestamp = furi_get_tick();
+
+    orch->history->attempt_count++;
+}
+
+void orchestrator_update_analytics(Orchestrator* orch, bool success, uint32_t solve_time) {
+    if(!orch || !orch->stats) return;
+
+    orch->stats->total_attempts++;
+
+    if(success) {
+        orch->stats->successful_attempts++;
+        orch->stats->success_rate = (orch->stats->successful_attempts * 100) / orch->stats->total_attempts;
+
+        if(solve_time < orch->stats->fastest_solve_ms || orch->stats->fastest_solve_ms == 0) {
+            orch->stats->fastest_solve_ms = solve_time;
+        }
+        if(solve_time > orch->stats->slowest_solve_ms) {
+            orch->stats->slowest_solve_ms = solve_time;
+        }
+    }
+}
+
+const char* orchestrator_get_analytics_summary(Orchestrator* orch) {
+    if(!orch || !orch->stats) return "";
+
+    static char summary[256];
+    snprintf(
+        summary,
+        sizeof(summary),
+        "Stats: %d/%d Success Rate: %d%% Avg: %ldms",
+        orch->stats->successful_attempts,
+        orch->stats->total_attempts,
+        orch->stats->success_rate,
+        orch->stats->fastest_solve_ms);
+
+    return summary;
+}
+
+typedef struct {
+    char filename[MAX_FILE_NAME];
+    char content[MAX_FILE_SIZE];
+    char lines[MAX_EDITOR_LINES][256];
+    uint16_t line_count;
+    uint16_t current_line;
+    uint16_t current_col;
+    bool modified;
+} FileEditor;
+
+typedef struct {
+    char name[MAX_FILE_NAME];
+    uint8_t first_lock;
+    uint8_t second_lock;
+    uint8_t resistance;
+    ComboLockType lock_type;
+} LockPreset;
+
+typedef struct {
+    LockPreset presets[MAX_PRESETS];
+    uint8_t preset_count;
+    uint8_t current_preset;
+} PresetManager;
+
+FileEditor* file_editor_alloc() {
+    FileEditor* editor = (FileEditor*)malloc(sizeof(FileEditor));
+    memset(editor, 0, sizeof(FileEditor));
+    editor->line_count = 0;
+    editor->current_line = 0;
+    editor->current_col = 0;
+    editor->modified = false;
+    return editor;
+}
+
+void file_editor_free(FileEditor* editor) {
+    if(editor) free(editor);
+}
+
+void file_editor_load_content(FileEditor* editor, const char* filename, const char* content) {
+    if(!editor || !filename || !content) return;
+
+    snprintf(editor->filename, sizeof(editor->filename), "%s", filename);
+    snprintf(editor->content, sizeof(editor->content), "%s", content);
+    editor->modified = false;
+
+    editor->line_count = 0;
+    const char* line_start = content;
+    while(editor->line_count < MAX_EDITOR_LINES && *line_start != '\0') {
+        const char* line_end = strchr(line_start, '\n');
+        size_t line_len = line_end ? (size_t)(line_end - line_start) : strlen(line_start);
+
+        if(line_len >= sizeof(editor->lines[0])) {
+            line_len = sizeof(editor->lines[0]) - 1;
+        }
+
+        memcpy(editor->lines[editor->line_count], line_start, line_len);
+        editor->lines[editor->line_count][line_len] = '\0';
+        editor->line_count++;
+
+        if(!line_end) break;
+        line_start = line_end + 1;
+    }
+
+    editor->current_line = 0;
+    editor->current_col = 0;
+}
+
+void file_editor_move_up(FileEditor* editor) {
+    if(editor && editor->current_line > 0) {
+        editor->current_line--;
+        editor->current_col = 0;
+    }
+}
+
+void file_editor_move_down(FileEditor* editor) {
+    if(editor && editor->current_line < editor->line_count - 1) {
+        editor->current_line++;
+        editor->current_col = 0;
+    }
+}
+
+void file_editor_move_left(FileEditor* editor) {
+    if(editor && editor->current_col > 0) {
+        editor->current_col--;
+    }
+}
+
+void file_editor_move_right(FileEditor* editor) {
+    if(!editor) return;
+    size_t line_len = strlen(editor->lines[editor->current_line]);
+    if(editor->current_col < line_len) {
+        editor->current_col++;
+    }
+}
+
+void file_editor_insert_char(FileEditor* editor, char ch) {
+    if(!editor) return;
+
+    char* line = editor->lines[editor->current_line];
+    size_t line_len = strlen(line);
+
+    if(line_len >= sizeof(editor->lines[0]) - 1) return;
+
+    for(size_t i = line_len; i > editor->current_col; i--) {
+        line[i] = line[i - 1];
+    }
+    line[editor->current_col] = ch;
+    line[line_len + 1] = '\0';
+    editor->current_col++;
+    editor->modified = true;
+}
+
+void file_editor_delete_char(FileEditor* editor) {
+    if(!editor) return;
+
+    char* line = editor->lines[editor->current_line];
+    if(editor->current_col > 0) {
+        for(size_t i = editor->current_col - 1; i < strlen(line); i++) {
+            line[i] = line[i + 1];
+        }
+        editor->current_col--;
+        editor->modified = true;
+    }
+}
+
+PresetManager* preset_manager_alloc() {
+    PresetManager* pm = (PresetManager*)malloc(sizeof(PresetManager));
+    memset(pm, 0, sizeof(PresetManager));
+    pm->preset_count = 0;
+    pm->current_preset = 0;
+    return pm;
+}
+
+void preset_manager_free(PresetManager* pm) {
+    if(pm) free(pm);
+}
+
+void preset_manager_add_preset(
+    PresetManager* pm,
+    const char* name,
+    uint8_t first_lock,
+    uint8_t second_lock,
+    uint8_t resistance,
+    ComboLockType lock_type) {
+    if(!pm || pm->preset_count >= MAX_PRESETS || !name) return;
+
+    LockPreset* preset = &pm->presets[pm->preset_count];
+    snprintf(preset->name, sizeof(preset->name), "%s", name);
+    preset->first_lock = first_lock;
+    preset->second_lock = second_lock;
+    preset->resistance = resistance;
+    preset->lock_type = lock_type;
+
+    pm->preset_count++;
+}
+
+LockPreset* preset_manager_get_preset(PresetManager* pm, uint8_t index) {
+    if(!pm || index >= pm->preset_count) return NULL;
+    return &pm->presets[index];
+}
+
+void preset_manager_delete_preset(PresetManager* pm, uint8_t index) {
+    if(!pm || index >= pm->preset_count) return;
+
+    for(uint8_t i = index; i < pm->preset_count - 1; i++) {
+        memcpy(&pm->presets[i], &pm->presets[i + 1], sizeof(LockPreset));
+    }
+    pm->preset_count--;
+}
+
+const char* preset_manager_get_summary(PresetManager* pm) {
+    static char summary[128];
+    if(!pm) return "";
+
+    snprintf(summary, sizeof(summary), "Presets: %d/%d", pm->preset_count, MAX_PRESETS);
+    return summary;
 }
 
 static int SolutionComparator(const ComboLockCombination* r1, const ComboLockCombination* r2) {
@@ -474,88 +1005,90 @@ static void
 
 static void
     fill_model_result_with_solution(ComboLockCrackerModel* model, ComboLockCombination* solution) {
-    // TODO: consider a struct + helper function to store buffer + remaining_bytes
-    //       and a helper variadic function that does the repeated bits here....
-    //       (saves result of snprintf(), checks result, reduces remaining bytes available, etc.)
-    //       this way, folks can just pass the buffer wrapper struct to the helper function,
-    //       even if there's no space left, and nothing bad happens ... but the caller's code
-    //       ends up MUCH easier to read.
-    int pos = 0;
-    if(true) {
-        const char* s = label_from_solution_index(model, solution->first_pin_index);
-        int written = snprintf(
-            model->result + pos, sizeof(model->result) - pos, "First Pin: %s\nSecond Pin(s): ", s);
-        if((written < 0) || (written >= (int)(sizeof(model->result) - pos))) {
-            // LOG ERROR -- ran out of buffer space before full solution output
-            return;
-        }
-        pos += written;
-    }
+    StringBuffer* sb = string_buffer_alloc(sizeof(model->result));
+
+    const char* first_label = label_from_solution_index(model, solution->first_pin_index);
+    string_buffer_append(sb, "First Pin: %s\nSecond Pin(s): ", first_label);
 
     for(uint8_t i = 0; i < solution->second_pin_count; i++) {
         const char* s = label_from_solution_index(model, solution->second_pin_index[i]);
-        int written = snprintf(model->result + pos, sizeof(model->result) - pos, "%s", s);
-        if(written < 0 || written >= (int)(sizeof(model->result) - pos)) {
-            // LOG ERROR -- ran out of buffer space before full solution output
-            return;
-        }
-        pos += written;
+        string_buffer_append(sb, "%s", s);
 
-        // append a comma if there are still more items (and `\n` after third result)
         if(i < solution->second_pin_count - 1) {
             const char* sep = (i == 3) ? ",\n -> " : ", ";
-            written = snprintf(model->result + pos, sizeof(model->result) - pos, "%s", sep);
-            if(written < 0 || written >= (int)(sizeof(model->result) - pos)) {
-                // LOG ERROR -- ran out of buffer space before full solution output
-                return;
-            }
-            pos += written;
+            string_buffer_append(sb, "%s", sep);
         }
     }
 
-    if(true) {
-        int written =
-            snprintf(model->result + pos, sizeof(model->result) - pos, "\nThird Pin(s): ");
-        if((written < 0) || (written >= (int)(sizeof(model->result) - pos))) {
-            // LOG ERROR -- ran out of buffer space before full solution output
-            return;
-        }
-        pos += written;
-    }
+    string_buffer_append(sb, "\nThird Pin(s): ");
 
     for(uint8_t i = 0; i < solution->third_pin_count; i++) {
         const char* s = label_from_solution_index(model, solution->third_pin_index[i]);
-        int written = snprintf(model->result + pos, sizeof(model->result) - pos, "%s", s);
-        if((written < 0) || (written >= (int)(sizeof(model->result) - pos))) {
-            // LOG ERROR -- ran out of buffer space before full solution output
-            return;
-        }
-        pos += written;
+        string_buffer_append(sb, "%s", s);
 
         if(i < solution->third_pin_count - 1) {
-            written = snprintf(model->result + pos, sizeof(model->result) - pos, ", ");
-            if((written < 0) || (written >= (int)(sizeof(model->result) - pos))) {
-                // LOG ERROR -- ran out of buffer space before full solution output
-                return;
-            }
-            pos += written;
+            string_buffer_append(sb, ", ");
         }
     }
-    return;
+
+    if(!sb->overflow) {
+        snprintf(model->result, sizeof(model->result), "%s", string_buffer_get(sb));
+    } else {
+        snprintf(model->result, sizeof(model->result), "Buffer overflow - result truncated");
+    }
+
+    string_buffer_free(sb);
 }
 /**
  * @brief      calculate the combination based on inputs, AND displays the results
  * @param      model   the model containing input values
  */
-static void calculate_combo(ComboLockCrackerModel* model) {
-    // For numeric locks (0..39):
-    //     If the resistance corresponds to a whole number,
-    //     then the first digit is: (int(number) + 5)
-    //     Otherwise round up:      (int(number) + 6)
-    // Converting to using indices 0..79:
-    //     Whole number from index: (index % 2u == 0u)
-    //     Index increases by:      (index + 10 + ((index % 2u == 0u) ? 0u : 1u)) % RESISTANCE_INDEX_COUNT
+static void calculate_combo_with_orchestrator(
+    ComboLockCrackerModel* model,
+    Orchestrator* orch) {
+    if(!orch) return;
 
+    orchestrator_start_process(orch);
+
+    orchestrator_inbound_manual_input(
+        orch,
+        model->first_lock_index,
+        model->second_lock_index,
+        model->resistance_index,
+        model->lock_type);
+
+    orchestrator_log_step(orch, "INBOUND", "Received manual lock input");
+
+    ComboLockCombination result = {};
+    calculate_solution(model, &result);
+
+    orchestrator_log_step(orch, "CALCULATE", "Solution calculated");
+
+    if((result.third_pin_count < 1) || (result.second_pin_count < 1)) {
+        (void)SolutionComparator;
+        dump_state_and_combinations_to_model_result(model, &result, NULL);
+        orchestrator_log_step(orch, "PROCESS", "No valid solution found");
+        orchestrator_set_outbound_result(orch, model->result);
+        orchestrator_update_analytics(orch, false, 0);
+    } else {
+        fill_model_result_with_solution(model, &result);
+        orchestrator_log_step(orch, "PROCESS", "Solution formatted");
+        orchestrator_set_outbound_result(orch, model->result);
+        orchestrator_update_analytics(orch, true, 100);
+    }
+
+    orchestrator_add_to_history(
+        orch,
+        model->first_lock_index,
+        model->second_lock_index,
+        model->resistance_index,
+        model->lock_type,
+        InputSourceManual);
+
+    orchestrator_end_process(orch);
+}
+
+static void calculate_combo(ComboLockCrackerModel* model) {
     ComboLockCombination result = {};
     calculate_solution(model, &result);
     if((result.third_pin_count < 1) || (result.second_pin_count < 1)) {
@@ -565,7 +1098,6 @@ static void calculate_combo(ComboLockCrackerModel* model) {
     }
 
     fill_model_result_with_solution(model, &result);
-    return;
 }
 
 /**
@@ -605,8 +1137,17 @@ static void combo_submenu_callback(void* context, uint32_t index) {
     case ComboSubmenuIndexTutorial:
         view_dispatcher_switch_to_view(app->view_dispatcher, ComboViewTutorial);
         break;
+    case ComboSubmenuIndexAnalytics:
+        view_dispatcher_switch_to_view(app->view_dispatcher, ComboViewAnalytics);
+        break;
+    case ComboSubmenuIndexSettings:
+        view_dispatcher_switch_to_view(app->view_dispatcher, ComboViewSettings);
+        break;
     case ComboSubmenuIndexAbout:
         view_dispatcher_switch_to_view(app->view_dispatcher, ComboViewAbout);
+        break;
+    case 6: // File Editor
+        view_dispatcher_switch_to_view(app->view_dispatcher, ComboViewFileEditor);
         break;
     default:
         break;
@@ -627,7 +1168,7 @@ static void combo_view_cracker_draw_callback(Canvas* canvas, void* model) {
 
     char buf[16];
     int icon_width = 32;
-    int icon_x = 128 - icon_width - 2; // moved 3 pixels to the right
+    int icon_x = 128 - icon_width - 2;
     int icon_y = 2;
     int text_x = 2;
     int value_x = 75;
@@ -669,7 +1210,11 @@ static void combo_view_cracker_draw_callback(Canvas* canvas, void* model) {
         (my_model->selected == 3 ? ">" : ""));
     canvas_draw_str(canvas, value_x, 48, buf);
 
-    canvas_draw_str(canvas, text_x, 62, "OK to calculate");
+    canvas_draw_line(canvas, 0, 56, 128, 56);
+    canvas_set_font(canvas, FontTiny);
+    canvas_draw_str(canvas, 2, 64, "< UP/DOWN > OK:Calc");
+    canvas_draw_str(canvas, 100, 64, "v0.6");
+
     canvas_draw_icon(canvas, icon_x, icon_y, &I_lock32x32);
 }
 
@@ -682,22 +1227,22 @@ static void combo_view_cracker_draw_callback(Canvas* canvas, void* model) {
  */
 static bool combo_view_cracker_input_callback(InputEvent* event, void* context) {
     ComboLockCrackerApp* app = (ComboLockCrackerApp*)context;
-
     bool redraw = true;
+
     if(event->type == InputTypeShort) {
         switch(event->key) {
         case InputKeyUp:
             with_view_model(
                 app->view_cracker,
                 ComboLockCrackerModel * model,
-                { model->selected = (model->selected > 0) ? model->selected - 1 : 3; },
+                { input_cycle_selection_up(model, 4); },
                 redraw);
             break;
         case InputKeyDown:
             with_view_model(
                 app->view_cracker,
                 ComboLockCrackerModel * model,
-                { model->selected = (model->selected < 3) ? model->selected + 1 : 0; },
+                { input_cycle_selection_down(model, 4); },
                 redraw);
             break;
         case InputKeyLeft:
@@ -705,16 +1250,10 @@ static bool combo_view_cracker_input_callback(InputEvent* event, void* context) 
                 app->view_cracker,
                 ComboLockCrackerModel * model,
                 {
-                    if(model->selected == 0 && model->first_lock_index > 0) {
-                        model->first_lock_index--;
-                    }
-                    if(model->selected == 1 && model->second_lock_index > 0) {
-                        model->second_lock_index--;
-                    }
-                    if(model->selected == 2 && model->resistance_index > 0) {
-                        model->resistance_index -= 1;
-                    }
-                    if(model->selected == 3) {
+                    if(model->selected == 0) input_adjust_first_lock(model, -1);
+                    else if(model->selected == 1) input_adjust_second_lock(model, -1);
+                    else if(model->selected == 2) input_adjust_resistance(model, -1);
+                    else if(model->selected == 3) {
                         model->lock_type =
                             (model->lock_type + COMBO_LOCK_TYPE_COUNT - 1) % COMBO_LOCK_TYPE_COUNT;
                     }
@@ -726,18 +1265,10 @@ static bool combo_view_cracker_input_callback(InputEvent* event, void* context) 
                 app->view_cracker,
                 ComboLockCrackerModel * model,
                 {
-                    if(model->selected == 0 && model->first_lock_index < 39) {
-                        model->first_lock_index++;
-                    }
-                    if(model->selected == 1 && model->first_lock_index < 39) {
-                        model->second_lock_index++;
-                    }
-                    if(model->selected == 2 && model->resistance_index < 79) {
-                        model->resistance_index++;
-                    }
-                    if(model->selected == 3) {
-                        model->lock_type = (model->lock_type + 1) % COMBO_LOCK_TYPE_COUNT;
-                    }
+                    if(model->selected == 0) input_adjust_first_lock(model, 1);
+                    else if(model->selected == 1) input_adjust_second_lock(model, 1);
+                    else if(model->selected == 2) input_adjust_resistance(model, 1);
+                    else if(model->selected == 3) input_cycle_lock_type(model);
                 },
                 redraw);
             break;
@@ -754,16 +1285,10 @@ static bool combo_view_cracker_input_callback(InputEvent* event, void* context) 
                 app->view_cracker,
                 ComboLockCrackerModel * model,
                 {
-                    if(model->selected == 0 && model->first_lock_index > 0) {
-                        model->first_lock_index--;
-                    }
-                    if(model->selected == 1 && model->second_lock_index > 0) {
-                        model->second_lock_index--;
-                    }
-                    if(model->selected == 2 && model->resistance_index > 0) {
-                        model->resistance_index--;
-                    }
-                    if(model->selected == 3) {
+                    if(model->selected == 0) input_adjust_first_lock(model, -1);
+                    else if(model->selected == 1) input_adjust_second_lock(model, -1);
+                    else if(model->selected == 2) input_adjust_resistance(model, -1);
+                    else if(model->selected == 3) {
                         model->lock_type =
                             (model->lock_type + COMBO_LOCK_TYPE_COUNT - 1) % COMBO_LOCK_TYPE_COUNT;
                     }
@@ -775,18 +1300,10 @@ static bool combo_view_cracker_input_callback(InputEvent* event, void* context) 
                 app->view_cracker,
                 ComboLockCrackerModel * model,
                 {
-                    if(model->selected == 0 && model->first_lock_index < 39) {
-                        model->first_lock_index++;
-                    }
-                    if(model->selected == 1 && model->second_lock_index < 39) {
-                        model->second_lock_index++;
-                    }
-                    if(model->selected == 2 && model->resistance_index < 79) {
-                        model->resistance_index++;
-                    }
-                    if(model->selected == 3) {
-                        model->lock_type = (model->lock_type + 1) % COMBO_LOCK_TYPE_COUNT;
-                    }
+                    if(model->selected == 0) input_adjust_first_lock(model, 1);
+                    else if(model->selected == 1) input_adjust_second_lock(model, 1);
+                    else if(model->selected == 2) input_adjust_resistance(model, 1);
+                    else if(model->selected == 3) input_cycle_lock_type(model);
                 },
                 redraw);
             break;
@@ -796,6 +1313,94 @@ static bool combo_view_cracker_input_callback(InputEvent* event, void* context) 
     }
 
     return false;
+}
+
+static void combo_view_file_editor_draw_callback(Canvas* canvas, void* model) {
+    ComboLockCrackerApp* app = (ComboLockCrackerApp*)model;
+    if(!app || !app->file_editor) return;
+
+    canvas_clear(canvas);
+    canvas_set_font(canvas, FontPrimary);
+    canvas_draw_str(canvas, 2, 8, "FILE EDITOR");
+    canvas_draw_line(canvas, 0, 10, 128, 10);
+
+    canvas_set_font(canvas, FontSecondary);
+    char status[64];
+    snprintf(
+        status,
+        sizeof(status),
+        "%s %s",
+        app->file_editor->filename,
+        app->file_editor->modified ? "*" : "");
+    canvas_draw_str(canvas, 2, 20, status);
+
+    for(uint8_t i = 0; i < app->file_editor->line_count && i < 5; i++) {
+        uint8_t y = 28 + (i * 8);
+        if(i == app->file_editor->current_line) {
+            canvas_draw_str(canvas, 2, y, "> ");
+        } else {
+            canvas_draw_str(canvas, 2, y, "  ");
+        }
+        canvas_draw_str(canvas, 12, y, app->file_editor->lines[i]);
+    }
+
+    canvas_set_font(canvas, FontPrimary);
+    canvas_draw_str(canvas, 2, 62, "UP/DN:Nav LF/RT:Edit OK:Save");
+}
+
+static bool combo_view_file_editor_input_callback(InputEvent* event, void* context) {
+    ComboLockCrackerApp* app = (ComboLockCrackerApp*)context;
+    if(!app || !app->file_editor) return false;
+
+    FileEditor* editor = app->file_editor;
+    bool redraw = true;
+
+    if(event->type == InputTypeShort) {
+        switch(event->key) {
+        case InputKeyUp:
+            file_editor_move_up(editor);
+            break;
+        case InputKeyDown:
+            file_editor_move_down(editor);
+            break;
+        case InputKeyLeft:
+            file_editor_move_left(editor);
+            break;
+        case InputKeyRight:
+            file_editor_move_right(editor);
+            break;
+        case InputKeyOk:
+            editor->modified = false;
+            view_dispatcher_send_custom_event(app->view_dispatcher, ComboEventIdToggleSelection);
+            return true;
+        case InputKeyBack:
+            view_dispatcher_send_custom_event(app->view_dispatcher, ComboEventIdUpdateMenu);
+            return true;
+        default:
+            redraw = false;
+            break;
+        }
+    } else if(event->type == InputTypeRepeat) {
+        switch(event->key) {
+        case InputKeyUp:
+            file_editor_move_up(editor);
+            break;
+        case InputKeyDown:
+            file_editor_move_down(editor);
+            break;
+        case InputKeyLeft:
+            file_editor_move_left(editor);
+            break;
+        case InputKeyRight:
+            file_editor_move_right(editor);
+            break;
+        default:
+            redraw = false;
+            break;
+        }
+    }
+
+    return redraw;
 }
 
 /**
@@ -820,9 +1425,17 @@ static bool combo_view_cracker_custom_event_callback(uint32_t event, void* conte
             app->view_cracker,
             ComboLockCrackerModel * model,
             {
-                calculate_combo(model);
+                calculate_combo_with_orchestrator(model, app->orchestrator);
                 widget_reset(app->widget_results);
-                widget_add_text_scroll_element(app->widget_results, 2, 2, 124, 60, model->result);
+                widget_add_text_scroll_element(
+                    app->widget_results,
+                    2,
+                    2,
+                    124,
+                    60,
+                    orchestrator_get_analytics_summary(app->orchestrator));
+                widget_add_text_scroll_element(
+                    app->widget_results, 2, 20, 124, 40, model->result);
             },
             redraw);
 
@@ -836,6 +1449,18 @@ static bool combo_view_cracker_custom_event_callback(uint32_t event, void* conte
 
 static ComboLockCrackerApp* combo_app_alloc() {
     ComboLockCrackerApp* app = (ComboLockCrackerApp*)malloc(sizeof(ComboLockCrackerApp));
+    memset(app, 0, sizeof(ComboLockCrackerApp));
+
+    app->api_config = (ApiConfig*)malloc(sizeof(ApiConfig));
+    memset(app->api_config, 0, sizeof(ApiConfig));
+    app->api_config->api_enabled = false;
+
+    app->ui_buffer = string_buffer_alloc(512);
+    app->orchestrator = orchestrator_alloc();
+    app->file_editor = file_editor_alloc();
+    app->preset_manager = preset_manager_alloc();
+    app->menu_selected = 0;
+    app->menu_scroll_offset = 0;
 
     Gui* gui = furi_record_open(RECORD_GUI);
 
@@ -848,6 +1473,12 @@ static ComboLockCrackerApp* combo_app_alloc() {
         app->submenu, "Crack Lock", ComboSubmenuIndexCracker, combo_submenu_callback, app);
     submenu_add_item(
         app->submenu, "Tutorial", ComboSubmenuIndexTutorial, combo_submenu_callback, app);
+    submenu_add_item(
+        app->submenu, "Analytics", ComboSubmenuIndexAnalytics, combo_submenu_callback, app);
+    submenu_add_item(
+        app->submenu, "File Editor", 6, combo_submenu_callback, app);
+    submenu_add_item(
+        app->submenu, "Settings", ComboSubmenuIndexSettings, combo_submenu_callback, app);
     submenu_add_item(app->submenu, "About", ComboSubmenuIndexAbout, combo_submenu_callback, app);
     view_set_previous_callback(submenu_get_view(app->submenu), combo_navigation_exit_callback);
     view_dispatcher_add_view(
@@ -878,11 +1509,81 @@ static ComboLockCrackerApp* combo_app_alloc() {
         app->view_dispatcher, ComboViewResults, widget_get_view(app->widget_results));
 
     app->widget_tutorial = widget_alloc();
-    widget_add_text_scroll_element(app->widget_tutorial, 0, 0, 128, 64, gc_instructions_numeric);
+    widget_add_text_scroll_element(
+        app->widget_tutorial,
+        0,
+        0,
+        128,
+        64,
+        "Tutorial - Choose:\n\n"
+        "[1] Numeric Locks (0-39)\n\n"
+        "[2] Alphabetic Locks (Y,A-W)\n\n"
+        "Use UP/DOWN to select\n"
+        "Press OK to view");
     view_set_previous_callback(
         widget_get_view(app->widget_tutorial), combo_navigation_submenu_callback);
     view_dispatcher_add_view(
         app->view_dispatcher, ComboViewTutorial, widget_get_view(app->widget_tutorial));
+
+    app->widget_tutorial_numeric = widget_alloc();
+    widget_add_text_scroll_element(
+        app->widget_tutorial_numeric, 0, 0, 128, 64, gc_instructions_numeric);
+    view_set_previous_callback(
+        widget_get_view(app->widget_tutorial_numeric), combo_navigation_submenu_callback);
+    view_dispatcher_add_view(
+        app->view_dispatcher, ComboViewTutorialNumeric, widget_get_view(app->widget_tutorial_numeric));
+
+    app->widget_tutorial_alpha = widget_alloc();
+    widget_add_text_scroll_element(
+        app->widget_tutorial_alpha, 0, 0, 128, 64, gc_instructions_alpha);
+    view_set_previous_callback(
+        widget_get_view(app->widget_tutorial_alpha), combo_navigation_submenu_callback);
+    view_dispatcher_add_view(
+        app->view_dispatcher, ComboViewTutorialAlpha, widget_get_view(app->widget_tutorial_alpha));
+
+    const char* settings_text =
+        "Settings\n"
+        "---\n"
+        "API Key: Not configured\n"
+        "Backlight: ON\n"
+        "Lock Type: Numeric\n\n"
+        "Press OK to configure\n";
+
+    app->widget_settings = widget_alloc();
+    widget_add_text_scroll_element(app->widget_settings, 0, 0, 128, 64, settings_text);
+    view_set_previous_callback(
+        widget_get_view(app->widget_settings), combo_navigation_submenu_callback);
+    view_dispatcher_add_view(
+        app->view_dispatcher, ComboViewSettings, widget_get_view(app->widget_settings));
+
+    const char* analytics_text =
+        "ANALYTICS DASHBOARD\n"
+        "==================\n"
+        "Total Attempts: 0\n"
+        "Success Rate: 0%\n"
+        "Fastest Solve: 0ms\n"
+        "Slowest Solve: 0ms\n\n"
+        "INBOUND SOURCES:\n"
+        "Manual: 0 | DB: 0\n"
+        "History: 0 | API: 0\n";
+
+    app->widget_analytics = widget_alloc();
+    widget_add_text_scroll_element(app->widget_analytics, 0, 0, 128, 64, analytics_text);
+    view_set_previous_callback(
+        widget_get_view(app->widget_analytics), combo_navigation_submenu_callback);
+    view_dispatcher_add_view(
+        app->view_dispatcher, ComboViewAnalytics, widget_get_view(app->widget_analytics));
+
+    app->view_file_editor = view_alloc();
+    view_set_draw_callback(app->view_file_editor, combo_view_file_editor_draw_callback);
+    view_set_input_callback(app->view_file_editor, combo_view_file_editor_input_callback);
+    view_set_previous_callback(app->view_file_editor, combo_navigation_submenu_callback);
+    view_set_context(app->view_file_editor, app);
+
+    const char* default_editor_content = "Quick Edit Panel\n\nLoad patterns\nor edit code\nsnippets here.\n\nUse UP/DOWN\nto navigate.";
+    file_editor_load_content(app->file_editor, "editor.txt", default_editor_content);
+
+    view_dispatcher_add_view(app->view_dispatcher, ComboViewFileEditor, app->view_file_editor);
 
     app->widget_about = widget_alloc();
     widget_add_text_scroll_element(
@@ -891,12 +1592,14 @@ static ComboLockCrackerApp* combo_app_alloc() {
         0,
         128,
         64,
-        "Combo Lock Cracker\n"
+        "Combo Lock Cracker v0.6\n"
         "---\n"
-        "Based on Samy Kamkar's Master Lock research.\n"
-        "Crack Combo Locks in 8 tries\n"
-        "https://samy.pl/master/\n"
-        "README at https://github.com/CharlesTheGreat77/ComboCracker-FZ\n");
+        "Based on Samy Kamkar's research.\n"
+        "Crack locks in 8 attempts or less.\n\n"
+        "GitHub:\n"
+        "github.com/javidrezai/\n"
+        "ComboCracker-FZ\n\n"
+        "https://samy.pl/master/\n");
     view_set_previous_callback(
         widget_get_view(app->widget_about), combo_navigation_submenu_callback);
     view_dispatcher_add_view(
@@ -922,16 +1625,42 @@ static void combo_app_free(ComboLockCrackerApp* app) {
 
     view_dispatcher_remove_view(app->view_dispatcher, ComboViewAbout);
     widget_free(app->widget_about);
+
+    view_dispatcher_remove_view(app->view_dispatcher, ComboViewAnalytics);
+    widget_free(app->widget_analytics);
+
+    view_dispatcher_remove_view(app->view_dispatcher, ComboViewFileEditor);
+    view_free(app->view_file_editor);
+
+    view_dispatcher_remove_view(app->view_dispatcher, ComboViewSettings);
+    widget_free(app->widget_settings);
+
+    view_dispatcher_remove_view(app->view_dispatcher, ComboViewTutorialAlpha);
+    widget_free(app->widget_tutorial_alpha);
+
+    view_dispatcher_remove_view(app->view_dispatcher, ComboViewTutorialNumeric);
+    widget_free(app->widget_tutorial_numeric);
+
     view_dispatcher_remove_view(app->view_dispatcher, ComboViewTutorial);
     widget_free(app->widget_tutorial);
+
     view_dispatcher_remove_view(app->view_dispatcher, ComboViewResults);
     widget_free(app->widget_results);
+
     view_dispatcher_remove_view(app->view_dispatcher, ComboViewCracker);
     view_free(app->view_cracker);
+
     view_dispatcher_remove_view(app->view_dispatcher, ComboViewSubmenu);
     submenu_free(app->submenu);
+
     view_dispatcher_free(app->view_dispatcher);
     furi_record_close(RECORD_GUI);
+
+    if(app->api_config) free(app->api_config);
+    if(app->ui_buffer) string_buffer_free(app->ui_buffer);
+    if(app->orchestrator) orchestrator_free(app->orchestrator);
+    if(app->file_editor) file_editor_free(app->file_editor);
+    if(app->preset_manager) preset_manager_free(app->preset_manager);
 
     free(app);
 }
