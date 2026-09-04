@@ -773,11 +773,11 @@ html[data-device="touch-desktop"] .cbtn{min-height:44px}
       <span data-i18n="toolkit">جعبه‌ابزار امنیت</span>
     </button>
 
-    <button class="mode-btn" id="imageBtn" type="button" style="border:1px solid rgba(123,92,255,.32);background:linear-gradient(100deg,rgba(123,92,255,.14),rgba(34,211,238,.06))">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--violet-2)">
-        <rect x="3" y="3" width="18" height="18" rx="2.5"/><circle cx="8.5" cy="8.5" r="1.8"/><path d="M21 15l-5-5L5 21"/>
+    <button class="mode-btn" id="devicesBtn" type="button" style="border:1px solid rgba(63,178,127,.32);background:linear-gradient(100deg,rgba(63,178,127,.14),rgba(34,211,238,.06))">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:#3fb27f">
+        <rect x="2" y="4" width="20" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>
       </svg>
-      <span data-i18n="imageStudio">استودیو تصویر</span>
+      <span data-i18n="devicesTitle">دستگاه‌های خانه</span>
     </button>
 
     <div class="side-sec">
@@ -925,114 +925,25 @@ html[data-device="touch-desktop"] .cbtn{min-height:44px}
   </div>
 </div>
 
-<!-- ============ IMAGE STUDIO ============ -->
-<div class="overlay" id="imageOverlay">
+<!-- ============ HOME DEVICES ============ -->
+<div class="overlay" id="devicesOverlay">
   <div class="tk-shell glass">
     <div class="tk-head">
       <div class="tk-title">
-        <svg viewBox="0 0 24 24" fill="none" stroke="var(--violet-2)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18">
-          <rect x="3" y="3" width="18" height="18" rx="2.5"/><circle cx="8.5" cy="8.5" r="1.8"/><path d="M21 15l-5-5L5 21"/></svg>
-        <span data-i18n="imageStudio">استودیو تصویر</span>
+        <svg viewBox="0 0 24 24" fill="none" stroke="#3fb27f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18">
+          <rect x="2" y="4" width="20" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>
+        <span data-i18n="devicesTitle">دستگاه‌های خانه</span>
       </div>
-      <button class="ibtn" id="imgClose"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+      <button class="ibtn" id="devClose"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
     </div>
-    <div class="tk-tabs" id="imgTabs">
-      <button class="tk-tab on" data-imgtab="gen" data-i18n="imgTabGen">ساخت تصویر</button>
-      <button class="tk-tab" data-imgtab="edit">ویرایش</button>
-      <button class="tk-tab" data-imgtab="conv" data-i18n="imgTabConv">تبدیل فرمت</button>
+    <div class="tk-tabs" id="devTabs">
+      <button class="tk-tab on" data-devtab="list" data-i18n="devTabList">دستگاه‌ها</button>
+      <button class="tk-tab" data-devtab="scan" data-i18n="devTabScan">جستجو</button>
+      <button class="tk-tab" data-devtab="perms" data-i18n="devTabPerms">دسترسی‌ها</button>
     </div>
-    <div class="tk-body">
-      <!-- generate -->
-      <div id="imgPaneGen">
-        <textarea class="input" id="imgPrompt" rows="3" data-i18n-placeholder="imgPromptPh" placeholder="توضیح تصویر را بنویس..." style="resize:vertical"></textarea>
-        <div class="tk-row" style="margin-top:10px;gap:10px;align-items:center;flex-wrap:wrap">
-          <span class="side-label" style="padding:0" data-i18n="imgSize">اندازه</span>
-          <select class="picker" id="imgSize" style="width:auto;flex:0 0 auto">
-            <option value="1024x1024">1024 × 1024</option>
-            <option value="1280x720">1280 × 720</option>
-            <option value="720x1280">720 × 1280</option>
-            <option value="1536x640">1536 × 640</option>
-          </select>
-          <button class="btn" id="imgGenBtn" style="margin-top:0;flex:0 0 auto;padding:9px 18px" data-i18n="generate">بساز</button>
-        </div>
-        <div id="imgResult" style="margin-top:16px"></div>
-      </div>
-      <!-- convert -->
-      <div id="imgPaneEdit" style="display:none">
-      <div class="tk-hint" style="margin-bottom:10px">ویرایش روی همین دستگاه انجام می‌شود — عکس هیچ‌جا فرستاده نمی‌شود.</div>
-      <input type="file" id="edFile" accept="image/*" hidden>
-      <button class="btn ghost" id="edPick" style="width:100%;margin-bottom:12px">انتخاب عکس</button>
-
-      <div id="edWork" style="display:none">
-        <div style="background:rgba(0,0,0,.35);border-radius:12px;padding:10px;margin-bottom:12px;text-align:center">
-          <canvas id="edCanvas" style="max-width:100%;max-height:44vh;border-radius:8px"></canvas>
-          <div id="edSize" style="font-size:11px;color:var(--muted);margin-top:6px"></div>
-        </div>
-
-        <div class="tk-row" style="gap:8px;margin-bottom:8px">
-          <span style="font-size:12px;color:var(--muted);min-width:74px">روشنایی</span>
-          <input type="range" id="edBright" min="50" max="150" value="100" style="flex:1">
-          <span id="edBrightV" style="font-size:11px;color:var(--muted);min-width:38px;text-align:end">100%</span>
-        </div>
-        <div class="tk-row" style="gap:8px;margin-bottom:8px">
-          <span style="font-size:12px;color:var(--muted);min-width:74px">کنتراست</span>
-          <input type="range" id="edContrast" min="50" max="150" value="100" style="flex:1">
-          <span id="edContrastV" style="font-size:11px;color:var(--muted);min-width:38px;text-align:end">100%</span>
-        </div>
-        <div class="tk-row" style="gap:8px;margin-bottom:8px">
-          <span style="font-size:12px;color:var(--muted);min-width:74px">اشباع رنگ</span>
-          <input type="range" id="edSat" min="0" max="200" value="100" style="flex:1">
-          <span id="edSatV" style="font-size:11px;color:var(--muted);min-width:38px;text-align:end">100%</span>
-        </div>
-        <div class="tk-row" style="gap:8px;margin-bottom:12px">
-          <span style="font-size:12px;color:var(--muted);min-width:74px">وضوح</span>
-          <input type="range" id="edBlur" min="0" max="10" value="0" style="flex:1">
-          <span id="edBlurV" style="font-size:11px;color:var(--muted);min-width:38px;text-align:end">0</span>
-        </div>
-
-        <div class="side-label" style="padding:0;margin-bottom:6px">فیلترها</div>
-        <div class="tk-row" style="gap:6px;margin-bottom:12px;flex-wrap:wrap">
-          <button class="btn ghost edf" data-f="none" style="padding:6px 12px;font-size:12px">اصلی</button>
-          <button class="btn ghost edf" data-f="gray" style="padding:6px 12px;font-size:12px">سیاه‌وسفید</button>
-          <button class="btn ghost edf" data-f="sepia" style="padding:6px 12px;font-size:12px">قدیمی</button>
-          <button class="btn ghost edf" data-f="warm" style="padding:6px 12px;font-size:12px">گرم</button>
-          <button class="btn ghost edf" data-f="cool" style="padding:6px 12px;font-size:12px">سرد</button>
-          <button class="btn ghost edf" data-f="sharp" style="padding:6px 12px;font-size:12px">واضح</button>
-        </div>
-
-        <div class="side-label" style="padding:0;margin-bottom:6px">چرخش و اندازه</div>
-        <div class="tk-row" style="gap:6px;margin-bottom:12px;flex-wrap:wrap">
-          <button class="btn ghost" id="edRotL" style="padding:6px 12px;font-size:12px">↺ چپ</button>
-          <button class="btn ghost" id="edRotR" style="padding:6px 12px;font-size:12px">↻ راست</button>
-          <button class="btn ghost" id="edFlipH" style="padding:6px 12px;font-size:12px">⇄ آینه</button>
-          <button class="btn ghost" id="edHalf" style="padding:6px 12px;font-size:12px">نصف اندازه</button>
-        </div>
-
-        <div class="tk-row" style="gap:8px">
-          <button class="btn ghost" id="edReset" style="flex:1">بازگشت به اصل</button>
-          <button class="btn" id="edSave" style="flex:1">ذخیره</button>
-        </div>
-      </div>
-    </div>
-      <div id="imgPaneConv" style="display:none">
-        <p class="msub" style="margin:0 0 12px" data-i18n="convTitle">تبدیل فرمت تصویر</p>
-        <input type="file" id="convInput" accept="image/*" hidden>
-        <button class="btn ghost" id="convPickBtn" style="margin-top:0" data-i18n="convPick">یک عکس انتخاب کن</button>
-        <div class="tk-row" style="margin-top:12px;gap:10px;align-items:center;flex-wrap:wrap">
-          <span class="side-label" style="padding:0" data-i18n="convTo">تبدیل به</span>
-          <select class="picker" id="convFmt" style="width:auto;flex:0 0 auto">
-            <option value="image/png">PNG</option>
-            <option value="image/jpeg">JPG</option>
-            <option value="image/webp">WEBP</option>
-          </select>
-          <button class="btn" id="convBtn" style="margin-top:0;flex:0 0 auto;padding:9px 18px" disabled data-i18n="convBtn">تبدیل و دانلود</button>
-        </div>
-        <div id="convPreview" style="margin-top:14px"></div>
-      </div>
-    </div>
+    <div class="tk-body" id="devBody"></div>
   </div>
 </div>
-
 <!-- ============ ADMIN (account management) ============ -->
 <!-- ===== Family board: one shared room everyone reads ===== -->
 <div class="overlay" id="boardOverlay">
@@ -1127,9 +1038,9 @@ html[data-device="touch-desktop"] .cbtn{min-height:44px}
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/></svg>
     <span class="si-txt">جعبه‌ابزار<span class="si-sub">شبکه، امنیت، هش، QR</span></span>
   </button>
-  <button class="sheet-item" id="shImage">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
-    <span class="si-txt">تصویر<span class="si-sub">ساخت و ویرایش</span></span>
+  <button class="sheet-item" id="shDevices">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>
+    <span class="si-txt">دستگاه‌های خانه<span class="si-sub">تلویزیون، پرینتر، دوربین</span></span>
   </button>
 
   <div class="sheet-title">حساب</div>
@@ -1611,6 +1522,7 @@ fa:{dir:'rtl',
  adminAddBtn:'افزودن کاربر',adminTag:'ادمین',adminReset:'ری‌ست رمز',adminDelete:'حذف',safeMode:'حالت امن (مناسب کودک)',
  adminDone:'انجام شد',adminNewPassPrompt:'رمز جدید برای {u}:',adminDelConfirm:'کاربر {u} حذف شود؟',username:'نام کاربری',password:'رمز عبور',
  download:'دانلود',saveMsg:'ذخیره',imageStudio:'استودیو تصویر',
+ devicesTitle:'دستگاه‌های خانه',devTabList:'دستگاه‌ها',devTabScan:'جستجو',devTabPerms:'دسترسی‌ها',
  imgPromptPh:'توضیح تصویر را بنویس... مثلاً: یک ربات آبی در شهر آینده، سبک سه‌بعدی',imgSize:'اندازه',generate:'بساز',
  generating:'در حال ساخت...',imgErr:'ساخت تصویر ناموفق بود. اینترنت را چک کن و دوباره تلاش کن.',imgDownload:'دانلود تصویر',
  imgTabGen:'ساخت تصویر',imgTabConv:'تبدیل فرمت',convTitle:'تبدیل فرمت تصویر',convPick:'یک عکس انتخاب کن',
@@ -1654,6 +1566,7 @@ en:{dir:'ltr',
  adminAddBtn:'Add user',adminTag:'admin',adminReset:'Reset password',adminDelete:'Delete',safeMode:'Safe mode (child-friendly)',
  adminDone:'Done',adminNewPassPrompt:'New password for {u}:',adminDelConfirm:'Delete user {u}?',username:'Username',password:'Password',
  download:'Download',saveMsg:'Save',imageStudio:'Image studio',
+ devicesTitle:'Home devices',devTabList:'Devices',devTabScan:'Scan',devTabPerms:'Access',
  imgPromptPh:'Describe the image... e.g. a blue robot in a future city, 3D style',imgSize:'Size',generate:'Generate',
  generating:'Generating...',imgErr:'Image generation failed. Check your internet and try again.',imgDownload:'Download image',
  imgTabGen:'Generate',imgTabConv:'Convert format',convTitle:'Convert image format',convPick:'Pick an image',
@@ -2713,7 +2626,7 @@ function showLogin(msg){
   $('loginView').style.display='flex';
   $('pField').value='';
   if(msg){ var e=$('loginNote'); if(e){ e.textContent=msg; e.className='note err'; } }
-  ['ccOverlay','learnOverlay','adminOverlay','settingsOverlay','toolkitOverlay','imageOverlay']
+  ['ccOverlay','learnOverlay','adminOverlay','settingsOverlay','toolkitOverlay','devicesOverlay']
     .forEach(function(id){ var e=$(id); if(e)e.classList.remove('on'); });
   var sh=$('sheet'); if(sh)sh.classList.remove('on');
   var ss=$('sheetScrim'); if(ss)ss.classList.remove('on');
@@ -4910,7 +4823,7 @@ function showVersion(){
    there is one place to look. */
 function tidySidebar(){
   // These all have drawer entries; remove the duplicates.
-  ['toolkitBtn','imageBtn','adminBtn','boardBtn','ccBtn','learnBtn','settingsBtn','langBtn']
+  ['toolkitBtn','devicesBtn','adminBtn','boardBtn','ccBtn','learnBtn','settingsBtn','langBtn']
     .forEach(function(id){ var e=$(id); if(e)e.style.display='none'; });
 
   // The mode list was six entries with keyboard numbers next to them — it
@@ -4971,11 +4884,11 @@ function simplifyForFamily(){
   // modes — ordinary chat handles what they ask.
   var ml=document.getElementById('modeList');
   if(ml&&ml.parentNode)ml.parentNode.style.display='none';
-  ['toolkitBtn','imageBtn'].forEach(function(id){
+  ['toolkitBtn','devicesBtn'].forEach(function(id){
     var e=$(id); if(e)e.style.display='none';
   });
   // Drawer: only the things that make sense for them.
-  ['shTools','shImage','shAttach','shMic','shSearch'].forEach(function(id){
+  ['shTools','shDevices','shAttach','shMic','shSearch'].forEach(function(id){
     var e=$(id); if(e)e.style.display='none';
   });
   var toolsTitle=document.querySelectorAll('.sheet-title')[2];
@@ -5014,7 +4927,7 @@ $('shCC').addEventListener('click',function(){sheetGo(openCC);});
 $('shLearn').addEventListener('click',function(){sheetGo(openLearn);});
 $('shUsers').addEventListener('click',function(){sheetGo(openAdmin);});
 $('shTools').addEventListener('click',function(){sheetGo(openToolkit);});
-$('shImage').addEventListener('click',function(){sheetGo(openImage);});
+$('shDevices').addEventListener('click',function(){sheetGo(devOpen);});
 $('shPass').addEventListener('click',function(){sheetGo(openSettings);});
 $('shLogout').addEventListener('click',function(){closeSheet();doLogout();});
 document.addEventListener('keydown',function(e){ if(e.key==='Escape')closeSheet(); });
@@ -5822,187 +5735,356 @@ $('toolkitBtn').addEventListener('click',openToolkit);
 $('tkClose').addEventListener('click',closeToolkit);
 $('toolkitOverlay').addEventListener('click',function(e){if(e.target===$('toolkitOverlay'))closeToolkit();});
 
-/* ================= image studio ================= */
-function openImage(){$('imageOverlay').classList.add('on');closeSidebar();}
-function closeImage(){$('imageOverlay').classList.remove('on');}
-$('imageBtn').addEventListener('click',openImage);
-$('imgClose').addEventListener('click',closeImage);
-$('imageOverlay').addEventListener('click',function(e){if(e.target===$('imageOverlay'))closeImage();});
-Array.prototype.forEach.call(document.querySelectorAll('#imgTabs .tk-tab'),function(tab){
-  tab.addEventListener('click',function(){
-    Array.prototype.forEach.call(document.querySelectorAll('#imgTabs .tk-tab'),function(x){x.classList.remove('on');});
-    tab.classList.add('on');
-    var which=tab.getAttribute('data-imgtab');
-    $('imgPaneGen').style.display  = which==='gen'  ? '' : 'none';
-    $('imgPaneEdit').style.display = which==='edit' ? '' : 'none';
-    $('imgPaneConv').style.display = which==='conv' ? '' : 'none';
-  });
-});
-/* ===== Local image editor =====
-   Everything happens on this device with a canvas — the photo is never
-   uploaded anywhere. Free AI photo editing does not really exist; what does
-   work, and works well, is doing the ordinary adjustments locally. */
-var edImg=null, edRot=0, edFlip=false, edFilter='none', edScale=1;
+/* ================= HOME DEVICES ================= */
+/* Replaces the old Image Studio slot. Talks to /api/home/* using the app's
+   own session token, so there is nothing extra to sign into.
 
-function edRender(){
-  if(!edImg)return;
-  var c=$('edCanvas'), ctx=c.getContext('2d');
-  var w=Math.round(edImg.width*edScale), h=Math.round(edImg.height*edScale);
-  var swap=(edRot===90||edRot===270);
-  c.width  = swap? h : w;
-  c.height = swap? w : h;
+   One design note worth keeping: the position ping below is what lets the
+   air-fryer guard say yes. It runs while the app is open and reports only
+   the newest point, never a trail. */
 
-  var f=[];
-  f.push('brightness('+$('edBright').value+'%)');
-  f.push('contrast('+$('edContrast').value+'%)');
-  f.push('saturate('+$('edSat').value+'%)');
-  var blur=Number($('edBlur').value);
-  if(blur>0)f.push('blur('+(blur/4)+'px)');
-  if(edFilter==='gray')f.push('grayscale(100%)');
-  if(edFilter==='sepia')f.push('sepia(80%)');
-  if(edFilter==='warm')f.push('sepia(35%) saturate(140%) hue-rotate(-12deg)');
-  if(edFilter==='cool')f.push('saturate(115%) hue-rotate(18deg) brightness(104%)');
-  if(edFilter==='sharp')f.push('contrast(122%) saturate(112%)');
-  ctx.filter=f.join(' ');
+var DEV = { list: [], admin: false, drivers: [], perms: null, tab: 'list',
+            scanTimer: null, found: [], stepUp: '' };
 
-  ctx.save();
-  ctx.translate(c.width/2, c.height/2);
-  ctx.rotate(edRot*Math.PI/180);
-  if(edFlip)ctx.scale(-1,1);
-  ctx.drawImage(edImg, -w/2, -h/2, w, h);
-  ctx.restore();
-  $('edSize').textContent=c.width+' × '+c.height+' پیکسل';
+function devOpen(){ $('devicesOverlay').classList.add('on'); closeSidebar(); devLoad(); }
+function devClose(){
+  $('devicesOverlay').classList.remove('on');
+  if(DEV.scanTimer){ clearInterval(DEV.scanTimer); DEV.scanTimer=null; }
 }
 
-function edLoad(file){
-  var r=new FileReader();
-  r.onload=function(){
-    var im=new Image();
-    im.onload=function(){
-      edImg=im; edRot=0; edFlip=false; edFilter='none'; edScale=1;
-      ['edBright','edContrast','edSat'].forEach(function(id){ $(id).value=100; });
-      $('edBlur').value=0;
-      edSyncLabels();
-      $('edWork').style.display='';
-      edRender();
-    };
-    im.src=r.result;
-  };
-  r.readAsDataURL(file);
-}
-function edSyncLabels(){
-  $('edBrightV').textContent=$('edBright').value+'%';
-  $('edContrastV').textContent=$('edContrast').value+'%';
-  $('edSatV').textContent=$('edSat').value+'%';
-  $('edBlurV').textContent=$('edBlur').value;
-  Array.prototype.forEach.call(document.querySelectorAll('.edf'),function(b){
-    b.className='btn '+(b.getAttribute('data-f')===edFilter?'':'ghost');
-    b.style.padding='6px 12px'; b.style.fontSize='12px';
-  });
+/* Sensitive actions ask for the password once, then work for five minutes.
+   The retry is silent so the user's original tap still happens. */
+async function devApi(path, opts){
+  opts = opts || {};
+  var h = authHeaders({'Content-Type':'application/json'});
+  if(DEV.stepUp) h['x-stepup'] = DEV.stepUp;
+  var r = await fetch(path, { method: opts.method || (opts.body?'POST':'GET'),
+                              headers: h, body: opts.body?JSON.stringify(opts.body):undefined });
+  var d = {};
+  try{ d = await r.json(); }catch(e){}
+  if(!r.ok){
+    if(d.stepUpRequired && !opts._retried){
+      var pw = prompt('برای این کار رمز خود را دوباره وارد کنید:');
+      if(!pw) throw new Error('لغو شد');
+      var rr = await fetch('/api/reauth',{method:'POST',
+        headers:authHeaders({'Content-Type':'application/json'}),
+        body:JSON.stringify({password:pw})});
+      var dd = {}; try{ dd = await rr.json(); }catch(e){}
+      if(!rr.ok) throw new Error(dd.error||'رمز پذیرفته نشد');
+      DEV.stepUp = dd.stepUp;
+      opts._retried = true;
+      return devApi(path, opts);
+    }
+    throw new Error(d.error || ('خطا '+r.status));
+  }
+  return d;
 }
 
-$('edPick').addEventListener('click',function(){ $('edFile').click(); });
-$('edFile').addEventListener('change',function(){
-  if(this.files&&this.files[0])edLoad(this.files[0]);
-  this.value='';
-});
-['edBright','edContrast','edSat','edBlur'].forEach(function(id){
-  $(id).addEventListener('input',function(){ edSyncLabels(); edRender(); });
-});
-Array.prototype.forEach.call(document.querySelectorAll('.edf'),function(b){
-  b.addEventListener('click',function(){ edFilter=b.getAttribute('data-f'); edSyncLabels(); edRender(); });
-});
-$('edRotL').addEventListener('click',function(){ edRot=(edRot+270)%360; edRender(); });
-$('edRotR').addEventListener('click',function(){ edRot=(edRot+90)%360; edRender(); });
-$('edFlipH').addEventListener('click',function(){ edFlip=!edFlip; edRender(); });
-$('edHalf').addEventListener('click',function(){ edScale=Math.max(0.1,edScale/2); edRender(); });
-$('edReset').addEventListener('click',function(){
-  if(!edImg)return;
-  edRot=0; edFlip=false; edFilter='none'; edScale=1;
-  ['edBright','edContrast','edSat'].forEach(function(id){ $(id).value=100; });
-  $('edBlur').value=0; edSyncLabels(); edRender();
-});
-$('edSave').addEventListener('click',function(){
-  if(!edImg)return;
-  $('edCanvas').toBlob(function(blob){
-    var a=document.createElement('a');
-    a.href=URL.createObjectURL(blob);
-    a.download='setayesh-edit-'+Date.now()+'.png';
-    a.click();
-    setTimeout(function(){ URL.revokeObjectURL(a.href); },2000);
-  },'image/png');
-});
+function devSay(msg, good){
+  var b = $('devBody'); if(!b) return;
+  var n = document.createElement('div');
+  n.className = good ? 'note' : 'errbox';
+  n.textContent = msg;
+  n.style.marginBottom = '10px';
+  b.insertBefore(n, b.firstChild);
+  if(good) setTimeout(function(){ try{ n.remove(); }catch(e){} }, 4000);
+}
 
-// --- generate via keyless free provider (Pollinations) ---
-var lastImgUrl=null,lastImgBlob=null;
-function showGenImage(src,downloadFn){
-  var box=$('imgResult');box.innerHTML='';
-  var frame=el('div');frame.style.cssText='border:1px solid var(--border);border-radius:12px;overflow:hidden;background:#000';
-  var img=new Image();img.style.cssText='display:block;width:100%;height:auto';img.src=src;
-  frame.appendChild(img);box.appendChild(frame);
-  var dl=el('button','btn');dl.style.marginTop='12px';dl.textContent=t('imgDownload');
-  dl.addEventListener('click',downloadFn);box.appendChild(dl);
-}
-function pollinationsImage(p){
-  var size=($('imgSize').value||'1024x1024').split('x');
-  var seed=Math.floor((Date.now()%100000));
-  var url='https://image.pollinations.ai/prompt/'+encodeURIComponent(p)+'?width='+size[0]+'&height='+size[1]+'&nologo=true&seed='+seed;
-  var img=new Image();
-  img.onload=function(){showGenImage(url,function(){downloadRemoteImage(url,'setayesh-image-'+tstamp()+'.png');});};
-  img.onerror=function(){$('imgResult').innerHTML='<div class="errbox">'+esc(t('imgErr'))+'</div>';};
-  img.src=url;
-}
-function genImage(){
-  var p=$('imgPrompt').value.trim();
-  if(!p)return;
-  var box=$('imgResult');
-  box.innerHTML='<div class="note" style="display:flex;align-items:center;gap:8px"><span class="spin"></span>'+esc(t('generating'))+' (Nano Banana)</div>';
-  // Try Google Nano Banana (Gemini) first — highest quality, uses the Gemini key.
-  tkFetch('/api/tool/genimage',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:p})})
-    .then(function(d){
-      if(d&&d.dataUrl){ showGenImage(d.dataUrl,function(){fetch(d.dataUrl).then(function(r){return r.blob();}).then(function(b){saveBlob(b,'setayesh-nanobanana-'+tstamp()+'.png');});}); return; }
-      // Nano Banana unavailable (e.g. daily quota) — use free generator with the translated English prompt
-      box.innerHTML='<div class="note" style="color:#fbbf24">'+esc((d&&d.error)||'Nano Banana')+'</div>'+
-        '<div class="note" style="display:flex;align-items:center;gap:8px"><span class="spin"></span>'+esc(t('generating'))+' (رایگان)</div>';
-      pollinationsImage((d&&d.fallbackPrompt)||p);
-    })
-    .catch(function(){
-      box.innerHTML='<div class="note" style="display:flex;align-items:center;gap:8px"><span class="spin"></span>'+esc(t('generating'))+' (رایگان)</div>';
-      pollinationsImage(p);
-    });
-}
-function downloadRemoteImage(url,filename){
-  fetch(url).then(function(r){return r.blob();}).then(function(b){saveBlob(b,filename);})
-    .catch(function(){ // CORS/network fallback: open in a new tab so the user can save manually
-      window.open(url,'_blank');
-    });
-}
-$('imgGenBtn').addEventListener('click',genImage);
-
-// --- convert an uploaded image between PNG / JPG / WEBP (client-side canvas) ---
-var convImg=null;
-$('convPickBtn').addEventListener('click',function(){$('convInput').click();});
-$('convInput').addEventListener('change',function(e){
-  var f=e.target.files&&e.target.files[0];if(!f)return;
-  var im=new Image();
-  im.onload=function(){convImg=im;$('convBtn').disabled=false;
-    var pv=$('convPreview');pv.innerHTML='';
-    im.style.cssText='max-width:100%;border:1px solid var(--border);border-radius:10px';pv.appendChild(im);};
-  im.onerror=function(){$('convPreview').innerHTML='<div class="errbox">'+esc(t('convErr'))+'</div>';};
-  im.src=URL.createObjectURL(f);
-});
-$('convBtn').addEventListener('click',function(){
-  if(!convImg)return;
+async function devLoad(){
   try{
-    var c=document.createElement('canvas');c.width=convImg.naturalWidth;c.height=convImg.naturalHeight;
-    var g=c.getContext('2d');
-    var fmt=$('convFmt').value;
-    if(fmt==='image/jpeg'){g.fillStyle='#fff';g.fillRect(0,0,c.width,c.height);} // no transparency in JPG
-    g.drawImage(convImg,0,0);
-    var ext=fmt==='image/png'?'png':fmt==='image/webp'?'webp':'jpg';
-    c.toBlob(function(b){if(b)saveBlob(b,'converted-'+tstamp()+'.'+ext);else alert(t('convErr'));},fmt,0.92);
-  }catch(err){$('convPreview').innerHTML+='<div class="errbox">'+esc(t('convErr'))+'</div>';}
+    var d = await devApi('/api/home/devices');
+    DEV.list = d.devices; DEV.admin = d.admin;
+    if(DEV.admin){
+      DEV.drivers = (await devApi('/api/home/drivers')).drivers;
+      DEV.perms   = await devApi('/api/home/permissions');
+    }
+    devRender();
+  }catch(e){
+    $('devBody').innerHTML = '<div class="errbox">'+esc(e.message)+'</div>';
+  }
+}
+
+var DEV_CMD = { on:'روشن', off:'خاموش', volume_up:'صدا +', volume_down:'صدا −',
+  mute:'بی‌صدا', home:'خانه', source:'ورودی', info:'اطلاعات', status:'وضعیت',
+  privacy_on:'حریم خصوصی', privacy_off:'دیدن', motion_on:'حرکت روشن',
+  motion_off:'حرکت خاموش', siren_off:'آژیر خاموش',
+  pan_left:'◀', pan_right:'▶', tilt_up:'▲', tilt_down:'▼',
+  pause:'مکث', resume:'ادامه' };
+
+function devRender(){
+  var b = $('devBody');
+  if(DEV.tab === 'list')  return devRenderList(b);
+  if(DEV.tab === 'scan')  return devRenderScan(b);
+  if(DEV.tab === 'perms') return devRenderPerms(b);
+}
+
+function devRenderList(b){
+  if(!DEV.list.length){
+    b.innerHTML = '<div class="tk-hint">'+(DEV.admin
+      ? 'هنوز دستگاهی اضافه نشده. از تب «جستجو» شروع کنید.'
+      : 'هنوز دسترسی به دستگاهی ندارید.')+'</div>';
+    return;
+  }
+  var h = '';
+  for(var i=0;i<DEV.list.length;i++){
+    var d = DEV.list[i];
+    h += '<div class="tk-card"><div class="tk-card-h" style="display:flex;align-items:center;gap:8px">'+
+         '<b style="flex:1">'+esc(d.name)+'</b>'+
+         (d.paired?'<span class="tk-hint" style="padding:0">جفت‌شده</span>':'')+
+         (DEV.admin?'<button class="btn ghost" data-devact="rename" data-id="'+d.id+'">نام</button>'+
+                    '<button class="btn ghost" data-devact="cfg" data-id="'+d.id+'">تنظیم</button>'+
+                    '<button class="btn ghost" data-devact="del" data-id="'+d.id+'">حذف</button>':'')+
+         '</div><div class="tk-card-b">'+
+         '<div class="tk-hint" style="padding:0 0 8px">'+esc(d.driverLabel)+' · '+esc(d.ip)+'</div>'+
+         '<div class="tk-row" style="flex-wrap:wrap;gap:6px">';
+    for(var j=0;j<d.capabilities.length;j++){
+      var c = d.capabilities[j];
+      if(c==='print') continue;
+      if(c==='cook'){ h += '<button class="btn" data-devact="cook" data-id="'+d.id+'">شروع پخت…</button>'; continue; }
+      h += '<button class="btn ghost" data-devact="cmd" data-id="'+d.id+'" data-cmd="'+c+'">'+(DEV_CMD[c]||c)+'</button>';
+    }
+    h += '</div></div></div>';
+  }
+  b.innerHTML = h;
+}
+
+function devRenderScan(b){
+  if(!DEV.admin){ b.innerHTML = '<div class="tk-hint">فقط صاحب خانه می‌تواند شبکه را جستجو کند.</div>'; return; }
+  var h = '<div class="tk-hint">فقط شبکه‌ای که این کامپیوتر روی آن است جستجو می‌شود.</div>'+
+    '<div class="tk-row" style="margin:10px 0"><button class="btn" id="devScanGo">جستجوی دستگاه‌ها</button>'+
+    '<span class="tk-hint" id="devScanTxt" style="padding:0"></span></div><div id="devScanOut"></div>'+
+    '<div class="tk-card" style="margin-top:14px"><div class="tk-card-h">افزودن دستی</div><div class="tk-card-b">'+
+    '<div class="tk-row" style="gap:8px;flex-wrap:wrap">'+
+    '<input class="input" id="devMIp" placeholder="192.168.1.50" style="flex:1;min-width:140px">'+
+    '<select class="picker" id="devMDrv" style="width:auto">';
+  for(var i=0;i<DEV.drivers.length;i++)
+    h += '<option value="'+DEV.drivers[i].id+'">'+esc(DEV.drivers[i].label)+'</option>';
+  h += '</select><input class="input" id="devMName" placeholder="نام" style="flex:1;min-width:110px">'+
+       '<button class="btn" id="devMAdd">افزودن</button></div></div></div>';
+  b.innerHTML = h;
+  if(DEV.found.length) devShowFound(DEV.found);
+}
+
+function devRenderPerms(b){
+  if(!DEV.admin){ b.innerHTML = '<div class="tk-hint">فقط صاحب خانه دسترسی‌ها را می‌بیند.</div>'; return; }
+  var p = DEV.perms;
+  if(!p || !p.devices.length){ b.innerHTML = '<div class="tk-hint">اول یک دستگاه اضافه کنید.</div>'; return; }
+  var h = '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">'+
+          '<tr><th style="text-align:right;padding:6px 8px;border:1px solid var(--border)">کاربر</th>';
+  for(var i=0;i<p.devices.length;i++)
+    h += '<th style="padding:6px 4px;border:1px solid var(--border)">'+esc(p.devices[i].name)+'</th>';
+  h += '</tr>';
+  for(var u=0;u<p.users.length;u++){
+    var user = p.users[u], adm = p.admins.indexOf(user) >= 0;
+    h += '<tr><td style="text-align:right;padding:6px 8px;border:1px solid var(--border);white-space:nowrap">'+
+         esc(user)+(adm?' <span class="tk-hint" style="padding:0">صاحب</span>':'')+'</td>';
+    for(var k=0;k<p.devices.length;k++){
+      var dv = p.devices[k];
+      if(adm){ h += '<td style="text-align:center;padding:6px;border:1px solid var(--border);color:#3fb27f">✓</td>'; continue; }
+      var fixed = !!(p.perms[user] && p.perms[user][dv.id]);
+      var tmp = false;
+      for(var g=0;g<p.grants.length;g++)
+        if(p.grants[g].user===user && p.grants[g].dev===dv.id && p.grants[g].until>Date.now()) tmp = true;
+      var col = fixed ? '#3fb27f' : (tmp ? '#e0a33e' : 'var(--muted)');
+      var mk  = fixed ? '✓' : (tmp ? '⏱' : '·');
+      h += '<td style="text-align:center;padding:6px;border:1px solid var(--border);cursor:pointer;color:'+col+
+           '" data-devact="toggle" data-user="'+esc(user)+'" data-id="'+dv.id+'" data-on="'+(fixed?'1':'0')+'">'+mk+'</td>';
+    }
+    h += '</tr>';
+  }
+  h += '</table></div><div class="tk-row" style="margin-top:10px;gap:8px">'+
+       '<button class="btn ghost" data-devact="temp">دسترسی موقت…</button>'+
+       '<button class="btn ghost" data-devact="resetperms">بازگشت به پیش‌فرض</button></div>'+
+       '<div class="tk-hint">یک ضربه روی هر خانه باز یا بسته می‌کند. ⏱ یعنی دسترسی موقت.</div>';
+  b.innerHTML = h;
+}
+
+function devShowFound(found){
+  DEV.found = found;
+  var box = $('devScanOut'); if(!box) return;
+  if(!found.length){ box.innerHTML = '<div class="tk-hint">چیزی پیدا نشد. مطمئن شوید دستگاه‌ها روشن‌اند.</div>'; return; }
+  var h = '';
+  for(var i=0;i<found.length;i++){
+    var f = found[i];
+    h += '<div class="tk-row" style="border-top:1px solid var(--border);padding:9px 0;gap:8px;align-items:center">'+
+         '<div style="flex:1;min-width:0"><b>'+esc(f.name)+'</b><div class="tk-hint" style="padding:0">'+
+         esc(f.ip)+(f.mac?' · '+esc(f.mac):'')+' · پورت '+f.open.join(',')+'</div></div>'+
+         (f.known ? '<span class="tk-hint" style="padding:0">اضافه شده</span>'
+                  : (f.driver ? '<button class="btn" data-devact="addfound" data-i="'+i+'">افزودن</button>'
+                              : '<span class="tk-hint" style="padding:0">ناشناس</span>'))+'</div>';
+  }
+  box.innerHTML = h;
+}
+
+async function devScan(){
+  var btn = $('devScanGo'); if(btn) btn.disabled = true;
+  DEV.found = [];
+  var out = $('devScanOut'); if(out) out.innerHTML = '';
+  try{
+    await devApi('/api/home/scan', { body:{} });
+    if(DEV.scanTimer) clearInterval(DEV.scanTimer);
+    DEV.scanTimer = setInterval(async function(){
+      var s;
+      try{ s = await devApi('/api/home/scan'); }
+      catch(e){ clearInterval(DEV.scanTimer); DEV.scanTimer=null; if(btn) btn.disabled=false; return devSay(e.message); }
+      var txt = $('devScanTxt');
+      if(txt) txt.textContent = s.running ? (s.progress+' از '+s.total) : (s.error||'');
+      if(!s.running){
+        clearInterval(DEV.scanTimer); DEV.scanTimer = null;
+        if(btn) btn.disabled = false;
+        if(txt) txt.textContent = s.found.length+' دستگاه پیدا شد';
+        devShowFound(s.found);
+      }
+    }, 1500);
+  }catch(e){ if(btn) btn.disabled=false; devSay(e.message); }
+}
+
+/* One delegated listener for the whole panel: the body is re-rendered often,
+   so per-button handlers would have to be re-attached every time. */
+$('devBody').addEventListener('click', async function(ev){
+  var el = ev.target.closest ? ev.target.closest('[data-devact]') : null;
+  if(!el) {
+    if(ev.target.id === 'devScanGo') return devScan();
+    if(ev.target.id === 'devMAdd')   return devAddManual();
+    return;
+  }
+  var act = el.getAttribute('data-devact');
+  var id  = el.getAttribute('data-id');
+  try{
+    if(act === 'cmd'){
+      var c = el.getAttribute('data-cmd');
+      el.disabled = true;
+      var r = await devApi('/api/home/devices/'+id+'/command', { body:{ command:c } });
+      el.disabled = false;
+      devSay(r.note || (r.state ? 'وضعیت: '+r.state : 'انجام شد'), true);
+      return;
+    }
+    if(act === 'cook'){
+      var temp = Number(prompt('دما (۴۰ تا ۲۰۰ درجه):','180')); if(!temp) return;
+      var mins = Number(prompt('چند دقیقه؟ (حداکثر ۴۰)','20')); if(!mins) return;
+      var rc = await devApi('/api/home/devices/'+id+'/command',
+        { body:{ command:'cook', arg:{ temp:temp, minutes:mins } } });
+      return devSay(rc.note||'شروع شد', true);
+    }
+    if(act === 'rename'){
+      var cur = null;
+      for(var i=0;i<DEV.list.length;i++) if(DEV.list[i].id===id) cur = DEV.list[i];
+      var n = prompt('نام تازه:', cur?cur.name:''); if(!n) return;
+      await devApi('/api/home/devices/'+id, { method:'PUT', body:{ name:n } });
+      return devLoad();
+    }
+    if(act === 'del'){
+      if(!confirm('این دستگاه حذف شود؟')) return;
+      await devApi('/api/home/devices/'+id, { method:'DELETE' });
+      devSay('حذف شد.', true);
+      return devLoad();
+    }
+    if(act === 'cfg'){
+      var dv = null;
+      for(var k=0;k<DEV.list.length;k++) if(DEV.list[k].id===id) dv = DEV.list[k];
+      if(!dv) return;
+      var body = {};
+      if(dv.driver === 'xiaomi_device'){
+        var tk = prompt('توکن شیائومی (۳۲ رقم هگز) — خالی بگذارید تا تغییر نکند:');
+        if(tk) body.token = tk.trim();
+      } else if(dv.driver === 'tuya_device'){
+        var ti = prompt('شناسه‌ی دستگاه در Tuya:'); if(!ti) return;
+        body.tuyaId = ti.trim();
+      } else { return devSay('این دستگاه تنظیم اضافه‌ای ندارد.'); }
+      await devApi('/api/home/devices/'+id+'/flags', { body:body });
+      devSay('ذخیره شد.', true);
+      return devLoad();
+    }
+    if(act === 'addfound'){
+      var f = DEV.found[Number(el.getAttribute('data-i'))];
+      await devApi('/api/home/devices', { body:{ ip:f.ip, mac:f.mac, driver:f.driver,
+        name:f.name, model:f.model, extra:f.extra } });
+      devSay('اضافه شد — در تب دسترسی‌ها بازش کنید.', true);
+      DEV.list = (await devApi('/api/home/devices')).devices;
+      if(DEV.admin) DEV.perms = await devApi('/api/home/permissions');
+      f.known = true; devShowFound(DEV.found);
+      return;
+    }
+    if(act === 'toggle'){
+      await devApi('/api/home/permissions', { body:{ user:el.getAttribute('data-user'),
+        device:id, allowed: el.getAttribute('data-on') !== '1' } });
+      DEV.perms = await devApi('/api/home/permissions');
+      return devRender();
+    }
+    if(act === 'temp'){
+      var u = prompt('کدام کاربر؟'); if(!u) return;
+      var dn = prompt('نام دستگاه؟'); if(!dn) return;
+      var hrs = Number(prompt('برای چند ساعت؟','12')); if(!hrs||hrs<=0) return;
+      var target = null;
+      for(var q=0;q<DEV.perms.devices.length;q++) if(DEV.perms.devices[q].name===dn) target = DEV.perms.devices[q];
+      if(!target) return devSay('دستگاهی با این نام نیست.');
+      await devApi('/api/home/permissions', { body:{ user:u, device:target.id,
+        until:new Date(Date.now()+hrs*3600000).toISOString() } });
+      DEV.perms = await devApi('/api/home/permissions');
+      devSay('دسترسی موقت داده شد.', true);
+      return devRender();
+    }
+    if(act === 'resetperms'){
+      if(!confirm('همه‌ی دسترسی‌ها به پیش‌فرض برگردد؟')) return;
+      await devApi('/api/home/permissions/reset', { body:{} });
+      DEV.perms = await devApi('/api/home/permissions');
+      devSay('برگشت به پیش‌فرض.', true);
+      return devRender();
+    }
+  }catch(e){
+    el.disabled = false;
+    devSay(e.message);
+  }
 });
+
+async function devAddManual(){
+  try{
+    await devApi('/api/home/devices', { body:{
+      ip: $('devMIp').value.trim(), driver: $('devMDrv').value, name: $('devMName').value.trim() } });
+    devSay('اضافه شد.', true);
+    DEV.list = (await devApi('/api/home/devices')).devices;
+    if(DEV.admin) DEV.perms = await devApi('/api/home/permissions');
+  }catch(e){ devSay(e.message); }
+}
+
+$('devTabs').addEventListener('click', function(ev){
+  var t = ev.target.closest ? ev.target.closest('[data-devtab]') : null;
+  if(!t) return;
+  DEV.tab = t.getAttribute('data-devtab');
+  var all = $('devTabs').querySelectorAll('.tk-tab');
+  for(var i=0;i<all.length;i++) all[i].classList.remove('on');
+  t.classList.add('on');
+  devRender();
+  /* Accounts and devices change while the panel is open — a new person added
+     in the users panel has to appear here without reopening anything. So the
+     tab refetches, and re-renders again once the answer arrives. */
+  (async function(){
+    try{
+      if(DEV.tab === 'perms' && DEV.admin){ DEV.perms = await devApi('/api/home/permissions'); }
+      else if(DEV.tab === 'list'){ DEV.list = (await devApi('/api/home/devices')).devices; }
+      else return;
+      devRender();
+    }catch(e){}
+  })();
+});
+
+$('devicesBtn').addEventListener('click', devOpen);
+$('devClose').addEventListener('click', devClose);
+$('devicesOverlay').addEventListener('click', function(e){ if(e.target===$('devicesOverlay')) devClose(); });
+
+/* Position ping. Only the newest point is kept, and only in the server's
+   memory — this answers "is anyone nearly home", nothing more. */
+function devSendPosition(){
+  if(!navigator.geolocation || !token) return;
+  navigator.geolocation.getCurrentPosition(function(p){
+    fetch('/api/home/position',{ method:'POST',
+      headers: authHeaders({'Content-Type':'application/json'}),
+      body: JSON.stringify({ lat:p.coords.latitude, lon:p.coords.longitude }) }).catch(function(){});
+  }, function(){}, { maximumAge:120000, timeout:8000 });
+}
+setTimeout(devSendPosition, 4000);
+setInterval(devSendPosition, 4*60*1000);
+
 
 try{loadTheme();}catch(e){}   // digital theme on the login screen too
 try{loadTextSize();}catch(e){}
