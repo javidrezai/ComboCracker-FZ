@@ -833,6 +833,10 @@
   function frame() {
     S.raf = requestAnimationFrame(frame);
     if (!S.open) return;
+    // When the tab is backgrounded or the phone is locked, keep the loop
+    // scheduled but do no GPU work — otherwise a weak phone keeps rendering
+    // 60fps of an invisible scene and gets hot and sluggish.
+    if (document.hidden) return;
     var THREE = window.THREE;
     S.clock += 0.016;
 
