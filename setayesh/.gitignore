@@ -1,0 +1,19 @@
+# Dependencies
+node_modules/
+
+# Runtime-generated state (never commit — may contain secrets)
+.setayesh-users.json
+.setayesh-*.json
+*.log
+error.log
+
+# Runtime data & artifacts
+backups/
+code-library/
+plugins/
+rollback/
+data/
+uploads/
+inbox/
+assets.generated.js
+antivirus-root.pem

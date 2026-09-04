@@ -1,0 +1,20 @@
+{
+  "name": "setayesh",
+  "version": "9.9.8",
+  "private": true,
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "express": "^4.18.2",
+    "express-rate-limit": "^7.1.5",
+    "helmet": "^7.1.0",
+    "multer": "^2.2.0",
+    "qrcode": "^1.5.4"
+  }
+}
