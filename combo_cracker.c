@@ -20,6 +20,10 @@
 #define MAX_MENU_ITEMS 6
 #define MAX_HISTORY_RECORDS 100
 #define MAX_PATTERN_SIZE 50
+#define MAX_FILE_NAME 64
+#define MAX_FILE_SIZE 2048
+#define MAX_EDITOR_LINES 32
+#define MAX_PRESETS 10
 
 typedef struct {
     char* buffer;
@@ -133,6 +137,7 @@ typedef enum {
     ComboViewAbout,
     ComboViewSettings,
     ComboViewAnalytics,
+    ComboViewFileEditor,
 } ComboView;
 
 typedef enum {
@@ -257,6 +262,7 @@ typedef struct {
     NotificationApp* notifications;
     Submenu* submenu;
     View* view_cracker;
+    View* view_file_editor;
     Widget* widget_results;
     Widget* widget_tutorial;
     Widget* widget_tutorial_numeric;
@@ -268,6 +274,8 @@ typedef struct {
     ApiConfig* api_config;
     StringBuffer* ui_buffer;
     Orchestrator* orchestrator;
+    FileEditor* file_editor;
+    PresetManager* preset_manager;
 
     FuriTimer* timer;
     uint8_t menu_selected;
@@ -540,6 +548,184 @@ const char* orchestrator_get_analytics_summary(Orchestrator* orch) {
         orch->stats->success_rate,
         orch->stats->fastest_solve_ms);
 
+    return summary;
+}
+
+typedef struct {
+    char filename[MAX_FILE_NAME];
+    char content[MAX_FILE_SIZE];
+    char lines[MAX_EDITOR_LINES][256];
+    uint16_t line_count;
+    uint16_t current_line;
+    uint16_t current_col;
+    bool modified;
+} FileEditor;
+
+typedef struct {
+    char name[MAX_FILE_NAME];
+    uint8_t first_lock;
+    uint8_t second_lock;
+    uint8_t resistance;
+    ComboLockType lock_type;
+} LockPreset;
+
+typedef struct {
+    LockPreset presets[MAX_PRESETS];
+    uint8_t preset_count;
+    uint8_t current_preset;
+} PresetManager;
+
+FileEditor* file_editor_alloc() {
+    FileEditor* editor = (FileEditor*)malloc(sizeof(FileEditor));
+    memset(editor, 0, sizeof(FileEditor));
+    editor->line_count = 0;
+    editor->current_line = 0;
+    editor->current_col = 0;
+    editor->modified = false;
+    return editor;
+}
+
+void file_editor_free(FileEditor* editor) {
+    if(editor) free(editor);
+}
+
+void file_editor_load_content(FileEditor* editor, const char* filename, const char* content) {
+    if(!editor || !filename || !content) return;
+
+    snprintf(editor->filename, sizeof(editor->filename), "%s", filename);
+    snprintf(editor->content, sizeof(editor->content), "%s", content);
+    editor->modified = false;
+
+    editor->line_count = 0;
+    const char* line_start = content;
+    while(editor->line_count < MAX_EDITOR_LINES && *line_start != '\0') {
+        const char* line_end = strchr(line_start, '\n');
+        size_t line_len = line_end ? (size_t)(line_end - line_start) : strlen(line_start);
+
+        if(line_len >= sizeof(editor->lines[0])) {
+            line_len = sizeof(editor->lines[0]) - 1;
+        }
+
+        memcpy(editor->lines[editor->line_count], line_start, line_len);
+        editor->lines[editor->line_count][line_len] = '\0';
+        editor->line_count++;
+
+        if(!line_end) break;
+        line_start = line_end + 1;
+    }
+
+    editor->current_line = 0;
+    editor->current_col = 0;
+}
+
+void file_editor_move_up(FileEditor* editor) {
+    if(editor && editor->current_line > 0) {
+        editor->current_line--;
+        editor->current_col = 0;
+    }
+}
+
+void file_editor_move_down(FileEditor* editor) {
+    if(editor && editor->current_line < editor->line_count - 1) {
+        editor->current_line++;
+        editor->current_col = 0;
+    }
+}
+
+void file_editor_move_left(FileEditor* editor) {
+    if(editor && editor->current_col > 0) {
+        editor->current_col--;
+    }
+}
+
+void file_editor_move_right(FileEditor* editor) {
+    if(!editor) return;
+    size_t line_len = strlen(editor->lines[editor->current_line]);
+    if(editor->current_col < line_len) {
+        editor->current_col++;
+    }
+}
+
+void file_editor_insert_char(FileEditor* editor, char ch) {
+    if(!editor) return;
+
+    char* line = editor->lines[editor->current_line];
+    size_t line_len = strlen(line);
+
+    if(line_len >= sizeof(editor->lines[0]) - 1) return;
+
+    for(size_t i = line_len; i > editor->current_col; i--) {
+        line[i] = line[i - 1];
+    }
+    line[editor->current_col] = ch;
+    line[line_len + 1] = '\0';
+    editor->current_col++;
+    editor->modified = true;
+}
+
+void file_editor_delete_char(FileEditor* editor) {
+    if(!editor) return;
+
+    char* line = editor->lines[editor->current_line];
+    if(editor->current_col > 0) {
+        for(size_t i = editor->current_col - 1; i < strlen(line); i++) {
+            line[i] = line[i + 1];
+        }
+        editor->current_col--;
+        editor->modified = true;
+    }
+}
+
+PresetManager* preset_manager_alloc() {
+    PresetManager* pm = (PresetManager*)malloc(sizeof(PresetManager));
+    memset(pm, 0, sizeof(PresetManager));
+    pm->preset_count = 0;
+    pm->current_preset = 0;
+    return pm;
+}
+
+void preset_manager_free(PresetManager* pm) {
+    if(pm) free(pm);
+}
+
+void preset_manager_add_preset(
+    PresetManager* pm,
+    const char* name,
+    uint8_t first_lock,
+    uint8_t second_lock,
+    uint8_t resistance,
+    ComboLockType lock_type) {
+    if(!pm || pm->preset_count >= MAX_PRESETS || !name) return;
+
+    LockPreset* preset = &pm->presets[pm->preset_count];
+    snprintf(preset->name, sizeof(preset->name), "%s", name);
+    preset->first_lock = first_lock;
+    preset->second_lock = second_lock;
+    preset->resistance = resistance;
+    preset->lock_type = lock_type;
+
+    pm->preset_count++;
+}
+
+LockPreset* preset_manager_get_preset(PresetManager* pm, uint8_t index) {
+    if(!pm || index >= pm->preset_count) return NULL;
+    return &pm->presets[index];
+}
+
+void preset_manager_delete_preset(PresetManager* pm, uint8_t index) {
+    if(!pm || index >= pm->preset_count) return;
+
+    for(uint8_t i = index; i < pm->preset_count - 1; i++) {
+        memcpy(&pm->presets[i], &pm->presets[i + 1], sizeof(LockPreset));
+    }
+    pm->preset_count--;
+}
+
+const char* preset_manager_get_summary(PresetManager* pm) {
+    static char summary[128];
+    if(!pm) return "";
+
+    snprintf(summary, sizeof(summary), "Presets: %d/%d", pm->preset_count, MAX_PRESETS);
     return summary;
 }
 
@@ -960,6 +1146,9 @@ static void combo_submenu_callback(void* context, uint32_t index) {
     case ComboSubmenuIndexAbout:
         view_dispatcher_switch_to_view(app->view_dispatcher, ComboViewAbout);
         break;
+    case 6: // File Editor
+        view_dispatcher_switch_to_view(app->view_dispatcher, ComboViewFileEditor);
+        break;
     default:
         break;
     }
@@ -1126,6 +1315,94 @@ static bool combo_view_cracker_input_callback(InputEvent* event, void* context) 
     return false;
 }
 
+static void combo_view_file_editor_draw_callback(Canvas* canvas, void* model) {
+    ComboLockCrackerApp* app = (ComboLockCrackerApp*)model;
+    if(!app || !app->file_editor) return;
+
+    canvas_clear(canvas);
+    canvas_set_font(canvas, FontPrimary);
+    canvas_draw_str(canvas, 2, 8, "FILE EDITOR");
+    canvas_draw_line(canvas, 0, 10, 128, 10);
+
+    canvas_set_font(canvas, FontSecondary);
+    char status[64];
+    snprintf(
+        status,
+        sizeof(status),
+        "%s %s",
+        app->file_editor->filename,
+        app->file_editor->modified ? "*" : "");
+    canvas_draw_str(canvas, 2, 20, status);
+
+    for(uint8_t i = 0; i < app->file_editor->line_count && i < 5; i++) {
+        uint8_t y = 28 + (i * 8);
+        if(i == app->file_editor->current_line) {
+            canvas_draw_str(canvas, 2, y, "> ");
+        } else {
+            canvas_draw_str(canvas, 2, y, "  ");
+        }
+        canvas_draw_str(canvas, 12, y, app->file_editor->lines[i]);
+    }
+
+    canvas_set_font(canvas, FontPrimary);
+    canvas_draw_str(canvas, 2, 62, "UP/DN:Nav LF/RT:Edit OK:Save");
+}
+
+static bool combo_view_file_editor_input_callback(InputEvent* event, void* context) {
+    ComboLockCrackerApp* app = (ComboLockCrackerApp*)context;
+    if(!app || !app->file_editor) return false;
+
+    FileEditor* editor = app->file_editor;
+    bool redraw = true;
+
+    if(event->type == InputTypeShort) {
+        switch(event->key) {
+        case InputKeyUp:
+            file_editor_move_up(editor);
+            break;
+        case InputKeyDown:
+            file_editor_move_down(editor);
+            break;
+        case InputKeyLeft:
+            file_editor_move_left(editor);
+            break;
+        case InputKeyRight:
+            file_editor_move_right(editor);
+            break;
+        case InputKeyOk:
+            editor->modified = false;
+            view_dispatcher_send_custom_event(app->view_dispatcher, ComboEventIdToggleSelection);
+            return true;
+        case InputKeyBack:
+            view_dispatcher_send_custom_event(app->view_dispatcher, ComboEventIdUpdateMenu);
+            return true;
+        default:
+            redraw = false;
+            break;
+        }
+    } else if(event->type == InputTypeRepeat) {
+        switch(event->key) {
+        case InputKeyUp:
+            file_editor_move_up(editor);
+            break;
+        case InputKeyDown:
+            file_editor_move_down(editor);
+            break;
+        case InputKeyLeft:
+            file_editor_move_left(editor);
+            break;
+        case InputKeyRight:
+            file_editor_move_right(editor);
+            break;
+        default:
+            redraw = false;
+            break;
+        }
+    }
+
+    return redraw;
+}
+
 /**
  * @brief      callback for custom events.
  * @details    this function is called when a custom event is sent to the view dispatcher.
@@ -1180,6 +1457,8 @@ static ComboLockCrackerApp* combo_app_alloc() {
 
     app->ui_buffer = string_buffer_alloc(512);
     app->orchestrator = orchestrator_alloc();
+    app->file_editor = file_editor_alloc();
+    app->preset_manager = preset_manager_alloc();
     app->menu_selected = 0;
     app->menu_scroll_offset = 0;
 
@@ -1196,6 +1475,8 @@ static ComboLockCrackerApp* combo_app_alloc() {
         app->submenu, "Tutorial", ComboSubmenuIndexTutorial, combo_submenu_callback, app);
     submenu_add_item(
         app->submenu, "Analytics", ComboSubmenuIndexAnalytics, combo_submenu_callback, app);
+    submenu_add_item(
+        app->submenu, "File Editor", 6, combo_submenu_callback, app);
     submenu_add_item(
         app->submenu, "Settings", ComboSubmenuIndexSettings, combo_submenu_callback, app);
     submenu_add_item(app->submenu, "About", ComboSubmenuIndexAbout, combo_submenu_callback, app);
@@ -1293,6 +1574,17 @@ static ComboLockCrackerApp* combo_app_alloc() {
     view_dispatcher_add_view(
         app->view_dispatcher, ComboViewAnalytics, widget_get_view(app->widget_analytics));
 
+    app->view_file_editor = view_alloc();
+    view_set_draw_callback(app->view_file_editor, combo_view_file_editor_draw_callback);
+    view_set_input_callback(app->view_file_editor, combo_view_file_editor_input_callback);
+    view_set_previous_callback(app->view_file_editor, combo_navigation_submenu_callback);
+    view_set_context(app->view_file_editor, app);
+
+    const char* default_editor_content = "Quick Edit Panel\n\nLoad patterns\nor edit code\nsnippets here.\n\nUse UP/DOWN\nto navigate.";
+    file_editor_load_content(app->file_editor, "editor.txt", default_editor_content);
+
+    view_dispatcher_add_view(app->view_dispatcher, ComboViewFileEditor, app->view_file_editor);
+
     app->widget_about = widget_alloc();
     widget_add_text_scroll_element(
         app->widget_about,
@@ -1337,6 +1629,9 @@ static void combo_app_free(ComboLockCrackerApp* app) {
     view_dispatcher_remove_view(app->view_dispatcher, ComboViewAnalytics);
     widget_free(app->widget_analytics);
 
+    view_dispatcher_remove_view(app->view_dispatcher, ComboViewFileEditor);
+    view_free(app->view_file_editor);
+
     view_dispatcher_remove_view(app->view_dispatcher, ComboViewSettings);
     widget_free(app->widget_settings);
 
@@ -1364,6 +1659,8 @@ static void combo_app_free(ComboLockCrackerApp* app) {
     if(app->api_config) free(app->api_config);
     if(app->ui_buffer) string_buffer_free(app->ui_buffer);
     if(app->orchestrator) orchestrator_free(app->orchestrator);
+    if(app->file_editor) file_editor_free(app->file_editor);
+    if(app->preset_manager) preset_manager_free(app->preset_manager);
 
     free(app);
 }
