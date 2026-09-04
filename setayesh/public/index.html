@@ -583,22 +583,31 @@ html[data-theme="sunset"] .robot{opacity:.14}
 /* --- Bottom sheet: on a phone the top bar has no room for admin buttons,
    so everything moves into a drawer that slides up from the bottom, where
    a thumb can actually reach it. --- */
-.sheet-scrim{position:fixed;inset:0;background:rgba(0,0,0,.55);backdrop-filter:blur(3px);
+.sheet-scrim{position:fixed;inset:0;background:rgba(4,6,14,.42);-webkit-backdrop-filter:blur(7px);backdrop-filter:blur(7px);
   opacity:0;pointer-events:none;transition:opacity .22s;z-index:98}
 .sheet-scrim.on{opacity:1;pointer-events:auto}
-.sheet{position:fixed;inset-inline:0;bottom:0;z-index:99;background:rgba(17,20,34,.97);
-  border-top:1px solid rgba(255,255,255,.10);border-radius:22px 22px 0 0;
+/* Crystal drawer: frosted glass rather than a flat dark panel — a translucent
+   gradient over a heavy backdrop blur, a bright top facet, and a soft rim of
+   light so it reads like a pane of crystal sitting over the app. */
+.sheet{position:fixed;inset-inline:0;bottom:0;z-index:99;
+  background:linear-gradient(180deg,rgba(46,54,92,.66),rgba(12,15,30,.78));
+  -webkit-backdrop-filter:blur(28px) saturate(1.8);backdrop-filter:blur(28px) saturate(1.8);
+  border-top:1px solid rgba(255,255,255,.24);border-radius:24px 24px 0 0;
   padding:8px 12px calc(12px + env(safe-area-inset-bottom,0px));
   transform:translateY(103%);transition:transform .26s cubic-bezier(.3,.85,.3,1);
-  max-height:74vh;overflow-y:auto;box-shadow:0 -20px 60px rgba(0,0,0,.6)}
+  max-height:74vh;overflow-y:auto;
+  box-shadow:0 -24px 70px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.16), inset 0 0 40px rgba(123,92,255,.06)}
 .sheet.on{transform:none}
-.sheet-grip{width:36px;height:3px;border-radius:99px;background:rgba(255,255,255,.22);margin:3px auto 8px}
+.sheet-grip{width:40px;height:4px;border-radius:99px;margin:4px auto 10px;
+  background:linear-gradient(90deg,rgba(255,255,255,.15),rgba(255,255,255,.45),rgba(255,255,255,.15))}
 .sheet-title{font-size:10.5px;color:var(--muted);letter-spacing:.06em;margin:9px 4px 5px;font-weight:700;opacity:.85}
 .sheet-item{display:flex;align-items:center;gap:11px;width:100%;padding:9px 12px;margin-bottom:4px;
-  border-radius:11px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);
+  border-radius:12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.11);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.07);
   color:var(--text);font-size:13px;font-family:inherit;text-align:start;cursor:pointer;
-  transition:background .15s}
-.sheet-item:active{background:rgba(255,255,255,.1)}
+  transition:background .15s,box-shadow .15s,border-color .15s}
+.sheet-item:hover{background:rgba(255,255,255,.10);border-color:rgba(167,139,250,.35)}
+.sheet-item:active{background:rgba(255,255,255,.16)}
 .sheet-item svg{width:17px;height:17px;flex:0 0 auto;color:var(--cyan)}
 .sheet-item .si-sub{display:block;font-size:10px;color:var(--muted);margin-top:1px;font-weight:400;opacity:.8}
 .sheet-item .si-txt{flex:1;font-weight:600}
@@ -6252,10 +6261,11 @@ applyLang();
 </div>
 
 <!-- ===== Memory panel: short-term & long-term, for every account ===== -->
-<div id="memScrim" style="position:fixed;inset:0;z-index:600;display:none;background:rgba(4,6,14,.72);backdrop-filter:blur(4px)"></div>
+<div id="memScrim" style="position:fixed;inset:0;z-index:600;display:none;background:rgba(4,6,14,.42);-webkit-backdrop-filter:blur(7px);backdrop-filter:blur(7px)"></div>
 <div id="memPanel" role="dialog" aria-label="حافظه‌ی من" style="position:fixed;z-index:601;inset-inline:0;bottom:0;top:auto;display:none;max-height:88vh;overflow:auto;
-     background:linear-gradient(180deg,#0f1430,#0a0d1e);border-top:1px solid rgba(255,255,255,.10);border-radius:20px 20px 0 0;
-     box-shadow:0 -20px 60px rgba(0,0,0,.5);padding:18px 16px 26px;max-width:720px;margin-inline:auto">
+     background:linear-gradient(180deg,rgba(46,54,92,.66),rgba(12,15,30,.80));-webkit-backdrop-filter:blur(28px) saturate(1.8);backdrop-filter:blur(28px) saturate(1.8);
+     border-top:1px solid rgba(255,255,255,.24);border-radius:24px 24px 0 0;
+     box-shadow:0 -24px 70px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.16),inset 0 0 40px rgba(123,92,255,.06);padding:18px 16px 26px;max-width:720px;margin-inline:auto">
   <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
     <div style="width:34px;height:34px;border-radius:10px;display:flex;align-items:center;justify-content:center;
          background:radial-gradient(circle at 40% 30%,#7b5cff55,#1a2350);border:1px solid rgba(167,139,250,.4);font-size:17px">🧠</div>

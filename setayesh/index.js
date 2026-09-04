@@ -135,7 +135,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.13';
+const APP_VERSION = '9.9.14';
 
 // Loaded at boot and refreshable at runtime via /api/plugins/reload.
 let PLUGINS = extensions.loadPlugins(PLUGINS_DIR);
@@ -1216,11 +1216,24 @@ async function callOpenAiCompatible(providerId, model, systemPrompt, messages, _
     // (Groq's free tier is 8000 TPM, counting system prompt + history +
     // reply). Most of the time the history is what pushed it over, so drop
     // the older turns and try again before giving up or switching engines.
-    if (res.status === 413 && !_retried && messages.length > 1) {
-      const keep = messages.slice(-2);            // the current question, plus one turn of context
-      if (keep.length < messages.length) {
-        console.warn(`   ${PROVIDERS[providerId].label} 413 — retrying with shortened history (${messages.length} → ${keep.length} messages)`);
-        return callOpenAiCompatible(providerId, model, systemPrompt, keep, true);
+    // Shrink progressively and retry on the SAME engine so a long conversation
+    // self-heals even when no other engine is configured: first keep the last
+    // two turns, then just the current question, and on that last attempt also
+    // trim a very large system prompt (memory + knowledge can blow the budget
+    // on their own). `_retried` doubles as the shrink level (0 → 1 → 2).
+    const shrinkLevel = _retried === true ? 1 : (Number(_retried) || 0);
+    if (res.status === 413 && shrinkLevel < 2 && messages.length >= 1) {
+      const canShrinkHistory = messages.length > 1;
+      const keepN = shrinkLevel === 0 ? 2 : 1;
+      const keep = messages.slice(-keepN);
+      // Trim a very large system prompt once history alone can't get us under
+      // the ceiling — a lone huge question + big prompt (memory + knowledge)
+      // otherwise 413s with nothing left to drop.
+      const trimPrompt = systemPrompt.length > 4000 && (shrinkLevel >= 1 || !canShrinkHistory);
+      const sp = trimPrompt ? systemPrompt.slice(0, 4000) + '\n…' : systemPrompt;
+      if (keep.length < messages.length || sp !== systemPrompt) {
+        console.warn(`   ${PROVIDERS[providerId].label} 413 — retrying smaller (${messages.length}→${keep.length} msgs${sp !== systemPrompt ? ', trimmed prompt' : ''})`);
+        return callOpenAiCompatible(providerId, model, sp, keep, shrinkLevel + 1, opts);
       }
     }
     if (res.status === 404 && providerId === 'gemini' && !_retried) {
