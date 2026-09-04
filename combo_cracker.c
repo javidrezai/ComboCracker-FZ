@@ -18,6 +18,8 @@
 #define MAX_VALUES 10
 #define MAX_API_KEY_LENGTH 256
 #define MAX_MENU_ITEMS 6
+#define MAX_HISTORY_RECORDS 100
+#define MAX_PATTERN_SIZE 50
 
 typedef struct {
     char* buffer;
@@ -81,6 +83,47 @@ typedef struct {
 } ApiConfig;
 
 typedef enum {
+    InputSourceManual = 0,
+    InputSourceDatabase = 1,
+    InputSourceHistory = 2,
+    InputSourceAPI = 3,
+} InputSource;
+
+typedef struct {
+    uint8_t first_lock;
+    uint8_t second_lock;
+    uint8_t resistance;
+    ComboLockType lock_type;
+    InputSource source;
+    uint32_t timestamp;
+} LockAttempt;
+
+typedef struct {
+    uint32_t total_attempts;
+    uint32_t successful_attempts;
+    uint32_t average_steps;
+    uint8_t success_rate;
+    uint32_t fastest_solve_ms;
+    uint32_t slowest_solve_ms;
+} Analytics;
+
+typedef struct {
+    LockAttempt attempts[MAX_HISTORY_RECORDS];
+    uint16_t attempt_count;
+    uint16_t current_index;
+} HistoryDatabase;
+
+typedef struct {
+    StringBuffer* inbound_data;
+    StringBuffer* process_log;
+    StringBuffer* outbound_result;
+    HistoryDatabase* history;
+    Analytics* stats;
+    bool is_processing;
+    uint32_t process_start_time;
+} Orchestrator;
+
+typedef enum {
     ComboViewSubmenu,
     ComboViewCracker,
     ComboViewResults,
@@ -89,6 +132,7 @@ typedef enum {
     ComboViewTutorialAlpha,
     ComboViewAbout,
     ComboViewSettings,
+    ComboViewAnalytics,
 } ComboView;
 
 typedef enum {
@@ -116,8 +160,9 @@ typedef struct {
 typedef enum {
     ComboSubmenuIndexCracker,
     ComboSubmenuIndexTutorial,
-    ComboSubmenuIndexAbout,
+    ComboSubmenuIndexAnalytics,
     ComboSubmenuIndexSettings,
+    ComboSubmenuIndexAbout,
 } ComboSubmenuIndex;
 
 typedef enum _ComboLockType {
@@ -218,9 +263,11 @@ typedef struct {
     Widget* widget_tutorial_alpha;
     Widget* widget_about;
     Widget* widget_settings;
+    Widget* widget_analytics;
 
     ApiConfig* api_config;
     StringBuffer* ui_buffer;
+    Orchestrator* orchestrator;
 
     FuriTimer* timer;
     uint8_t menu_selected;
@@ -365,6 +412,135 @@ static void input_adjust_resistance(ComboLockCrackerModel* model, int8_t delta) 
 
 static void input_cycle_lock_type(ComboLockCrackerModel* model) {
     model->lock_type = (model->lock_type + 1) % COMBO_LOCK_TYPE_COUNT;
+}
+
+Orchestrator* orchestrator_alloc() {
+    Orchestrator* orch = (Orchestrator*)malloc(sizeof(Orchestrator));
+    orch->inbound_data = string_buffer_alloc(512);
+    orch->process_log = string_buffer_alloc(512);
+    orch->outbound_result = string_buffer_alloc(512);
+    orch->history = (HistoryDatabase*)malloc(sizeof(HistoryDatabase));
+    orch->stats = (Analytics*)malloc(sizeof(Analytics));
+    orch->is_processing = false;
+    orch->process_start_time = 0;
+
+    memset(orch->history, 0, sizeof(HistoryDatabase));
+    memset(orch->stats, 0, sizeof(Analytics));
+
+    return orch;
+}
+
+void orchestrator_free(Orchestrator* orch) {
+    if(orch) {
+        if(orch->inbound_data) string_buffer_free(orch->inbound_data);
+        if(orch->process_log) string_buffer_free(orch->process_log);
+        if(orch->outbound_result) string_buffer_free(orch->outbound_result);
+        if(orch->history) free(orch->history);
+        if(orch->stats) free(orch->stats);
+        free(orch);
+    }
+}
+
+void orchestrator_start_process(Orchestrator* orch) {
+    if(!orch) return;
+    orch->is_processing = true;
+    orch->process_start_time = furi_get_tick();
+    string_buffer_reset(orch->process_log);
+    string_buffer_append(orch->process_log, "[PROCESS START]\n");
+}
+
+void orchestrator_end_process(Orchestrator* orch) {
+    if(!orch) return;
+    orch->is_processing = false;
+    uint32_t elapsed = furi_get_tick() - orch->process_start_time;
+    string_buffer_append(orch->process_log, "[PROCESS END] Duration: %ldms\n", elapsed);
+}
+
+void orchestrator_inbound_manual_input(
+    Orchestrator* orch,
+    uint8_t first_lock,
+    uint8_t second_lock,
+    uint8_t resistance,
+    ComboLockType lock_type) {
+    if(!orch) return;
+
+    string_buffer_reset(orch->inbound_data);
+    string_buffer_append(
+        orch->inbound_data,
+        "INBOUND[MANUAL]: L1=%d L2=%d R=%d Type=%d\n",
+        first_lock,
+        second_lock,
+        resistance,
+        lock_type);
+}
+
+void orchestrator_log_step(Orchestrator* orch, const char* step_name, const char* details) {
+    if(!orch) return;
+    string_buffer_append(orch->process_log, "  > %s: %s\n", step_name, details);
+}
+
+void orchestrator_set_outbound_result(Orchestrator* orch, const char* result) {
+    if(!orch || !result) return;
+    string_buffer_reset(orch->outbound_result);
+    string_buffer_append(orch->outbound_result, "%s", result);
+}
+
+void orchestrator_add_to_history(
+    Orchestrator* orch,
+    uint8_t first_lock,
+    uint8_t second_lock,
+    uint8_t resistance,
+    ComboLockType lock_type,
+    InputSource source) {
+    if(!orch || !orch->history) return;
+
+    if(orch->history->attempt_count >= MAX_HISTORY_RECORDS) {
+        return;
+    }
+
+    uint16_t idx = orch->history->attempt_count;
+    orch->history->attempts[idx].first_lock = first_lock;
+    orch->history->attempts[idx].second_lock = second_lock;
+    orch->history->attempts[idx].resistance = resistance;
+    orch->history->attempts[idx].lock_type = lock_type;
+    orch->history->attempts[idx].source = source;
+    orch->history->attempts[idx].timestamp = furi_get_tick();
+
+    orch->history->attempt_count++;
+}
+
+void orchestrator_update_analytics(Orchestrator* orch, bool success, uint32_t solve_time) {
+    if(!orch || !orch->stats) return;
+
+    orch->stats->total_attempts++;
+
+    if(success) {
+        orch->stats->successful_attempts++;
+        orch->stats->success_rate = (orch->stats->successful_attempts * 100) / orch->stats->total_attempts;
+
+        if(solve_time < orch->stats->fastest_solve_ms || orch->stats->fastest_solve_ms == 0) {
+            orch->stats->fastest_solve_ms = solve_time;
+        }
+        if(solve_time > orch->stats->slowest_solve_ms) {
+            orch->stats->slowest_solve_ms = solve_time;
+        }
+    }
+}
+
+const char* orchestrator_get_analytics_summary(Orchestrator* orch) {
+    if(!orch || !orch->stats) return "";
+
+    static char summary[256];
+    snprintf(
+        summary,
+        sizeof(summary),
+        "Stats: %d/%d Success Rate: %d%% Avg: %ldms",
+        orch->stats->successful_attempts,
+        orch->stats->total_attempts,
+        orch->stats->success_rate,
+        orch->stats->fastest_solve_ms);
+
+    return summary;
 }
 
 static int SolutionComparator(const ComboLockCombination* r1, const ComboLockCombination* r2) {
@@ -681,6 +857,51 @@ static void
  * @brief      calculate the combination based on inputs, AND displays the results
  * @param      model   the model containing input values
  */
+static void calculate_combo_with_orchestrator(
+    ComboLockCrackerModel* model,
+    Orchestrator* orch) {
+    if(!orch) return;
+
+    orchestrator_start_process(orch);
+
+    orchestrator_inbound_manual_input(
+        orch,
+        model->first_lock_index,
+        model->second_lock_index,
+        model->resistance_index,
+        model->lock_type);
+
+    orchestrator_log_step(orch, "INBOUND", "Received manual lock input");
+
+    ComboLockCombination result = {};
+    calculate_solution(model, &result);
+
+    orchestrator_log_step(orch, "CALCULATE", "Solution calculated");
+
+    if((result.third_pin_count < 1) || (result.second_pin_count < 1)) {
+        (void)SolutionComparator;
+        dump_state_and_combinations_to_model_result(model, &result, NULL);
+        orchestrator_log_step(orch, "PROCESS", "No valid solution found");
+        orchestrator_set_outbound_result(orch, model->result);
+        orchestrator_update_analytics(orch, false, 0);
+    } else {
+        fill_model_result_with_solution(model, &result);
+        orchestrator_log_step(orch, "PROCESS", "Solution formatted");
+        orchestrator_set_outbound_result(orch, model->result);
+        orchestrator_update_analytics(orch, true, 100);
+    }
+
+    orchestrator_add_to_history(
+        orch,
+        model->first_lock_index,
+        model->second_lock_index,
+        model->resistance_index,
+        model->lock_type,
+        InputSourceManual);
+
+    orchestrator_end_process(orch);
+}
+
 static void calculate_combo(ComboLockCrackerModel* model) {
     ComboLockCombination result = {};
     calculate_solution(model, &result);
@@ -730,11 +951,14 @@ static void combo_submenu_callback(void* context, uint32_t index) {
     case ComboSubmenuIndexTutorial:
         view_dispatcher_switch_to_view(app->view_dispatcher, ComboViewTutorial);
         break;
-    case ComboSubmenuIndexAbout:
-        view_dispatcher_switch_to_view(app->view_dispatcher, ComboViewAbout);
+    case ComboSubmenuIndexAnalytics:
+        view_dispatcher_switch_to_view(app->view_dispatcher, ComboViewAnalytics);
         break;
     case ComboSubmenuIndexSettings:
         view_dispatcher_switch_to_view(app->view_dispatcher, ComboViewSettings);
+        break;
+    case ComboSubmenuIndexAbout:
+        view_dispatcher_switch_to_view(app->view_dispatcher, ComboViewAbout);
         break;
     default:
         break;
@@ -924,9 +1148,17 @@ static bool combo_view_cracker_custom_event_callback(uint32_t event, void* conte
             app->view_cracker,
             ComboLockCrackerModel * model,
             {
-                calculate_combo(model);
+                calculate_combo_with_orchestrator(model, app->orchestrator);
                 widget_reset(app->widget_results);
-                widget_add_text_scroll_element(app->widget_results, 2, 2, 124, 60, model->result);
+                widget_add_text_scroll_element(
+                    app->widget_results,
+                    2,
+                    2,
+                    124,
+                    60,
+                    orchestrator_get_analytics_summary(app->orchestrator));
+                widget_add_text_scroll_element(
+                    app->widget_results, 2, 20, 124, 40, model->result);
             },
             redraw);
 
@@ -947,6 +1179,7 @@ static ComboLockCrackerApp* combo_app_alloc() {
     app->api_config->api_enabled = false;
 
     app->ui_buffer = string_buffer_alloc(512);
+    app->orchestrator = orchestrator_alloc();
     app->menu_selected = 0;
     app->menu_scroll_offset = 0;
 
@@ -961,6 +1194,8 @@ static ComboLockCrackerApp* combo_app_alloc() {
         app->submenu, "Crack Lock", ComboSubmenuIndexCracker, combo_submenu_callback, app);
     submenu_add_item(
         app->submenu, "Tutorial", ComboSubmenuIndexTutorial, combo_submenu_callback, app);
+    submenu_add_item(
+        app->submenu, "Analytics", ComboSubmenuIndexAnalytics, combo_submenu_callback, app);
     submenu_add_item(
         app->submenu, "Settings", ComboSubmenuIndexSettings, combo_submenu_callback, app);
     submenu_add_item(app->submenu, "About", ComboSubmenuIndexAbout, combo_submenu_callback, app);
@@ -1040,6 +1275,24 @@ static ComboLockCrackerApp* combo_app_alloc() {
     view_dispatcher_add_view(
         app->view_dispatcher, ComboViewSettings, widget_get_view(app->widget_settings));
 
+    const char* analytics_text =
+        "ANALYTICS DASHBOARD\n"
+        "==================\n"
+        "Total Attempts: 0\n"
+        "Success Rate: 0%\n"
+        "Fastest Solve: 0ms\n"
+        "Slowest Solve: 0ms\n\n"
+        "INBOUND SOURCES:\n"
+        "Manual: 0 | DB: 0\n"
+        "History: 0 | API: 0\n";
+
+    app->widget_analytics = widget_alloc();
+    widget_add_text_scroll_element(app->widget_analytics, 0, 0, 128, 64, analytics_text);
+    view_set_previous_callback(
+        widget_get_view(app->widget_analytics), combo_navigation_submenu_callback);
+    view_dispatcher_add_view(
+        app->view_dispatcher, ComboViewAnalytics, widget_get_view(app->widget_analytics));
+
     app->widget_about = widget_alloc();
     widget_add_text_scroll_element(
         app->widget_about,
@@ -1081,6 +1334,9 @@ static void combo_app_free(ComboLockCrackerApp* app) {
     view_dispatcher_remove_view(app->view_dispatcher, ComboViewAbout);
     widget_free(app->widget_about);
 
+    view_dispatcher_remove_view(app->view_dispatcher, ComboViewAnalytics);
+    widget_free(app->widget_analytics);
+
     view_dispatcher_remove_view(app->view_dispatcher, ComboViewSettings);
     widget_free(app->widget_settings);
 
@@ -1107,6 +1363,7 @@ static void combo_app_free(ComboLockCrackerApp* app) {
 
     if(app->api_config) free(app->api_config);
     if(app->ui_buffer) string_buffer_free(app->ui_buffer);
+    if(app->orchestrator) orchestrator_free(app->orchestrator);
 
     free(app);
 }
