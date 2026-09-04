@@ -1046,6 +1046,10 @@ html[data-device="touch-desktop"] .cbtn{min-height:44px}
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/></svg>
     <span class="si-txt">کاربران<span class="si-sub">افزودن، رمز، حالت کودک</span></span>
   </button>
+  <button class="sheet-item" id="shConnectors" style="display:none">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 007 0l3-3a5 5 0 00-7-7l-1 1"/><path d="M14 11a5 5 0 00-7 0l-3 3a5 5 0 007 7l1-1"/></svg>
+    <span class="si-txt">کانکتورها<span class="si-sub">گوگل، Gmail، تقویم</span></span>
+  </button>
 
   <div class="sheet-title">ابزارها</div>
   <button class="sheet-item" id="shTools">
@@ -4944,7 +4948,7 @@ function openSheet(){
   // shBrain stays out of this list on purpose: the brain now lives only in
   // the top-right button (single place, as asked), so the drawer never
   // re-shows it even for the admin.
-  ['shCC','shLearn','shUsers','shAdminTitle'].forEach(function(id){
+  ['shCC','shLearn','shUsers','shConnectors','shAdminTitle'].forEach(function(id){
     var e=$(id); if(e)e.style.display=admin?'':'none';
   });
   $('sheet').classList.add('on'); $('sheetScrim').classList.add('on');
@@ -6404,6 +6408,187 @@ applyLang();
     el('memScrim').addEventListener('click',closeMem);
     el('memAddBtn').addEventListener('click',addMem);
     el('memAddText').addEventListener('keydown',function(e){ if(e.key==='Enter')addMem(); });
+  });
+})();
+</script>
+<!-- ===== Connectors panel: Google (Gmail + Calendar), admin only ===== -->
+<div id="cxScrim" style="position:fixed;inset:0;z-index:600;display:none;background:rgba(4,6,14,.42);-webkit-backdrop-filter:blur(7px);backdrop-filter:blur(7px)"></div>
+<div id="cxPanel" role="dialog" aria-label="کانکتورها" style="position:fixed;z-index:601;inset-inline:0;bottom:0;top:auto;display:none;max-height:90vh;overflow:auto;
+     background:linear-gradient(180deg,rgba(46,54,92,.66),rgba(12,15,30,.80));-webkit-backdrop-filter:blur(28px) saturate(1.8);backdrop-filter:blur(28px) saturate(1.8);
+     border-top:1px solid rgba(255,255,255,.24);border-radius:24px 24px 0 0;
+     box-shadow:0 -24px 70px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.16),inset 0 0 40px rgba(123,92,255,.06);padding:18px 16px 26px;max-width:720px;margin-inline:auto">
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+    <div style="width:34px;height:34px;border-radius:10px;display:flex;align-items:center;justify-content:center;background:radial-gradient(circle at 40% 30%,#34d39955,#0d3a2a);border:1px solid rgba(52,211,153,.4);font-size:17px">🔌</div>
+    <div style="flex:1"><div style="font-size:16px;font-weight:800">کانکتورها</div><div style="font-size:11.5px;color:var(--muted,#8ea0c8)">اتصال ستایش به سرویس‌های بیرونی</div></div>
+    <button id="cxClose" style="width:34px;height:34px;border-radius:9px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:var(--text,#e8ecf7);cursor:pointer;font-size:17px">✕</button>
+  </div>
+
+  <div style="border:1px solid rgba(255,255,255,.10);border-radius:16px;padding:14px;background:rgba(255,255,255,.03)">
+    <div style="display:flex;align-items:center;gap:9px;margin-bottom:6px">
+      <span style="font-size:19px">📧</span>
+      <div style="flex:1"><div style="font-weight:800">Google · Gmail و تقویم</div>
+        <div id="cxGStatus" style="font-size:11.5px;color:var(--muted,#8ea0c8)">در حال بررسی…</div></div>
+      <span id="cxGDot" style="width:10px;height:10px;border-radius:50%;background:#6b7280"></span>
+    </div>
+
+    <!-- setup (not connected) -->
+    <div id="cxSetup" style="display:none;margin-top:10px">
+      <div style="font-size:11.5px;color:var(--muted,#8ea0c8);line-height:1.7;margin-bottom:8px">
+        در Google Cloud Console یک OAuth Client از نوع «Web application» بساز، و این آدرس بازگشت را در آن ثبت کن:
+      </div>
+      <div style="display:flex;gap:6px;margin-bottom:10px">
+        <input id="cxRedirect" class="input" readonly style="flex:1;font-size:11px;direction:ltr;text-align:left;font-family:var(--mono,monospace)">
+        <button id="cxCopyRedirect" style="padding:0 12px;border-radius:10px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.05);color:var(--text,#e8ecf7);cursor:pointer;font-size:12px">کپی</button>
+      </div>
+      <input id="cxClientId" class="input" placeholder="Google Client ID" style="margin-bottom:8px;font-size:12px;direction:ltr;text-align:left">
+      <input id="cxClientSecret" class="input" type="password" placeholder="Google Client Secret" style="margin-bottom:10px;font-size:12px;direction:ltr;text-align:left">
+      <div style="display:flex;gap:8px">
+        <button id="cxSaveCreds" style="flex:1;padding:9px;border-radius:11px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.05);color:var(--text,#e8ecf7);cursor:pointer;font-weight:700">ذخیره‌ی کلیدها</button>
+        <button id="cxConnect" style="flex:1;padding:9px;border-radius:11px;border:0;cursor:pointer;font-weight:800;background:linear-gradient(135deg,#34d399,#059669);color:#04121e">اتصال به گوگل</button>
+      </div>
+      <div id="cxSetupNote" style="font-size:11.5px;color:#fb7185;min-height:16px;margin-top:8px"></div>
+    </div>
+
+    <!-- connected -->
+    <div id="cxConnected" style="display:none;margin-top:12px">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+        <button id="cxReadMail" style="flex:1;min-width:120px;padding:9px;border-radius:11px;border:1px solid rgba(56,189,248,.35);background:rgba(56,189,248,.10);color:#7dd3fc;cursor:pointer;font-weight:700">📥 خواندن ایمیل‌ها</button>
+        <button id="cxListCal" style="flex:1;min-width:120px;padding:9px;border-radius:11px;border:1px solid rgba(167,139,250,.35);background:rgba(167,139,250,.10);color:#c4b5fd;cursor:pointer;font-weight:700">📅 قرارهای پیش‌رو</button>
+        <button id="cxDisconnect" style="padding:9px 12px;border-radius:11px;border:1px solid rgba(251,113,133,.35);background:rgba(251,113,133,.10);color:#fda4af;cursor:pointer;font-weight:700">قطع اتصال</button>
+      </div>
+
+      <div style="font-size:12px;font-weight:800;margin:6px 0 6px;color:#7dd3fc">✉️ ارسال ایمیل</div>
+      <input id="cxTo" class="input" placeholder="گیرنده (email)" style="margin-bottom:6px;font-size:12px;direction:ltr;text-align:left">
+      <input id="cxSubject" class="input" placeholder="موضوع" style="margin-bottom:6px;font-size:12px">
+      <textarea id="cxBody" class="input" rows="3" placeholder="متن ایمیل..." style="margin-bottom:6px;font-size:12px;resize:vertical"></textarea>
+      <button id="cxSendMail" style="width:100%;padding:9px;border-radius:11px;border:0;cursor:pointer;font-weight:800;background:linear-gradient(135deg,#38bdf8,#0ea5e9);color:#04121e;margin-bottom:14px">ارسال</button>
+
+      <div style="font-size:12px;font-weight:800;margin:6px 0 6px;color:#c4b5fd">🗓️ ثبت قرار در تقویم</div>
+      <input id="cxEvTitle" class="input" placeholder="عنوان قرار" style="margin-bottom:6px;font-size:12px">
+      <div style="display:flex;gap:6px;margin-bottom:6px">
+        <input id="cxEvStart" class="input" placeholder="شروع" type="datetime-local" style="flex:1;font-size:12px">
+        <input id="cxEvEnd" class="input" placeholder="پایان (اختیاری)" type="datetime-local" style="flex:1;font-size:12px">
+      </div>
+      <button id="cxAddEvent" style="width:100%;padding:9px;border-radius:11px;border:0;cursor:pointer;font-weight:800;background:linear-gradient(135deg,#a78bfa,#7c3aed);color:#fff">ثبت قرار</button>
+
+      <div id="cxActionNote" style="font-size:11.5px;min-height:16px;margin-top:10px"></div>
+      <div id="cxResult" style="margin-top:10px;display:grid;gap:8px"></div>
+    </div>
+  </div>
+</div>
+<script>
+/* Connectors panel — configure & connect Google, then read/send mail and add
+   calendar events directly (the AI can also do these in chat once connected). */
+(function(){
+  function el(id){return document.getElementById(id);}
+  function tok(){ try{ return localStorage.getItem('setayesh.token')||sessionStorage.getItem('setayesh.token')||''; }catch(e){ return ''; } }
+  function authH(extra){ var h={Authorization:'Bearer '+tok()}; if(extra)for(var k in extra)h[k]=extra[k]; return h; }
+  function note(id,msg,ok){ var n=el(id); if(!n)return; n.textContent=msg||''; n.style.color=ok?'#34d399':'#fb7185'; }
+
+  function refresh(){
+    return fetch('/api/connectors',{headers:authH()}).then(function(r){return r.json();}).then(function(d){
+      var g=(d&&d.google)||{};
+      el('cxRedirect').value=(d&&d.redirectUri)||'';
+      var dot=el('cxGDot'), st=el('cxGStatus');
+      if(g.connected){
+        dot.style.background='#34d399';
+        st.textContent='متصل'+(g.email?(' · '+g.email):'');
+        el('cxSetup').style.display='none'; el('cxConnected').style.display='block';
+      } else if(g.configured){
+        dot.style.background='#fbbf24';
+        st.textContent='کلیدها ذخیره شده — هنوز وصل نشده';
+        el('cxSetup').style.display='block'; el('cxConnected').style.display='none';
+      } else {
+        dot.style.background='#6b7280';
+        st.textContent='تنظیم نشده';
+        el('cxSetup').style.display='block'; el('cxConnected').style.display='none';
+      }
+    }).catch(function(){ el('cxGStatus').textContent='خطا در دریافت وضعیت'; });
+  }
+  function saveCreds(){
+    var id=(el('cxClientId').value||'').trim(), sec=(el('cxClientSecret').value||'').trim();
+    if(!id||!sec){ note('cxSetupNote','هر دو کلید لازم است.'); return Promise.resolve(false); }
+    note('cxSetupNote','در حال ذخیره…',true);
+    return fetch('/api/admin/settings',{method:'POST',headers:authH({'Content-Type':'application/json'}),
+      body:JSON.stringify({updates:{GOOGLE_CLIENT_ID:id,GOOGLE_CLIENT_SECRET:sec}})})
+      .then(function(r){return r.json().then(function(d){return {ok:r.ok,d:d};});})
+      .then(function(x){ if(!x.ok){ note('cxSetupNote',(x.d&&x.d.error)||'ذخیره نشد'); return false; }
+        note('cxSetupNote','ذخیره شد.',true); el('cxClientSecret').value=''; return refresh().then(function(){return true;}); });
+  }
+  function connect(){
+    note('cxSetupNote','در حال آماده‌سازی اتصال…',true);
+    fetch('/api/admin/connectors/google/auth-url',{headers:authH()})
+      .then(function(r){return r.json().then(function(d){return {ok:r.ok,d:d};});})
+      .then(function(x){ if(!x.ok||!x.d.url){ note('cxSetupNote',(x.d&&x.d.error)||'اتصال ممکن نشد'); return; }
+        note('cxSetupNote','پنجره‌ی گوگل باز شد — بعد از تأیید، همین‌جا «قطع/وصل» را ببین.',true);
+        window.open(x.d.url,'_blank'); });
+  }
+  function disconnect(){
+    fetch('/api/admin/connectors/google/disconnect',{method:'POST',headers:authH()})
+      .then(function(){ refresh(); });
+  }
+  function esc(s){ return String(s==null?'':s).replace(/[<>&]/g,function(c){return {'<':'&lt;','>':'&gt;','&':'&amp;'}[c];}); }
+  function showRows(rows){
+    var box=el('cxResult'); box.innerHTML='';
+    rows.forEach(function(html){ var d=document.createElement('div');
+      d.setAttribute('style','padding:9px 11px;border-radius:11px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);font-size:12.5px;line-height:1.6');
+      d.innerHTML=html; box.appendChild(d); });
+  }
+  function readMail(){
+    note('cxActionNote','در حال خواندن…',true); el('cxResult').innerHTML='';
+    fetch('/api/connectors/gmail?limit=10',{headers:authH()}).then(function(r){return r.json();}).then(function(d){
+      if(d.error){ note('cxActionNote',d.error); return; } note('cxActionNote','');
+      showRows((d.messages||[]).map(function(m){ return '<b>'+esc(m.subject)+'</b>'+(m.unread?' <span style="color:#fbbf24">●</span>':'')+
+        '<div style="color:#8ea0c8;font-size:11px;margin-top:2px">'+esc(m.from)+'</div>'+
+        '<div style="color:#aeb7cf;margin-top:3px">'+esc((m.snippet||'').slice(0,140))+'</div>'; }));
+      if(!(d.messages||[]).length) note('cxActionNote','صندوق خالی است یا چیزی خوانده نشد.',true);
+    }).catch(function(){ note('cxActionNote','خطای شبکه'); });
+  }
+  function listCal(){
+    note('cxActionNote','در حال خواندن…',true); el('cxResult').innerHTML='';
+    fetch('/api/connectors/calendar?limit=10',{headers:authH()}).then(function(r){return r.json();}).then(function(d){
+      if(d.error){ note('cxActionNote',d.error); return; } note('cxActionNote','');
+      showRows((d.events||[]).map(function(e){ return '<b>'+esc(e.title)+'</b>'+
+        '<div style="color:#8ea0c8;font-size:11px;margin-top:2px">'+esc(e.start)+(e.end?(' — '+esc(e.end)):'')+'</div>'+
+        (e.location?('<div style="color:#aeb7cf;margin-top:2px">📍 '+esc(e.location)+'</div>'):''); }));
+      if(!(d.events||[]).length) note('cxActionNote','قراری پیدا نشد.',true);
+    }).catch(function(){ note('cxActionNote','خطای شبکه'); });
+  }
+  function sendMail(){
+    var to=(el('cxTo').value||'').trim();
+    if(!to){ note('cxActionNote','گیرنده لازم است.'); return; }
+    note('cxActionNote','در حال ارسال…',true);
+    fetch('/api/connectors/gmail/send',{method:'POST',headers:authH({'Content-Type':'application/json'}),
+      body:JSON.stringify({to:to,subject:el('cxSubject').value||'',body:el('cxBody').value||''})})
+      .then(function(r){return r.json();}).then(function(d){ if(d.error){ note('cxActionNote',d.error); return; }
+        note('cxActionNote','ایمیل ارسال شد ✅',true); el('cxTo').value=el('cxSubject').value=el('cxBody').value=''; })
+      .catch(function(){ note('cxActionNote','خطای شبکه'); });
+  }
+  function addEvent(){
+    var title=(el('cxEvTitle').value||'').trim(), start=el('cxEvStart').value, end=el('cxEvEnd').value;
+    if(!title||!start){ note('cxActionNote','عنوان و زمان شروع لازم است.'); return; }
+    note('cxActionNote','در حال ثبت…',true);
+    fetch('/api/connectors/calendar/add',{method:'POST',headers:authH({'Content-Type':'application/json'}),
+      body:JSON.stringify({title:title,start:start,end:end||undefined})})
+      .then(function(r){return r.json();}).then(function(d){ if(d.error){ note('cxActionNote',d.error); return; }
+        note('cxActionNote','قرار ثبت شد ✅',true); el('cxEvTitle').value=el('cxEvStart').value=el('cxEvEnd').value=''; })
+      .catch(function(){ note('cxActionNote','خطای شبکه'); });
+  }
+  function open(){ el('cxScrim').style.display='block'; el('cxPanel').style.display='block'; refresh(); }
+  function close(){ el('cxScrim').style.display='none'; el('cxPanel').style.display='none'; }
+  window.openConnectorsPanel=open;
+  document.addEventListener('DOMContentLoaded',function(){
+    var b=el('shConnectors'); if(b)b.addEventListener('click',function(){ if(typeof closeSheet==='function')closeSheet(); setTimeout(open,160); });
+    el('cxClose').addEventListener('click',close);
+    el('cxScrim').addEventListener('click',close);
+    el('cxSaveCreds').addEventListener('click',saveCreds);
+    el('cxConnect').addEventListener('click',function(){ if((el('cxClientId').value||'').trim()){ saveCreds().then(function(ok){ if(ok)connect(); }); } else connect(); });
+    el('cxCopyRedirect').addEventListener('click',function(){ try{ el('cxRedirect').select(); document.execCommand('copy'); note('cxSetupNote','کپی شد.',true);}catch(e){} });
+    el('cxDisconnect').addEventListener('click',disconnect);
+    el('cxReadMail').addEventListener('click',readMail);
+    el('cxListCal').addEventListener('click',listCal);
+    el('cxSendMail').addEventListener('click',sendMail);
+    el('cxAddEvent').addEventListener('click',addEvent);
   });
 })();
 </script>

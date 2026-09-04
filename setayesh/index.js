@@ -107,6 +107,7 @@ const multer = require('multer');
 const { PROVIDERS, MODES, systemPromptFor } = require('./providers');
 const toolkit = require('./toolkit');
 const extensions = require('./extensions');
+const { makeConnectors } = require('./connectors');
 
 // When packaged into a single .exe the web assets are baked into a generated
 // module; in normal dev they're read from public/ on disk.
@@ -135,7 +136,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.14';
+const APP_VERSION = '9.9.15';
 
 // Loaded at boot and refreshable at runtime via /api/plugins/reload.
 let PLUGINS = extensions.loadPlugins(PLUGINS_DIR);
@@ -161,6 +162,11 @@ function readConfigFile() {
 }
 
 const cfg = readConfigFile();
+
+// External connectors (Google: Gmail + Calendar). Tokens live in a local
+// 0600 store next to the app, never committed. Credentials come from cfg.
+const CONNECTORS_STORE = path.join(DATA_DIR, '.setayesh-connectors.json');
+const connectors = makeConnectors({ storeFile: CONNECTORS_STORE, getCfg: () => cfg });
 
 const keys = {};           // providerId -> api key
 for (const id of Object.keys(PROVIDERS)) {
@@ -1540,6 +1546,59 @@ const TOOLS_SPEC = [
       required: ['password'],
     },
   },
+  {
+    name: 'gmail_list',
+    description: "List the most recent emails in the owner's connected Gmail inbox (sender, subject, date, a short snippet, and an id). Use when the owner asks what mail they have or to check their inbox. Only works once Google is connected in the Connectors panel.",
+    input_schema: {
+      type: 'object',
+      properties: { limit: { type: 'number', description: '1–25, default 10' } },
+    },
+  },
+  {
+    name: 'gmail_read',
+    description: "Read the full body of one Gmail message by its id (get the id from gmail_list first). Use to summarize or answer questions about a specific email.",
+    input_schema: {
+      type: 'object',
+      properties: { id: { type: 'string' } },
+      required: ['id'],
+    },
+  },
+  {
+    name: 'gmail_send',
+    description: "Send an email from the owner's connected Gmail. Confirm the recipient, subject and content with the owner before sending. Plain text body.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        to: { type: 'string', description: 'recipient email address' },
+        subject: { type: 'string' },
+        body: { type: 'string' },
+      },
+      required: ['to', 'body'],
+    },
+  },
+  {
+    name: 'calendar_list',
+    description: "List the owner's upcoming Google Calendar events (title, start, end, location). Use when asked what's on the schedule or whether a time is free.",
+    input_schema: {
+      type: 'object',
+      properties: { limit: { type: 'number', description: '1–25, default 10' } },
+    },
+  },
+  {
+    name: 'calendar_add',
+    description: "Create a Google Calendar event / appointment. `start` (and optional `end`) accept an ISO date-time (2026-09-10T15:00:00) or a plain date (2026-09-10) for an all-day event; if `end` is omitted a timed event defaults to one hour. Confirm the details with the owner first.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        title: { type: 'string' },
+        start: { type: 'string', description: 'ISO date-time or YYYY-MM-DD' },
+        end: { type: 'string', description: 'optional ISO date-time or YYYY-MM-DD' },
+        location: { type: 'string' },
+        description: { type: 'string' },
+      },
+      required: ['title', 'start'],
+    },
+  },
 ];
 
 // ---------------- Outbound privacy guard ----------------
@@ -2279,6 +2338,16 @@ async function dispatchTool(name, input, ctx) {
         return toolkit.identifyHash(input.hash);
       case 'password_strength':
         return toolkit.passwordStrength(input.password);
+      case 'gmail_list':
+        return await connectors.gmailList(input.limit);
+      case 'gmail_read':
+        return await connectors.gmailGet(input.id);
+      case 'gmail_send':
+        return await connectors.gmailSend(input);
+      case 'calendar_list':
+        return await connectors.calendarList(input.limit);
+      case 'calendar_add':
+        return await connectors.calendarAdd(input);
       default:
         return { error: 'ابزار ناشناخته: ' + name };
     }
@@ -2304,6 +2373,12 @@ function toolsFor(ctx) {
       return !!(ctx && ctx.isAdmin) && SELF_EDIT_ENABLED;
     }
     if (t.name === 'ask_other_models') return !(ctx && ctx.pinned);
+    // Google connector tools: admin only, and only once Google is connected,
+    // so a child's session never sees the mailbox and the model isn't offered
+    // a tool that would just error.
+    if (['gmail_list', 'gmail_read', 'gmail_send', 'calendar_list', 'calendar_add'].includes(t.name)) {
+      return !!(ctx && ctx.isAdmin) && connectors.connected();
+    }
     return true;
   });
 }
@@ -4452,6 +4527,69 @@ app.get('/api/mail/inbox', requireAuth, async (req, res) => {
   }
 });
 
+// ---------------- Connectors: Google (Gmail + Calendar) ----------------
+// OAuth2 web flow. The owner registers a Google OAuth client and the one
+// redirect URI shown by /api/connectors, connects once, and from then on the
+// assistant can read/send mail and add calendar events via the tools below.
+const _pendingOAuth = new Map();   // state -> { redirectUri, exp }
+function oauthRedirectUri(req) { return `${req.protocol}://${req.get('host')}/api/oauth/google/callback`; }
+function connectorsPage(title, msg, ok) {
+  return `<!doctype html><meta charset="utf8"><meta name="viewport" content="width=device-width,initial-scale=1">` +
+    `<body style="font-family:system-ui;background:#0a0d1e;color:#e8ecf7;display:flex;align-items:center;justify-content:center;height:100vh;margin:0">` +
+    `<div style="text-align:center;max-width:420px;padding:24px"><div style="font-size:44px">${ok ? '✅' : '⚠️'}</div>` +
+    `<h2>${title}</h2><p style="color:#8ea0c8">${String(msg).replace(/[<>]/g, '')}</p>` +
+    `<p><a href="/" style="color:#7b5cff">بازگشت به ستایش</a></p></div></body>`;
+}
+
+app.get('/api/connectors', requireAuth, (req, res) => {
+  res.json({ google: connectors.status(), redirectUri: oauthRedirectUri(req), isAdmin: isAdmin(req.username) });
+});
+
+app.get('/api/admin/connectors/google/auth-url', requireAuth, requireAdmin, (req, res) => {
+  if (!connectors.configured()) return res.status(400).json({ error: 'ابتدا Client ID و Secret گوگل را در تنظیمات ذخیره کن.' });
+  const stateTok = crypto.randomBytes(16).toString('hex');
+  const redirectUri = oauthRedirectUri(req);
+  _pendingOAuth.set(stateTok, { redirectUri, exp: Date.now() + 10 * 60000 });
+  res.json({ url: connectors.authUrl(redirectUri, stateTok), redirectUri });
+});
+
+app.get('/api/oauth/google/callback', async (req, res) => {
+  const { code, state, error } = req.query;
+  if (error) return res.status(400).send(connectorsPage('اتصال لغو شد', String(error).slice(0, 120), false));
+  const pend = state && _pendingOAuth.get(String(state));
+  if (!pend || pend.exp < Date.now()) return res.status(400).send(connectorsPage('درخواست نامعتبر یا منقضی', 'دوباره از پنل کانکتورها تلاش کن.', false));
+  _pendingOAuth.delete(String(state));
+  try {
+    await connectors.exchangeCode(String(code || ''), pend.redirectUri);
+    res.send(connectorsPage('گوگل متصل شد', 'حالا ستایش می‌تواند ایمیل بخواند و بفرستد و در تقویم قرار ثبت کند.', true));
+  } catch (e) {
+    res.status(502).send(connectorsPage('اتصال ناموفق', e.message, false));
+  }
+});
+
+app.post('/api/admin/connectors/google/disconnect', requireAuth, requireAdmin, (req, res) => {
+  connectors.disconnect();
+  res.json({ ok: true });
+});
+
+// Direct actions (admin) — these also back the AI tools, so the feature works
+// regardless of which engine is active.
+app.get('/api/connectors/gmail', requireAuth, requireAdmin, async (req, res) => {
+  try { res.json(await connectors.gmailList(req.query.limit)); } catch (e) { res.status(502).json({ error: e.message }); }
+});
+app.get('/api/connectors/gmail/:id', requireAuth, requireAdmin, async (req, res) => {
+  try { res.json(await connectors.gmailGet(req.params.id)); } catch (e) { res.status(502).json({ error: e.message }); }
+});
+app.post('/api/connectors/gmail/send', requireAuth, requireAdmin, async (req, res) => {
+  try { res.json(await connectors.gmailSend(req.body || {})); } catch (e) { res.status(502).json({ error: e.message }); }
+});
+app.get('/api/connectors/calendar', requireAuth, requireAdmin, async (req, res) => {
+  try { res.json(await connectors.calendarList(req.query.limit)); } catch (e) { res.status(502).json({ error: e.message }); }
+});
+app.post('/api/connectors/calendar/add', requireAuth, requireAdmin, async (req, res) => {
+  try { res.json(await connectors.calendarAdd(req.body || {})); } catch (e) { res.status(502).json({ error: e.message }); }
+});
+
 // ---------------- Night work & safe self-update ----------------
 // The dangerous idea in this whole app: change your own code while nobody is
 // awake. The only thing that makes it acceptable is that a failure repairs
@@ -6227,6 +6365,8 @@ const EDITABLE_KEYS = {
   MAIL_PROVIDER:     { secret: false, label: 'سرویس ایمیل (gmail / outlook / yahoo)' },
   MAIL_USER:         { secret: false, label: 'آدرس ایمیل' },
   MAIL_PASS:         { secret: true,  label: 'App Password ایمیل (نه رمز اصلی!)' },
+  GOOGLE_CLIENT_ID:  { secret: false, label: 'Google OAuth Client ID (برای Gmail و تقویم)' },
+  GOOGLE_CLIENT_SECRET: { secret: true, label: 'Google OAuth Client Secret' },
   MAIL_HOST:         { secret: false, label: 'سرور IMAP دستی (اختیاری)' },
   MAIL_PORT:         { secret: false, label: 'پورت IMAP (پیش‌فرض ۹۹۳)' },
   NOTIFY_EMAIL:      { secret: false, label: 'ایمیل تو برای دریافت اعلان‌های ستایش' },

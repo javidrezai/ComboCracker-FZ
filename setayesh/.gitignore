@@ -2,8 +2,8 @@
 node_modules/
 
 # Runtime-generated state (never commit — may contain secrets)
-.setayesh-users.json
-.setayesh-*.json
+.setayesh-*
+.setayesh-config
 *.log
 error.log
 
