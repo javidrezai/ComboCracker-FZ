@@ -99,6 +99,21 @@ typedef enum {
 } ComboEventId;
 
 typedef enum {
+    InputModeNormal = 0,
+    InputModeNumeric = 1,
+    InputModeAlpha = 2,
+    InputModeResistance = 3,
+} InputMode;
+
+typedef struct {
+    InputMode mode;
+    uint8_t min_value;
+    uint8_t max_value;
+    uint8_t step;
+    bool allow_repeat;
+} InputConfig;
+
+typedef enum {
     ComboSubmenuIndexCracker,
     ComboSubmenuIndexTutorial,
     ComboSubmenuIndexAbout,
@@ -145,41 +160,52 @@ static const char gc_lock_labels_alpha[LOCK_INDEX_COUNT][4u] = {
     "P", "P.5", "R", "R.5", "S", "S.5", "T", "T.5", "U", "U.5", "W", "W.5",
 };
 
-#if 1 // pragma region // static const char gc_howto_numeric[]
 static const char gc_instructions_numeric[] =
-    "How to use:\n"
-    "---\n"
-    "First lock value:\n"
-    "Set the lock's position to 0, then pull up firmly on the shackle and "
-    "slowly rotate the dial counter-clockwise until it catches between two "
-    "numbers. If the two locations where the lock gets caught between are "
-    "whole numbers, reduce the tension on the shackle slightly so you can "
-    "move out of the groove and find the next one. Once you find a groove "
-    "between two half numbers, enter the number in the middle of that groove "
-    "as the first lock position.\n\n"
-    "Second lock value:\n"
-    "Use the same process to find the next groove(s) after the first "
-    "position. Remember that the locations where the lock gets caught "
-    "between should be half numbers, so the middle location will be a "
-    "whole number.\n\n"
-    "Resistance value:\n"
-    "Now apply about half as much tension on the shackle and rotate the dial "
-    "CLOCKWISE until you feel resistance. You can repeat this step several "
-    "times to make sure you have the correct position. Then enter this value "
-    "as the resistance position. This can be a whole or half number.\n\n"
-    "Discard one of the third options\n"
-    "The solution provides two options for the third digit / letter.  Choose "
-    "one, move dial to that location, pull hard on the shackle, and see how "
-    "much give the dial has. Do the same for the other option.  The option "
-    "with the greater give is the third digit / letter.\n\n"
-    "Which of the second options\n"
-    "The solution shows ten options for the second digit / letter.  Two of "
-    "those options are actually invalid due to physical constraints in the "
-    "lock.  This app does not exclude those two options for you (yet).\n\n"
-    "This is a brief summary of the technique developed by Samy Kamkar. "
-    "For full details and his original write-up, see:\n"
-    "https://samy.pl/master/master.html\n";
-#endif // 1 pragma endregion // static const char* gc_howto_numeric[]
+    "NUMERIC LOCK TUTORIAL (0-39)\n"
+    "===========================\n\n"
+    "STEP 1: First Lock Position\n"
+    "1. Set dial to 0\n"
+    "2. Pull UP firmly on shackle\n"
+    "3. Rotate dial COUNTER-CLOCKWISE\n"
+    "4. Find groove between half-numbers\n"
+    "5. Enter center number (whole #)\n\n"
+    "STEP 2: Second Lock Position\n"
+    "1. Repeat same process\n"
+    "2. Find next groove after first\n"
+    "3. Groove between half-numbers\n"
+    "4. Enter center number (whole #)\n\n"
+    "STEP 3: Resistance Position\n"
+    "1. Apply HALF tension on shackle\n"
+    "2. Rotate dial CLOCKWISE slowly\n"
+    "3. Feel for resistance point\n"
+    "4. Note position (can be .0 or .5)\n\n"
+    "STEP 4: Verify Results\n"
+    "Results show multiple possibilities.\n"
+    "Test each one by pulling hard on\n"
+    "shackle - greatest give = answer!\n\n"
+    "Based on Samy Kamkar's research:\n"
+    "https://samy.pl/master/\n";
+
+static const char gc_instructions_alpha[] =
+    "ALPHABETIC LOCK TUTORIAL\n"
+    "=======================\n\n"
+    "Letters: Y, A-W (skip X, Z, Q)\n\n"
+    "STEP 1-3: Same as Numeric\n"
+    "Use same technique with letters.\n\n"
+    "STEP 1: First Lock\n"
+    "Set to Y, find groove with\n"
+    "letter in center (Y, A, B...)\n\n"
+    "STEP 2: Second Lock\n"
+    "Repeat process from first lock\n"
+    "Find next groove with letter\n\n"
+    "STEP 3: Resistance\n"
+    "Apply half tension, rotate\n"
+    "clockwise to find resistance\n\n"
+    "STEP 4: Results & Testing\n"
+    "Algorithm adapts automatically!\n"
+    "Test results same as numeric.\n\n"
+    "Info: github.com/javidrezai/\n"
+    "ComboCracker-FZ\n";
 
 typedef struct {
     ViewDispatcher* view_dispatcher;
@@ -302,6 +328,43 @@ static void api_config_set_flag(ApiConfig* config, uint32_t flag, bool value) {
     } else {
         config->api_config_flags &= ~flag;
     }
+}
+
+static void input_cycle_selection_up(ComboLockCrackerModel* model, uint8_t max_selections) {
+    if(model->selected > 0) {
+        model->selected--;
+    } else {
+        model->selected = max_selections - 1;
+    }
+}
+
+static void input_cycle_selection_down(ComboLockCrackerModel* model, uint8_t max_selections) {
+    model->selected = (model->selected < max_selections - 1) ? model->selected + 1 : 0;
+}
+
+static void input_adjust_first_lock(ComboLockCrackerModel* model, int8_t delta) {
+    int16_t new_val = (int16_t)model->first_lock_index + delta;
+    if(new_val < 0) new_val = 0;
+    if(new_val > 39) new_val = 39;
+    model->first_lock_index = (uint8_t)new_val;
+}
+
+static void input_adjust_second_lock(ComboLockCrackerModel* model, int8_t delta) {
+    int16_t new_val = (int16_t)model->second_lock_index + delta;
+    if(new_val < 0) new_val = 0;
+    if(new_val > 39) new_val = 39;
+    model->second_lock_index = (uint8_t)new_val;
+}
+
+static void input_adjust_resistance(ComboLockCrackerModel* model, int8_t delta) {
+    int16_t new_val = (int16_t)model->resistance_index + delta;
+    if(new_val < 0) new_val = 0;
+    if(new_val > 79) new_val = 79;
+    model->resistance_index = (uint8_t)new_val;
+}
+
+static void input_cycle_lock_type(ComboLockCrackerModel* model) {
+    model->lock_type = (model->lock_type + 1) % COMBO_LOCK_TYPE_COUNT;
 }
 
 static int SolutionComparator(const ComboLockCombination* r1, const ComboLockCombination* r2) {
@@ -734,9 +797,10 @@ static void combo_view_cracker_draw_callback(Canvas* canvas, void* model) {
         (my_model->selected == 3 ? ">" : ""));
     canvas_draw_str(canvas, value_x, 48, buf);
 
-    canvas_draw_line(canvas, 0, 57, 128, 57);
+    canvas_draw_line(canvas, 0, 56, 128, 56);
     canvas_set_font(canvas, FontTiny);
-    canvas_draw_str(canvas, 2, 64, "< UP/DOWN > OK:Calculate");
+    canvas_draw_str(canvas, 2, 64, "< UP/DOWN > OK:Calc");
+    canvas_draw_str(canvas, 100, 64, "v0.6");
 
     canvas_draw_icon(canvas, icon_x, icon_y, &I_lock32x32);
 }
@@ -750,22 +814,22 @@ static void combo_view_cracker_draw_callback(Canvas* canvas, void* model) {
  */
 static bool combo_view_cracker_input_callback(InputEvent* event, void* context) {
     ComboLockCrackerApp* app = (ComboLockCrackerApp*)context;
-
     bool redraw = true;
+
     if(event->type == InputTypeShort) {
         switch(event->key) {
         case InputKeyUp:
             with_view_model(
                 app->view_cracker,
                 ComboLockCrackerModel * model,
-                { model->selected = (model->selected > 0) ? model->selected - 1 : 3; },
+                { input_cycle_selection_up(model, 4); },
                 redraw);
             break;
         case InputKeyDown:
             with_view_model(
                 app->view_cracker,
                 ComboLockCrackerModel * model,
-                { model->selected = (model->selected < 3) ? model->selected + 1 : 0; },
+                { input_cycle_selection_down(model, 4); },
                 redraw);
             break;
         case InputKeyLeft:
@@ -773,16 +837,10 @@ static bool combo_view_cracker_input_callback(InputEvent* event, void* context) 
                 app->view_cracker,
                 ComboLockCrackerModel * model,
                 {
-                    if(model->selected == 0 && model->first_lock_index > 0) {
-                        model->first_lock_index--;
-                    }
-                    if(model->selected == 1 && model->second_lock_index > 0) {
-                        model->second_lock_index--;
-                    }
-                    if(model->selected == 2 && model->resistance_index > 0) {
-                        model->resistance_index -= 1;
-                    }
-                    if(model->selected == 3) {
+                    if(model->selected == 0) input_adjust_first_lock(model, -1);
+                    else if(model->selected == 1) input_adjust_second_lock(model, -1);
+                    else if(model->selected == 2) input_adjust_resistance(model, -1);
+                    else if(model->selected == 3) {
                         model->lock_type =
                             (model->lock_type + COMBO_LOCK_TYPE_COUNT - 1) % COMBO_LOCK_TYPE_COUNT;
                     }
@@ -794,18 +852,10 @@ static bool combo_view_cracker_input_callback(InputEvent* event, void* context) 
                 app->view_cracker,
                 ComboLockCrackerModel * model,
                 {
-                    if(model->selected == 0 && model->first_lock_index < 39) {
-                        model->first_lock_index++;
-                    }
-                    if(model->selected == 1 && model->first_lock_index < 39) {
-                        model->second_lock_index++;
-                    }
-                    if(model->selected == 2 && model->resistance_index < 79) {
-                        model->resistance_index++;
-                    }
-                    if(model->selected == 3) {
-                        model->lock_type = (model->lock_type + 1) % COMBO_LOCK_TYPE_COUNT;
-                    }
+                    if(model->selected == 0) input_adjust_first_lock(model, 1);
+                    else if(model->selected == 1) input_adjust_second_lock(model, 1);
+                    else if(model->selected == 2) input_adjust_resistance(model, 1);
+                    else if(model->selected == 3) input_cycle_lock_type(model);
                 },
                 redraw);
             break;
@@ -822,16 +872,10 @@ static bool combo_view_cracker_input_callback(InputEvent* event, void* context) 
                 app->view_cracker,
                 ComboLockCrackerModel * model,
                 {
-                    if(model->selected == 0 && model->first_lock_index > 0) {
-                        model->first_lock_index--;
-                    }
-                    if(model->selected == 1 && model->second_lock_index > 0) {
-                        model->second_lock_index--;
-                    }
-                    if(model->selected == 2 && model->resistance_index > 0) {
-                        model->resistance_index--;
-                    }
-                    if(model->selected == 3) {
+                    if(model->selected == 0) input_adjust_first_lock(model, -1);
+                    else if(model->selected == 1) input_adjust_second_lock(model, -1);
+                    else if(model->selected == 2) input_adjust_resistance(model, -1);
+                    else if(model->selected == 3) {
                         model->lock_type =
                             (model->lock_type + COMBO_LOCK_TYPE_COUNT - 1) % COMBO_LOCK_TYPE_COUNT;
                     }
@@ -843,18 +887,10 @@ static bool combo_view_cracker_input_callback(InputEvent* event, void* context) 
                 app->view_cracker,
                 ComboLockCrackerModel * model,
                 {
-                    if(model->selected == 0 && model->first_lock_index < 39) {
-                        model->first_lock_index++;
-                    }
-                    if(model->selected == 1 && model->second_lock_index < 39) {
-                        model->second_lock_index++;
-                    }
-                    if(model->selected == 2 && model->resistance_index < 79) {
-                        model->resistance_index++;
-                    }
-                    if(model->selected == 3) {
-                        model->lock_type = (model->lock_type + 1) % COMBO_LOCK_TYPE_COUNT;
-                    }
+                    if(model->selected == 0) input_adjust_first_lock(model, 1);
+                    else if(model->selected == 1) input_adjust_second_lock(model, 1);
+                    else if(model->selected == 2) input_adjust_resistance(model, 1);
+                    else if(model->selected == 3) input_cycle_lock_type(model);
                 },
                 redraw);
             break;
@@ -981,20 +1017,9 @@ static ComboLockCrackerApp* combo_app_alloc() {
     view_dispatcher_add_view(
         app->view_dispatcher, ComboViewTutorialNumeric, widget_get_view(app->widget_tutorial_numeric));
 
-    const char* alpha_instructions =
-        "Alphabetic Locks (Y,A-W):\n"
-        "---\n"
-        "Similar to numeric locks but uses letters.\n"
-        "Apply the same technique:\n\n"
-        "1. Find first groove (half letters)\n"
-        "2. Find second groove\n"
-        "3. Apply resistance to find third\n\n"
-        "The algorithm adapts automatically.\n"
-        "https://samy.pl/master/\n";
-
     app->widget_tutorial_alpha = widget_alloc();
     widget_add_text_scroll_element(
-        app->widget_tutorial_alpha, 0, 0, 128, 64, alpha_instructions);
+        app->widget_tutorial_alpha, 0, 0, 128, 64, gc_instructions_alpha);
     view_set_previous_callback(
         widget_get_view(app->widget_tutorial_alpha), combo_navigation_submenu_callback);
     view_dispatcher_add_view(
