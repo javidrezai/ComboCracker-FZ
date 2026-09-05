@@ -1,3 +1,4 @@
+/* brain3d — inlined so the updater carries it */
 /* ==========================================================================
    Setayesh AI — مغز عصبی سه‌بعدی  (brain3d.js)
 
@@ -833,9 +834,8 @@
   function frame() {
     S.raf = requestAnimationFrame(frame);
     if (!S.open) return;
-    // When the tab is backgrounded or the phone is locked, keep the loop
-    // scheduled but do no GPU work — otherwise a weak phone keeps rendering
-    // 60fps of an invisible scene and gets hot and sluggish.
+    // Backgrounded tab or locked phone: keep the loop alive but skip GPU work,
+    // so a weak phone doesn't keep rendering an invisible scene and overheat.
     if (document.hidden) return;
     var THREE = window.THREE;
     S.clock += 0.016;
@@ -1203,3 +1203,4 @@
   window.setayeshBrain = { open: open, close: close, reload: loadData,
                            refreshButton: pollTop };
 })();
+

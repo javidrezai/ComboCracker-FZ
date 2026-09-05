@@ -40,7 +40,12 @@ npm test
 مجموعهٔ تستِ مسیرهای حیاتی (ورود، پیکربندی، حافظه، کانکتورها، SPA) با تست‌ران داخلی Node — بدون وابستگی جدید. سرور روی پورت موقت با داده‌های موقت اجرا می‌شود و داده‌های واقعی را دست نمی‌زند. Critical-path smoke tests via Node's built-in runner; boots the server on a temp port with throwaway state.
 
 ## نسخه / Version
-9.9.17
+9.9.18
+
+### تغییرات ۹.۹.۱۸ / Changelog 9.9.18
+- **ماژول‌بندی رابط کاربری (کاهش فایل‌های بزرگ پرریسک)**: `public/index.html` از ۷٬۸۰۵ خط به **۹۹۴ خط** رسید. منطق و استایل به فایل‌های جدا منتقل شد: `app.css`، `app.js`، `brain3d.js`، `login-fx.js`، `memory-panel.js`، `connectors-panel.js` — با همان ترتیب بارگذاری (رفتار بدون تغییر) و نسخه‌گذاریِ `?v=` برای جلوگیری از کش کهنه پس از به‌روزرسانی. UI modularized: `index.html` 7,805 → 994 lines; CSS/JS split into separate files loaded in the same order (behavior unchanged), with `?v=` cache-busting.
+- تأیید: تست‌ها سبز، همهٔ دارایی‌ها ۲۰۰، ورود و رابط اصلی و پنل‌ها و مغز سه‌بعدی سالم، بدون خطای صفحه. Verified: tests green, assets 200, login + panels + 3D brain all work, no page errors.
+- گام بعدی: ماژول‌بندیِ محتاطانهٔ `index.js` سمت سرور (با پوشش تست بیشتر، ماژول‌به‌ماژول). Next: careful server-side `index.js` split, module by module, behind more tests.
 
 ### تغییرات ۹.۹.۱۷ / Changelog 9.9.17
 - **تست خودکار (تور ایمنی)**: افزودن `test/smoke.test.js` — بوت سرور روی پورت/داده‌ی موقت و بررسی مسیرهای حیاتی: سلامت، نسخه، ورود درست/نادرست، گیت احراز هویت، CRUD حافظه، وضعیت کانکتورها، و catch-all رابط. اولین قدمِ «اول تست، بعد بازآرایی». Automated smoke tests as the safety net before refactoring the monoliths — the first step of "tests before refactor".

@@ -1,0 +1,675 @@
+:root{
+  --bg:#07070c; --bg2:#0b0b14;
+  --panel:rgba(255,255,255,.035); --panel2:rgba(255,255,255,.06); --panel3:rgba(255,255,255,.09);
+  --border:rgba(255,255,255,.085); --border-hi:rgba(255,255,255,.17);
+  --text:#e8e9f2; --muted:#8b8fa8; --dim:#5f6379;
+  --violet:#7b5cff; --violet-2:#a78bfa; --cyan:#22d3ee; --pink:#f472b6;
+  --g1:rgba(123,92,255,.30); --g2:rgba(34,211,238,.20); --g3:rgba(244,114,182,.13);
+  --ok:#34d399; --warn:#fbbf24; --danger:#fb7185;
+  --kw:#c792ea; --str:#c3e88d; --num:#f78c6c; --cmt:#5f6379; --fn:#82aaff; --typ:#ffcb6b; --op:#89ddff;
+  --r:14px; --r-lg:20px;
+  --mono:ui-monospace,"Cascadia Code","JetBrains Mono","Fira Code",Consolas,"Courier New",monospace;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI","Vazirmatn",Tahoma,system-ui,sans-serif;
+  --sidebar-w:270px;
+}
+/* ===== Themes (recolor the whole app by overriding accent + glow vars) ===== */
+/* Cyber — blue & black (for the kids' panels) */
+html[data-theme="cyber"]{
+  --bg:#03050e; --bg-deep:#03050e; --bg-mid:#06122b;
+  --violet:#2b8cff; --violet-2:#5cc8ff; --cyan:#22e6ff; --pink:#38bdf8;
+  --g1:rgba(43,140,255,.34); --g2:rgba(34,230,255,.22); --g3:rgba(56,189,248,.16);
+  --kw:#5cc8ff; --fn:#7dd3fc; --str:#67e8f9; --typ:#38bdf8;
+}
+/* Matrix — green & black */
+html[data-theme="matrix"]{
+  --bg:#02080a; --bg-deep:#02080a; --bg-mid:#04140f;
+  --violet:#22d38a; --violet-2:#4ade80; --cyan:#34d399; --pink:#a3e635;
+  --g1:rgba(34,211,138,.30); --g2:rgba(74,222,128,.18); --g3:rgba(163,230,53,.12);
+  --kw:#4ade80; --fn:#86efac; --str:#bef264; --typ:#34d399;
+}
+/* Sunset — amber & black */
+html[data-theme="sunset"]{
+  --bg:#0c0604; --bg-deep:#0c0604; --bg-mid:#1c0f06;
+  --violet:#fb923c; --violet-2:#fbbf24; --cyan:#f472b6; --pink:#f97316;
+  --g1:rgba(251,146,60,.30); --g2:rgba(244,114,182,.18); --g3:rgba(251,191,36,.14);
+}
+
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;font-family:var(--sans);background:var(--bg);color:var(--text);-webkit-font-smoothing:antialiased;overflow:hidden}
+/* Keep the base colour on the root only, so the negative-z background layers
+   (3D code canvas, grid, gradient, robot) are visible instead of being hidden
+   behind an opaque <body>. */
+body{background:transparent}
+button,input,textarea,select{font-family:inherit}
+::-webkit-scrollbar{width:9px;height:9px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:rgba(255,255,255,.11);border-radius:99px;border:2px solid transparent;background-clip:content-box}
+::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.2);background-clip:content-box}
+
+/* ============ AMBIENT BACKGROUND ============ */
+.bg{position:fixed;inset:0;z-index:-2;background:var(--bg);overflow:hidden}
+.bg::before{content:"";position:absolute;inset:-30%;
+  background:
+    radial-gradient(38vw 38vw at 18% 12%,var(--g1),transparent 62%),
+    radial-gradient(34vw 34vw at 84% 78%,var(--g2),transparent 62%),
+    radial-gradient(30vw 30vw at 62% 22%,var(--g3),transparent 60%);
+  filter:blur(28px);animation:drift 26s ease-in-out infinite alternate}
+@keyframes drift{0%{transform:translate3d(0,0,0) scale(1)}100%{transform:translate3d(3%,-3%,0) scale(1.12)}}
+.grid{position:fixed;inset:0;z-index:-1;pointer-events:none;
+  background-image:linear-gradient(rgba(255,255,255,.028) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.028) 1px,transparent 1px);
+  background-size:52px 52px;
+  mask-image:radial-gradient(ellipse 90% 65% at 50% 0%,#000 30%,transparent 78%);
+  -webkit-mask-image:radial-gradient(ellipse 90% 65% at 50% 0%,#000 30%,transparent 78%)}
+/* faint moving scanlines + a slow sweep — the "digital" texture */
+.scan{position:fixed;inset:0;z-index:-1;pointer-events:none;opacity:.5;
+  background:repeating-linear-gradient(0deg,rgba(255,255,255,.018) 0 1px,transparent 1px 3px)}
+.sweep{position:fixed;left:0;right:0;height:180px;z-index:-1;pointer-events:none;
+  background:linear-gradient(180deg,transparent,rgba(123,92,255,.06),transparent);
+  animation:sweep 7s linear infinite}
+@keyframes sweep{0%{top:-180px}100%{top:100%}}
+@media(prefers-reduced-motion:reduce){.sweep,.bg::before,.robot,.robot .eye{animation:none}}
+/* Settings: guide box + text-size segmented control */
+.guidebox{background:rgba(255,255,255,.03);border:1px solid var(--border);border-radius:12px;padding:13px 15px;font-size:12.8px;line-height:1.7;color:var(--muted)}
+.guidebox b{color:var(--text)}
+.guidebox .grow{display:flex;gap:9px;margin:9px 0}
+.guidebox .gi{flex-shrink:0;font-size:15px;line-height:1.4}
+.guidebox ul{margin:6px 0 0;padding-inline-start:18px}
+.guidebox li{margin:3px 0}
+.guidebox .ghow{margin-top:11px;padding-top:10px;border-top:1px dashed var(--border);color:var(--dim)}
+.guidebox a{color:var(--cyan);text-decoration:none}
+.guidebox a:hover{text-decoration:underline}
+/* welcome greeting with animated member avatar */
+.greet{display:flex;align-items:center;justify-content:center;gap:11px;margin:2px 0 10px}
+.greet .gav{width:44px;height:44px;flex-shrink:0;filter:drop-shadow(0 4px 14px rgba(40,120,255,.4))}
+.greet .gtext{font-size:19px;font-weight:700;background:linear-gradient(100deg,#fff,#9fd0ff 60%,#7bb8ff);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.welcome .wsub{font-size:15px;color:var(--muted);margin:2px 0 0}
+.welcome .kidquote{margin-top:14px;max-width:440px;padding:13px 18px;border-radius:14px;font-size:14.5px;line-height:1.6;
+  color:#dbe6ff;background:linear-gradient(120deg,rgba(34,211,238,.12),rgba(123,92,255,.12));border:1px solid rgba(123,92,255,.28);
+  direction:ltr;text-align:center}
+.welcome .dadnote{margin-top:20px;max-width:460px;padding:15px 20px;border-radius:16px;font-size:15.5px;line-height:1.7;
+  color:#ffe4ee;background:linear-gradient(120deg,rgba(244,114,182,.16),rgba(123,92,255,.14));border:1px solid rgba(244,114,182,.34);
+  text-align:center;box-shadow:0 8px 30px rgba(244,114,182,.12)}
+.avatar canvas,.gav canvas{border-radius:30%}
+.segrow{display:flex;gap:8px}
+.seg{flex:1;background:var(--panel2);border:1px solid var(--border);color:var(--muted);cursor:pointer;
+  padding:9px;border-radius:10px;font-size:13px;font-family:var(--sans);transition:all .15s}
+.seg:hover{color:var(--text);border-color:var(--border-hi)}
+.seg.on{background:linear-gradient(100deg,rgba(123,92,255,.25),rgba(34,211,238,.12));border-color:rgba(123,92,255,.55);color:#fff}
+/* text-size scaling — affects the readable chat text */
+html[data-textsize="small"] .content{font-size:13px}
+html[data-textsize="large"] .content{font-size:17.5px}
+html[data-textsize="large"] .content pre{font-size:14px}
+html[data-textsize="large"] #msgBox{font-size:16px}
+/* 3D flying-code canvas — the depth/tunnel layer */
+#fx3d{position:fixed;inset:0;z-index:-1;pointer-events:none;opacity:.85}
+/* 3D scene wrapper gives the robot real perspective + parallax */
+.scene3d{position:fixed;inset:0;z-index:-1;pointer-events:none;perspective:1100px;perspective-origin:70% 60%}
+/* Floating robot silhouette — now shown on all dark themes, with 3D depth */
+.robot{position:fixed;right:4vw;bottom:2vh;width:min(30vw,340px);opacity:.2;pointer-events:none;transform-style:preserve-3d;
+  filter:drop-shadow(0 0 26px color-mix(in srgb,var(--cyan) 45%,transparent));animation:floatY 6s ease-in-out infinite;transition:opacity .6s}
+html[data-theme="cyber"] .robot,html[data-theme="matrix"] .robot{opacity:.26}
+html[data-theme="sunset"] .robot{opacity:.14}
+.robot .eye{animation:blink 4.5s infinite}
+@keyframes floatY{0%,100%{transform:translateY(0) translateZ(0) rotateY(-6deg)}50%{transform:translateY(-16px) translateZ(40px) rotateY(6deg)}}
+@keyframes blink{0%,92%,100%{opacity:1}95%{opacity:.15}}
+@media(max-width:860px){.robot{opacity:0!important}}
+
+.glass{background:var(--panel);border:1px solid var(--border);backdrop-filter:blur(22px) saturate(150%);-webkit-backdrop-filter:blur(22px) saturate(150%)}
+
+/* ============ LOGIN ============ */
+#loginView{position:fixed;inset:0;z-index:200;display:none;align-items:center;justify-content:center;padding:22px;overflow:auto;background:var(--bg,#0a0e1a)}
+#loginCard{width:100%;max-width:392px;padding:40px 32px 30px;border-radius:var(--r-lg);text-align:center;position:relative;
+  box-shadow:0 30px 90px rgba(0,0,0,.6)}
+#loginCard::before{content:"";position:absolute;inset:0;border-radius:var(--r-lg);padding:1px;
+  background:linear-gradient(140deg,rgba(123,92,255,.6),transparent 42%,transparent 60%,rgba(34,211,238,.42));
+  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude;pointer-events:none}
+.logo{width:60px;height:60px;margin:0 auto 20px;border-radius:18px;display:grid;place-items:center;position:relative;
+  background:linear-gradient(140deg,var(--violet),var(--violet-2) 55%,var(--cyan));
+  box-shadow:0 14px 40px rgba(123,92,255,.5),inset 0 1px 0 rgba(255,255,255,.4)}
+.logo svg{width:29px;height:29px}
+.brand{font-size:27px;font-weight:700;letter-spacing:-.4px;margin:0 0 6px;
+  background:linear-gradient(100deg,#fff,#bcb4ff 55%,#8ee9f8);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.brand-sub{color:var(--muted);font-size:13px;margin:0 0 28px;line-height:1.6}
+.field{text-align:start;margin-bottom:14px}
+.field label{display:block;font-size:11px;font-weight:600;color:var(--muted);margin-bottom:7px;letter-spacing:.4px;text-transform:uppercase;font-family:var(--mono)}
+.input{width:100%;background:rgba(0,0,0,.28);border:1px solid var(--border);color:var(--text);border-radius:11px;
+  padding:12px 14px;font-size:14.5px;outline:none;transition:border-color .16s,box-shadow .16s,background .16s}
+.input::placeholder{color:var(--dim)}
+.input:focus{border-color:rgba(123,92,255,.75);background:rgba(0,0,0,.4);box-shadow:0 0 0 3.5px rgba(123,92,255,.14)}
+.btn{width:100%;border:none;border-radius:11px;padding:13px;font-size:14.5px;font-weight:600;color:#fff;cursor:pointer;
+  background:linear-gradient(135deg,var(--violet),#8b6dff 60%,var(--cyan));background-size:160% 160%;
+  box-shadow:0 10px 30px rgba(123,92,255,.34);margin-top:10px;transition:transform .12s,box-shadow .2s,background-position .5s}
+.btn:hover:not(:disabled){background-position:100% 0;box-shadow:0 12px 36px rgba(123,92,255,.46)}
+.btn:active:not(:disabled){transform:scale(.98)}
+.btn:disabled{opacity:.5;cursor:default;box-shadow:none}
+.btn.ghost{background:var(--panel2);border:1px solid var(--border);box-shadow:none;color:var(--text)}
+.btn.ghost:hover{background:var(--panel3)}
+.note{color:var(--danger);font-size:12.5px;margin-top:13px;min-height:18px;line-height:1.5}
+.note.ok{color:var(--ok)}
+.login-foot{color:var(--dim);font-size:11px;margin-top:22px;font-family:var(--mono);display:flex;align-items:center;justify-content:center;gap:6px}
+
+/* ============ APP SHELL ============ */
+#appView{display:none;height:100dvh;overflow:hidden}
+#appView.on{display:flex}
+
+/* ---- Sidebar ---- */
+.sidebar{width:var(--sidebar-w);flex-shrink:0;display:flex;flex-direction:column;gap:14px;padding:16px 13px;
+  border-inline-end:1px solid var(--border);background:rgba(8,8,14,.6);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);z-index:30}
+.side-head{display:flex;align-items:center;gap:10px;padding:4px 5px 0}
+.logo-sm{width:34px;height:34px;border-radius:11px;display:grid;place-items:center;flex-shrink:0;
+  background:linear-gradient(140deg,var(--violet),var(--violet-2) 55%,var(--cyan));box-shadow:0 6px 18px rgba(123,92,255,.4)}
+.logo-sm svg{width:17px;height:17px}
+.side-head h1{font-size:15.5px;font-weight:650;margin:0;letter-spacing:-.2px}
+.side-head .ver{font-size:9.5px;color:var(--dim);font-family:var(--mono);display:block;margin-top:1px}
+
+.side-sec{display:flex;flex-direction:column;gap:6px}
+.side-label{font-size:9.5px;font-weight:600;color:var(--dim);letter-spacing:1.2px;text-transform:uppercase;
+  font-family:var(--mono);padding:0 6px;margin-bottom:1px}
+
+.mode-btn{display:flex;align-items:center;gap:10px;width:100%;padding:9px 11px;border-radius:11px;cursor:pointer;
+  background:transparent;border:1px solid transparent;color:var(--muted);font-size:13.5px;text-align:start;transition:all .15s}
+.mode-btn svg{width:16px;height:16px;flex-shrink:0;opacity:.85}
+.mode-btn:hover{background:var(--panel2);color:var(--text)}
+.mode-btn.on{background:linear-gradient(100deg,rgba(123,92,255,.22),rgba(34,211,238,.10));
+  border-color:rgba(123,92,255,.42);color:#fff;box-shadow:0 3px 14px rgba(123,92,255,.16)}
+.mode-btn.on svg{opacity:1;color:var(--violet-2)}
+.mode-btn .kbd{margin-inline-start:auto;font-family:var(--mono);font-size:9.5px;color:var(--dim);
+  border:1px solid var(--border);border-radius:5px;padding:1px 5px}
+
+.picker{width:100%;background:rgba(0,0,0,.3);border:1px solid var(--border);border-radius:11px;padding:9px 11px;
+  color:var(--text);font-size:12.5px;cursor:pointer;outline:none;transition:border-color .15s;font-family:var(--mono)}
+.picker:focus{border-color:rgba(123,92,255,.7)}
+.picker optgroup{background:#0d0d16;color:var(--dim);font-family:var(--sans)}
+.picker option{background:#0d0d16;color:var(--text);font-family:var(--mono)}
+.picker option:disabled{color:var(--dim)}
+
+.chatlist{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:3px;min-height:40px;margin:0 -3px;padding:0 3px}
+.chat-item{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:9px;cursor:pointer;
+  color:var(--muted);font-size:12.5px;border:1px solid transparent;transition:all .14s}
+.chat-item:hover{background:var(--panel2);color:var(--text)}
+.chat-item.on{background:var(--panel2);border-color:var(--border);color:var(--text)}
+.chat-item .t{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chat-item .x{opacity:0;border:none;background:none;color:var(--dim);cursor:pointer;font-size:15px;line-height:1;padding:0 2px;flex-shrink:0}
+.chat-item:hover .x{opacity:1}
+.chat-item .x:hover{color:var(--danger)}
+
+.side-foot{display:flex;align-items:center;gap:7px;padding-top:12px;border-top:1px solid var(--border)}
+.avatar{width:29px;height:29px;border-radius:9px;background:linear-gradient(140deg,#2a2a3e,#1a1a28);border:1px solid var(--border-hi);
+  display:grid;place-items:center;font-size:12px;font-weight:600;color:var(--violet-2);flex-shrink:0;font-family:var(--mono)}
+.side-foot .who{flex:1;min-width:0;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ibtn{background:var(--panel2);border:1px solid var(--border);color:var(--muted);cursor:pointer;
+  width:29px;height:29px;border-radius:9px;display:grid;place-items:center;flex-shrink:0;transition:all .15s}
+.ibtn:hover{color:var(--text);background:var(--panel3);border-color:var(--border-hi)}
+.ibtn svg{width:14px;height:14px}
+
+/* ---- Main ---- */
+.main{flex:1;display:flex;flex-direction:column;min-width:0;position:relative}
+.topbar{display:flex;align-items:center;gap:11px;padding:13px 18px;border-bottom:1px solid var(--border);flex-shrink:0;
+  background:rgba(8,8,14,.4);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px)}
+.burger{display:none}
+.topbar .title{font-size:14.5px;font-weight:600;margin:0}
+.topbar .sub{font-size:10.5px;color:var(--dim);font-family:var(--mono);margin-top:1px}
+.topbar .spacer{flex:1}
+.tag{display:inline-flex;align-items:center;gap:5px;font-family:var(--mono);font-size:10.5px;padding:4px 9px;border-radius:99px;
+  border:1px solid var(--border);background:var(--panel2);color:var(--muted);white-space:nowrap}
+.tag .dot{width:5px;height:5px;border-radius:99px;background:var(--ok);box-shadow:0 0 7px var(--ok)}
+.tag.free{color:#7ee7c7;border-color:rgba(52,211,153,.3);background:rgba(52,211,153,.1)}
+
+/* ---- Messages ---- */
+#scroll{flex:1;overflow-y:auto;padding:26px 20px 8px;scroll-behavior:smooth}
+.thread{max-width:860px;margin:0 auto;display:flex;flex-direction:column;gap:22px}
+
+.msg{display:flex;gap:12px;animation:rise .3s cubic-bezier(.2,.7,.3,1)}
+@keyframes rise{from{opacity:0;transform:translateY(9px)}to{opacity:1;transform:none}}
+.msg .ava{width:29px;height:29px;border-radius:9px;flex-shrink:0;display:grid;place-items:center;margin-top:2px}
+.msg.user .ava{background:linear-gradient(140deg,#2c2c40,#1b1b2a);border:1px solid var(--border-hi);color:var(--violet-2);
+  font-size:11.5px;font-weight:600;font-family:var(--mono)}
+.msg.ai .ava{background:linear-gradient(140deg,var(--violet),var(--cyan));box-shadow:0 4px 14px rgba(123,92,255,.36)}
+.msg.ai .ava svg{width:15px;height:15px}
+.msg .body{flex:1;min-width:0}
+.msg .meta{display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap}
+.msg .name{font-size:12.5px;font-weight:600}
+.msg .stamp{font-family:var(--mono);font-size:9.5px;color:var(--dim)}
+.msg .content{font-size:14.5px;line-height:1.78;word-wrap:break-word;overflow-wrap:break-word}
+/* Each block picks its own direction from its own text — a Persian paragraph
+   reads right-to-left, an English or code paragraph left-to-right, even inside
+   the same message. This is what fixes mixed Persian/English/code landing on
+   the wrong side. */
+.content p,.content li,.content h1,.content h2,.content h3,.content h4,
+.content blockquote,.content td,.content th{unicode-bidi:plaintext}
+.content pre,.content code{direction:ltr;text-align:left;unicode-bidi:embed}
+.msg.user .content{color:#dfe0ee}
+
+/* prose */
+.content p{margin:0 0 11px}
+.content p:last-child{margin-bottom:0}
+.content h1,.content h2,.content h3,.content h4{margin:20px 0 9px;line-height:1.35;font-weight:650}
+.content h1{font-size:19px}.content h2{font-size:17px}.content h3{font-size:15.5px}.content h4{font-size:14.5px}
+.content h2,.content h3{padding-bottom:5px;border-bottom:1px solid var(--border)}
+.content ul,.content ol{margin:0 0 12px;padding-inline-start:22px}
+.content li{margin-bottom:5px}
+.content li::marker{color:var(--violet-2)}
+.content a{color:#8ecdff;text-decoration:none;border-bottom:1px solid rgba(142,205,255,.32)}
+.content a:hover{border-bottom-color:#8ecdff}
+.content blockquote{margin:0 0 12px;padding:9px 14px;border-inline-start:3px solid var(--violet);
+  background:rgba(123,92,255,.07);border-radius:0 9px 9px 0;color:#c9cbe0}
+.content hr{border:none;border-top:1px solid var(--border);margin:18px 0}
+.content strong{color:#fff;font-weight:650}
+.content table{width:100%;border-collapse:collapse;margin:0 0 13px;font-size:13px;display:block;overflow-x:auto}
+.content th,.content td{border:1px solid var(--border);padding:7px 11px;text-align:start}
+.content th{background:var(--panel2);font-weight:600;color:#fff;white-space:nowrap}
+.content tr:nth-child(even) td{background:rgba(255,255,255,.017)}
+
+/* severity chips for the security mode */
+.sev{display:inline-block;font-family:var(--mono);font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:6px;
+  letter-spacing:.4px;text-transform:uppercase;vertical-align:middle}
+.sev-critical{background:rgba(251,113,133,.19);color:#ff8fa0;border:1px solid rgba(251,113,133,.42)}
+.sev-high{background:rgba(251,146,60,.17);color:#fdba74;border:1px solid rgba(251,146,60,.4)}
+.sev-medium{background:rgba(251,191,36,.15);color:#fcd34d;border:1px solid rgba(251,191,36,.36)}
+.sev-low{background:rgba(52,211,153,.14);color:#6ee7b7;border:1px solid rgba(52,211,153,.34)}
+.sev-info{background:rgba(129,140,248,.15);color:#a5b4fc;border:1px solid rgba(129,140,248,.34)}
+
+/* inline code */
+.content code:not(pre code){font-family:var(--mono);font-size:.87em;background:rgba(123,92,255,.14);color:#d9c9ff;
+  padding:1.5px 6px;border-radius:5px;border:1px solid rgba(123,92,255,.2);direction:ltr;unicode-bidi:embed;white-space:nowrap}
+
+/* code blocks */
+.codewrap{margin:0 0 14px;border:1px solid var(--border);border-radius:12px;overflow:hidden;background:rgba(0,0,0,.42);direction:ltr}
+.codebar{display:flex;align-items:center;gap:8px;padding:7px 12px;background:rgba(255,255,255,.035);border-bottom:1px solid var(--border)}
+.codebar .lang{font-family:var(--mono);font-size:10.5px;color:var(--muted);letter-spacing:.6px;text-transform:uppercase}
+.codebar .dots{display:flex;gap:5px;margin-inline-end:3px}
+.codebar .dots i{width:8px;height:8px;border-radius:99px;display:block}
+.codebar .dots i:nth-child(1){background:#ff5f57}.codebar .dots i:nth-child(2){background:#febc2e}.codebar .dots i:nth-child(3){background:#28c840}
+.copy{margin-inline-start:auto;background:transparent;border:1px solid var(--border);color:var(--muted);cursor:pointer;
+  font-size:10.5px;font-family:var(--mono);padding:3px 9px;border-radius:6px;display:flex;align-items:center;gap:5px;transition:all .15s}
+.copy:hover{color:var(--text);border-color:var(--border-hi);background:var(--panel2)}
+.copy.done{color:var(--ok);border-color:rgba(52,211,153,.42)}
+.copy.dl{margin-inline-start:6px}
+.msgsave{margin-inline-start:8px;background:transparent;border:1px solid var(--border);color:var(--dim);cursor:pointer;
+  font-size:10px;font-family:var(--mono);padding:2px 8px;border-radius:6px;display:inline-flex;align-items:center;gap:5px;
+  opacity:0;transition:all .15s}
+.msg:hover .msgsave{opacity:1}
+.msgsave:hover{color:var(--text);border-color:var(--border-hi);background:var(--panel2)}
+@media(max-width:860px){.msgsave{opacity:1}}
+/* topbar output actions */
+.tbtn{background:var(--panel2);border:1px solid var(--border);color:var(--muted);cursor:pointer;height:32px;padding:0 11px;
+  border-radius:9px;display:inline-flex;align-items:center;gap:6px;font-size:12px;font-family:var(--sans);transition:all .15s}
+.tbtn:hover{color:var(--text);background:var(--panel3);border-color:var(--border-hi)}
+.tbtn svg{width:14px;height:14px}
+@media(max-width:640px){.tbtn span{display:none}.tbtn{padding:0 9px}}
+/* mobile topbar: keep it tidy — Settings gear always visible, no overflow */
+@media(max-width:640px){
+  .topbar{padding:10px 10px;gap:6px}
+  .topbar #engineTag{display:none}
+  .topbar .title{font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .topbar>div{min-width:0}                                 /* let title shrink, not the buttons */
+  .tbtn{height:36px;width:36px;padding:0;justify-content:center;flex-shrink:0}
+  #settingsBtnTop{background:var(--violet);color:#fff;border-color:transparent}
+  .ibtn.burger{height:36px;width:36px;flex-shrink:0}
+  #fx3d{opacity:.5}
+}
+.codewrap pre{margin:0;padding:14px 16px;overflow-x:auto;font-family:var(--mono);font-size:12.8px;line-height:1.65;text-align:left}
+.codewrap pre code{font-family:inherit;background:none;padding:0;border:none;white-space:pre}
+.tok-kw{color:var(--kw)}.tok-str{color:var(--str)}.tok-num{color:var(--num)}
+.tok-cmt{color:var(--cmt);font-style:italic}.tok-fn{color:var(--fn)}.tok-typ{color:var(--typ)}.tok-op{color:var(--op)}
+
+/* compare */
+.cmp{display:flex;flex-direction:column;gap:13px}
+.cmp-card{border:1px solid var(--border);border-radius:13px;overflow:hidden;background:rgba(255,255,255,.022)}
+.cmp-head{display:flex;align-items:center;gap:9px;padding:9px 13px;background:var(--panel2);border-bottom:1px solid var(--border)}
+.cmp-head .n{font-size:12.5px;font-weight:600}
+.cmp-head .m{font-family:var(--mono);font-size:10px;color:var(--dim)}
+.cmp-head .ms{margin-inline-start:auto;font-family:var(--mono);font-size:10px;color:var(--muted)}
+.cmp-body{padding:13px 15px;font-size:14px;line-height:1.75}
+.cmp-body.err{color:var(--danger);font-size:13px}
+
+/* typing */
+.dots3{display:inline-flex;gap:5px;align-items:center;padding:6px 0}
+.dots3 i{width:6px;height:6px;border-radius:99px;background:var(--violet-2);display:block;animation:bnc 1.35s infinite}
+.dots3 i:nth-child(2){animation-delay:.17s}.dots3 i:nth-child(3){animation-delay:.34s}
+@keyframes bnc{0%,62%,100%{opacity:.28;transform:translateY(0)}31%{opacity:1;transform:translateY(-5px)}}
+.errbox{color:var(--danger);font-size:13.5px;background:rgba(251,113,133,.09);border:1px solid rgba(251,113,133,.28);
+  padding:10px 13px;border-radius:10px;line-height:1.6}
+
+/* ---- Welcome ---- */
+.welcome{max-width:760px;margin:auto;padding:40px 20px;text-align:center}
+.welcome .halo{width:66px;height:66px;margin:0 auto 20px;border-radius:20px;display:grid;place-items:center;
+  background:linear-gradient(140deg,var(--violet),var(--violet-2) 55%,var(--cyan));box-shadow:0 16px 46px rgba(123,92,255,.44);
+  animation:float 5s ease-in-out infinite}
+@keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-7px)}}
+.welcome .halo svg{width:31px;height:31px}
+.welcome h2{font-size:23px;font-weight:680;margin:0 0 9px;letter-spacing:-.4px;
+  background:linear-gradient(100deg,#fff,#c4bcff 60%,#8ee9f8);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.welcome p{color:var(--muted);font-size:13.5px;line-height:1.75;margin:0 auto 26px;max-width:480px}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(198px,1fr));gap:11px;text-align:start;perspective:900px}
+.card{padding:14px 15px;border:1px solid var(--border);border-radius:13px;background:var(--panel);cursor:pointer;position:relative;overflow:hidden;
+  transform-style:preserve-3d;transition:transform .12s ease-out,border-color .18s,box-shadow .18s,background .18s;will-change:transform}
+.card:hover{border-color:color-mix(in srgb,var(--violet) 55%,transparent);background:var(--panel2);box-shadow:0 16px 40px rgba(0,0,0,.45),0 0 0 1px color-mix(in srgb,var(--violet) 22%,transparent)}
+.card::after{content:"";position:absolute;inset:0;border-radius:13px;opacity:0;transition:opacity .2s;
+  background:radial-gradient(150px 150px at var(--mx,50%) var(--my,50%),color-mix(in srgb,var(--violet) 20%,transparent),transparent 70%)}
+.card:hover::after{opacity:1}
+.card>*{transform:translateZ(22px)}
+
+/* theme swatches */
+.themes{display:flex;gap:9px;flex-wrap:wrap}
+.swatch{width:38px;height:38px;border-radius:11px;cursor:pointer;border:2px solid transparent;position:relative;transition:transform .12s,border-color .15s}
+.swatch:hover{transform:translateY(-2px)}
+.swatch.on{border-color:#fff}
+.swatch.on::after{content:"✓";position:absolute;inset:0;display:grid;place-items:center;color:#fff;font-size:14px;font-weight:700;text-shadow:0 1px 3px rgba(0,0,0,.6)}
+.card .ci{width:29px;height:29px;border-radius:9px;display:grid;place-items:center;margin-bottom:10px;
+  background:rgba(123,92,255,.16);border:1px solid rgba(123,92,255,.28)}
+.card .ci svg{width:15px;height:15px;color:var(--violet-2)}
+.card h4{margin:0 0 4px;font-size:13px;font-weight:620}
+.card p{margin:0;font-size:11.5px;color:var(--dim);line-height:1.6}
+
+/* ---- Composer ---- */
+.composer-wrap{padding:8px 20px 16px;flex-shrink:0}
+.composer-inner{max-width:860px;margin:0 auto}
+#pending{display:none;flex-wrap:wrap;gap:7px;margin-bottom:9px}
+.pf{display:inline-flex;align-items:center;gap:7px;background:var(--panel2);border:1px solid var(--border);
+  border-radius:10px;padding:5px 7px 5px 11px;font-size:11.5px;max-width:210px}
+.pf img{width:22px;height:22px;border-radius:5px;object-fit:cover;flex-shrink:0}
+.pf .ic{width:22px;height:22px;border-radius:5px;background:rgba(123,92,255,.16);display:grid;place-items:center;flex-shrink:0;font-size:11px}
+.pf .n{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--mono);font-size:11px}
+.pf button{border:none;background:none;color:var(--dim);cursor:pointer;font-size:13px;padding:0 1px;flex-shrink:0;line-height:1}
+.pf button:hover{color:var(--danger)}
+
+.cmpbar{display:none;flex-wrap:wrap;gap:7px;align-items:center;margin-bottom:9px;padding:9px 11px;
+  border:1px solid rgba(34,211,238,.3);background:rgba(34,211,238,.06);border-radius:11px}
+.cmpbar.on{display:flex}
+.cmpbar .lbl{font-family:var(--mono);font-size:10px;color:var(--cyan);letter-spacing:.6px;text-transform:uppercase}
+.mchip{font-family:var(--mono);font-size:10.5px;padding:4px 9px;border-radius:99px;cursor:pointer;
+  border:1px solid var(--border);background:var(--panel2);color:var(--muted);transition:all .15s}
+.mchip:hover{border-color:var(--border-hi);color:var(--text)}
+.mchip.on{background:rgba(34,211,238,.17);border-color:rgba(34,211,238,.5);color:#a5f3fc}
+
+.composer{display:flex;gap:8px;align-items:flex-end;padding:9px;border-radius:16px;
+  border:1px solid var(--border);background:rgba(10,10,17,.72);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+  transition:border-color .18s,box-shadow .18s}
+.composer:focus-within{border-color:rgba(123,92,255,.55);box-shadow:0 0 0 3.5px rgba(123,92,255,.11)}
+.cbtn{width:38px;height:38px;flex-shrink:0;border:1px solid var(--border);border-radius:11px;cursor:pointer;
+  background:var(--panel2);color:var(--muted);display:grid;place-items:center;transition:all .15s}
+.cbtn:hover{color:var(--text);border-color:var(--border-hi);background:var(--panel3)}
+.cbtn.on{background:rgba(34,211,238,.17);border-color:rgba(34,211,238,.5);color:#67e8f9}
+.cbtn.rec{background:rgba(251,113,133,.22);border-color:rgba(251,113,133,.6);color:#fb7185;animation:micpulse 1s ease-in-out infinite}
+@keyframes micpulse{0%,100%{box-shadow:0 0 0 0 rgba(251,113,133,.5)}50%{box-shadow:0 0 0 6px rgba(251,113,133,0)}}
+/* collapsible composer tools: on wide screens show everything, hide the ＋ toggle */
+#moreBtn{display:none}
+.composer.tools-open #moreBtn{background:rgba(123,92,255,.2);border-color:rgba(123,92,255,.5);color:var(--violet-2);transform:rotate(45deg)}
+@media(max-width:640px){
+  #moreBtn{display:inline-flex}
+  .composer .cbtn.tool{display:none}
+  .composer.tools-open .cbtn.tool{display:inline-flex}
+  /* Attaching a file is a core action, not a "tool": on a phone the + button
+     opens the drawer, so an attach button hidden behind it was unreachable.
+     Keep it in the composer, always visible. */
+  .composer #attachBtn{display:inline-flex!important}
+  /* Settings becomes a full-screen sheet so it's always reachable on phones */
+  #settingsOverlay{padding:0;align-items:stretch}
+  #settingsOverlay .modal{max-width:none;width:100%;height:100dvh;max-height:100dvh;border-radius:0;
+    padding:56px 15px calc(20px + env(safe-area-inset-bottom))}
+  #settingsX{position:fixed;top:12px;inset-inline-end:12px;width:38px;height:38px;font-size:20px;
+    background:var(--violet);color:#fff;border-color:transparent;box-shadow:0 4px 16px rgba(0,0,0,.4)}
+}
+.cbtn svg{width:17px;height:17px}
+#msgBox{flex:1;resize:none;border:none;background:transparent;color:var(--text);font-size:14.5px;outline:none;
+  padding:10px 6px;max-height:190px;line-height:1.65}
+#msgBox::placeholder{color:var(--dim)}
+#sendBtn{width:38px;height:38px;flex-shrink:0;border:none;border-radius:11px;cursor:pointer;
+  background:linear-gradient(135deg,var(--violet),var(--cyan));display:grid;place-items:center;
+  box-shadow:0 5px 16px rgba(123,92,255,.36);transition:transform .12s,opacity .15s}
+#sendBtn:active:not(:disabled){transform:scale(.93)}
+#sendBtn:disabled{opacity:.35;cursor:default;box-shadow:none}
+#sendBtn svg{width:16px;height:16px}
+.hint{text-align:center;font-family:var(--mono);font-size:9.5px;color:var(--dim);margin-top:8px}
+
+/* ---- Modal ---- */
+.overlay{display:none;position:fixed;inset:0;z-index:80;background:rgba(4,4,9,.72);backdrop-filter:blur(7px);
+  align-items:center;justify-content:center;padding:22px}
+.overlay.on{display:flex}
+.modal{width:100%;max-width:400px;padding:28px 26px;border-radius:var(--r-lg);max-height:88vh;overflow-y:auto;
+  box-shadow:0 30px 90px rgba(0,0,0,.65)}
+.modal h3{margin:0 0 5px;font-size:17px;font-weight:650}
+.modal .msub{color:var(--muted);font-size:12px;margin:0 0 20px;font-family:var(--mono)}
+.modal-actions{display:flex;gap:9px;margin-top:8px}
+.modal-actions .btn{margin-top:0}
+.mfoot{color:var(--dim);font-size:10.5px;margin:18px 0 0;text-align:center;font-family:var(--mono);line-height:1.7}
+.keyrow{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);font-size:12px}
+.keyrow:last-child{border-bottom:none}
+.keyrow .kn{flex:1}
+.keyrow .kst{font-family:var(--mono);font-size:10px;padding:2px 7px;border-radius:5px}
+.kst.yes{background:rgba(52,211,153,.14);color:#6ee7b7}
+.kst.no{background:rgba(255,255,255,.06);color:var(--dim)}
+
+/* ---- Toolkit ---- */
+.tk-shell{width:100%;max-width:820px;height:min(88vh,720px);border-radius:var(--r-lg);display:flex;flex-direction:column;overflow:hidden;box-shadow:0 30px 90px rgba(0,0,0,.66)}
+.tk-head{display:flex;align-items:center;gap:12px;padding:15px 18px;border-bottom:1px solid var(--border);flex-shrink:0}
+.tk-title{display:flex;align-items:center;gap:9px;font-size:15px;font-weight:650;flex:1}
+.tk-badge{font-family:var(--mono);font-size:9.5px;color:#7ee7c7;background:rgba(52,211,153,.11);border:1px solid rgba(52,211,153,.3);
+  border-radius:99px;padding:3px 9px;font-weight:500;letter-spacing:.3px}
+.tk-tabs{display:flex;flex-wrap:wrap;gap:5px;padding:12px 14px 6px;flex-shrink:0}
+.tk-tab{display:flex;align-items:center;gap:7px;padding:7px 12px;border-radius:10px;cursor:pointer;white-space:nowrap;
+  background:transparent;border:1px solid transparent;border-bottom:none;color:var(--muted);font-size:12.5px;transition:all .15s}
+.tk-tab svg{width:14px;height:14px}
+.tk-tab:hover{color:var(--text);background:var(--panel2)}
+.tk-tab.on{background:var(--panel2);border-color:var(--border);color:#fff}
+.tk-body{flex:1;overflow-y:auto;padding:20px;border-top:1px solid var(--border);margin-top:-1px}
+.tk-panel{display:flex;flex-direction:column;gap:15px}
+.tk-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+/* Board composer: the textarea gets its own line, and the buttons sit in a
+   single row below it. Putting them in one wrapping flex row made them stack
+   one per line on a narrow screen. */
+.board-compose{display:flex;flex-direction:column;gap:8px}
+.board-compose #boardText{width:100%;font-size:15px;resize:none;line-height:1.7}
+.board-actions{display:flex;gap:7px;align-items:center}
+.board-actions .bc-icon{padding:9px 0;width:44px;flex:0 0 auto;font-size:16px;text-align:center}
+.board-actions #boardSend{flex:1;padding:10px 16px}
+.tk-input{flex:1;min-width:140px;background:rgba(0,0,0,.3);border:1px solid var(--border);color:var(--text);border-radius:10px;
+  padding:10px 13px;font-size:13px;outline:none;font-family:var(--mono);transition:border-color .15s}
+.tk-input:focus{border-color:rgba(34,211,238,.6)}
+.tk-btn{border:none;border-radius:10px;padding:10px 16px;font-size:13px;font-weight:600;color:#04121a;cursor:pointer;white-space:nowrap;
+  background:linear-gradient(135deg,var(--cyan),#4ade9e);box-shadow:0 5px 16px rgba(34,211,238,.28);transition:transform .12s,opacity .15s}
+.tk-btn:active:not(:disabled){transform:scale(.97)}
+.tk-btn:disabled{opacity:.5;cursor:default;box-shadow:none}
+.tk-hint{font-size:11.5px;color:var(--dim);line-height:1.6}
+.tk-warn{font-size:11.5px;color:#fcd34d;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.26);
+  border-radius:10px;padding:9px 12px;line-height:1.65}
+.tk-card{border:1px solid var(--border);border-radius:12px;background:rgba(255,255,255,.02);overflow:hidden}
+.tk-card-h{padding:9px 13px;background:var(--panel2);border-bottom:1px solid var(--border);font-size:11.5px;font-weight:600;
+  font-family:var(--mono);color:var(--muted);letter-spacing:.4px;display:flex;align-items:center;gap:7px}
+.tk-card-b{padding:12px 14px}
+.tk-table{width:100%;border-collapse:collapse;font-size:12.5px;font-family:var(--mono)}
+.tk-table th,.tk-table td{padding:7px 10px;text-align:start;border-bottom:1px solid var(--border)}
+.tk-table th{color:var(--dim);font-weight:600;font-size:10.5px;text-transform:uppercase;letter-spacing:.5px}
+.tk-table tr:last-child td{border-bottom:none}
+.st-open{color:var(--ok)}.st-closed{color:var(--muted)}.st-filtered{color:var(--dim)}
+.tk-kv{display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-bottom:1px solid var(--border);font-size:13px}
+.tk-kv:last-child{border-bottom:none}
+.tk-kv .k{color:var(--muted);font-family:var(--mono);font-size:12px}
+.tk-kv .v{font-family:var(--mono);text-align:end}
+.meter{height:9px;border-radius:99px;background:rgba(255,255,255,.07);overflow:hidden;margin:8px 0}
+.meter i{display:block;height:100%;border-radius:99px;transition:width .4s}
+.hashgrid{display:flex;flex-direction:column;gap:8px}
+.hashgrid .hg{display:flex;gap:8px;align-items:center;font-family:var(--mono);font-size:11.5px}
+.hashgrid .hg .a{color:var(--cyan);min-width:64px;flex-shrink:0}
+.hashgrid .hg .v{color:var(--muted);word-break:break-all;background:rgba(0,0,0,.25);padding:5px 8px;border-radius:6px;flex:1}
+.qrbox{display:flex;flex-direction:column;align-items:center;gap:12px;padding:6px}
+.qrbox .frame{width:200px;height:200px;padding:12px;border:1px solid var(--border);border-radius:16px;background:rgba(0,0,0,.3)}
+.qrbox .frame svg{width:100%;height:100%}
+.qrbox .u{font-family:var(--mono);font-size:13px;color:var(--cyan)}
+.spin{display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,.2);border-top-color:var(--cyan);border-radius:50%;animation:sp .7s linear infinite;vertical-align:middle}
+@keyframes sp{to{transform:rotate(360deg)}}
+.sim-tag{font-family:var(--mono);font-size:9.5px;color:#fcd34d;border:1px solid rgba(251,191,36,.4);border-radius:5px;padding:1px 6px;margin-inline-start:6px}
+
+/* ---- Responsive ---- */
+.scrim{display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:25;backdrop-filter:blur(2px)}
+@media(max-width:860px){
+  /* Nothing may be wider than the screen: an off-screen sidebar that still
+     reserves width in the flex row pushes the whole app sideways, which is
+     why the menu and gear ended up half outside the viewport. */
+  html,body{max-width:100%;overflow-x:hidden}
+  #appView{width:100%;max-width:100vw;overflow-x:hidden}
+  .main{width:100%;max-width:100vw;min-width:0}
+  .sidebar{position:fixed;inset-block:0;inset-inline-start:0;width:min(300px,86vw);
+    transform:translateX(-104%);transition:transform .25s cubic-bezier(.3,.8,.3,1);
+    box-shadow:0 0 50px rgba(0,0,0,.6)}
+  html[dir="rtl"] .sidebar{transform:translateX(104%)}
+  .sidebar.open{transform:none!important}
+  .scrim.on{display:block}
+  .burger{display:grid}
+  /* On a phone the top bar is gone entirely. Every control lives in the
+     bottom drawer instead, where a thumb reaches it — and the screen stops
+     being cut off by a row that never fitted. */
+  .topbar{display:none!important}
+  /* The composer must always be visible above the keyboard and the home bar. */
+  .composer{gap:6px;padding:8px}
+  .cbtn{width:38px;height:38px;flex:0 0 auto}
+  #msgBox{font-size:16px}   /* 16px stops iOS zooming in on focus */
+
+  /* Composer layout on a phone: the text box gets the full width on its own
+     line, and the controls sit underneath it. Cramming a menu button, an
+     attach button and a text field onto one line left the field too narrow
+     to read what you were typing. */
+  .composer{flex-wrap:wrap;gap:7px}
+  .composer #msgBox{order:1;flex:1 1 100%;min-width:0}
+  .composer .cbtn{order:2}
+  .composer #moreBtn{order:2}
+  .composer #attachBtn{order:3;display:inline-flex!important}
+  /* Voice sits next to Send, where a thumb expects it. */
+  .composer #micBtn{order:8;display:inline-flex!important;margin-inline-start:auto}
+  .composer #sendBtn{order:9}
+  /* Code blocks: wrap instead of forcing the whole page wider than the
+     screen. Long lines are why the chat could be scrolled sideways. */
+  .codewrap{max-width:100%}
+  .codewrap pre{white-space:pre-wrap;word-break:break-word;font-size:12px;padding:11px 12px}
+  .codewrap pre code{white-space:pre-wrap}
+  .msg,.content{max-width:100%;overflow-wrap:anywhere}
+  .content table{display:block;overflow-x:auto;max-width:100%}
+  .content img{max-width:100%;height:auto}
+  /* Panels must fit the screen and stay scrollable, not run off the edges. */
+  .modal{max-width:100%!important;width:100%;max-height:88dvh;overflow-y:auto;
+         border-radius:18px;padding:16px 14px calc(16px + env(safe-area-inset-bottom,0px))}
+  .overlay{padding:8px;align-items:flex-end}
+  .modal .input,.modal textarea{font-size:16px}
+  .modal-actions{position:sticky;bottom:0;background:inherit;padding-top:10px}
+  #scroll{padding:18px 14px 6px}
+  .composer-wrap{padding:6px 12px calc(12px + env(safe-area-inset-bottom,0px))}
+  .cards{grid-template-columns:1fr 1fr;gap:9px}
+  .card p{display:none}
+  .welcome{padding:26px 12px}
+  .welcome h2{font-size:20px}
+  .msg{gap:9px}
+}
+@media(max-width:480px){
+  .cards{grid-template-columns:1fr}
+  .topbar .sub{display:none}
+}
+/* --- Bottom sheet: on a phone the top bar has no room for admin buttons,
+   so everything moves into a drawer that slides up from the bottom, where
+   a thumb can actually reach it. --- */
+.sheet-scrim{position:fixed;inset:0;background:rgba(4,6,14,.42);-webkit-backdrop-filter:blur(7px);backdrop-filter:blur(7px);
+  opacity:0;pointer-events:none;transition:opacity .22s;z-index:98}
+.sheet-scrim.on{opacity:1;pointer-events:auto}
+/* Crystal drawer: frosted glass rather than a flat dark panel — a translucent
+   gradient over a heavy backdrop blur, a bright top facet, and a soft rim of
+   light so it reads like a pane of crystal sitting over the app. */
+.sheet{position:fixed;inset-inline:0;bottom:0;z-index:99;
+  background:linear-gradient(180deg,rgba(46,54,92,.66),rgba(12,15,30,.78));
+  -webkit-backdrop-filter:blur(28px) saturate(1.8);backdrop-filter:blur(28px) saturate(1.8);
+  border-top:1px solid rgba(255,255,255,.24);border-radius:24px 24px 0 0;
+  padding:8px 12px calc(12px + env(safe-area-inset-bottom,0px));
+  transform:translateY(103%);transition:transform .26s cubic-bezier(.3,.85,.3,1);
+  max-height:74vh;overflow-y:auto;
+  box-shadow:0 -24px 70px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.16), inset 0 0 40px rgba(123,92,255,.06)}
+.sheet.on{transform:none}
+.sheet-grip{width:40px;height:4px;border-radius:99px;margin:4px auto 10px;
+  background:linear-gradient(90deg,rgba(255,255,255,.15),rgba(255,255,255,.45),rgba(255,255,255,.15))}
+.sheet-title{font-size:10.5px;color:var(--muted);letter-spacing:.06em;margin:9px 4px 5px;font-weight:700;opacity:.85}
+.sheet-item{display:flex;align-items:center;gap:11px;width:100%;padding:9px 12px;margin-bottom:4px;
+  border-radius:12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.11);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.07);
+  color:var(--text);font-size:13px;font-family:inherit;text-align:start;cursor:pointer;
+  transition:background .15s,box-shadow .15s,border-color .15s}
+.sheet-item:hover{background:rgba(255,255,255,.10);border-color:rgba(167,139,250,.35)}
+.sheet-item:active{background:rgba(255,255,255,.16)}
+.sheet-item svg{width:17px;height:17px;flex:0 0 auto;color:var(--cyan)}
+.sheet-item .si-sub{display:block;font-size:10px;color:var(--muted);margin-top:1px;font-weight:400;opacity:.8}
+.sheet-item .si-txt{flex:1;font-weight:600}
+.sheet-badge{background:var(--cyan);color:#04121e;border-radius:99px;padding:2px 9px;font-size:11px;font-weight:700}
+@media(max-width:860px){
+  /* Reclaim the top bar: the title needs the room next to the clock.
+     (A rule used to sit here trying to hide #ccBtn/#learnBtn/#adminBtn
+     inside .topbar — those buttons actually live in the sidebar, not the
+     topbar, so it never matched anything. Removed as dead weight; the
+     sidebar being off entirely on mobile now makes it moot anyway.) */
+  .topbar h1{font-size:15px}
+}
+@media(min-width:861px){ #sheetBtn{display:none} }
+
+/* ===== Real per-device rules, not just a width breakpoint =====
+   A phone and a tablet held sideways can report the same viewport width, but
+   they need different things: a phone wants everything stacked and reachable
+   by thumb; a tablet has room for two columns and doesn't need the bottom
+   sheet to eat the whole screen. This is keyed off data-device, set the
+   instant the page loads (see guessDeviceKind), not off width alone. */
+
+/* Phone: the drawer is a full sheet, tap targets stay large, nothing sits
+   side-by-side that doesn't have room to breathe. */
+html[data-device="phone"] .sheet-item{padding:11px 12px;min-height:44px}
+html[data-device="phone"] .modal{max-width:94vw!important;border-radius:16px 16px 0 0!important;
+  position:fixed;bottom:0;inset-inline:0;max-height:88vh;overflow-y:auto;margin:0}
+html[data-device="phone"] .cc-group{gap:8px}
+html[data-device="phone"] .cc-group .cctab{padding:9px 14px;font-size:12.5px}
+html[data-device="phone"] .composer{padding:10px 12px}
+
+/* Tablet: enough width for two columns of buttons, so the control centre
+   doesn't force a single scrolling list the way a phone does. Drawer stays
+   (no room for a permanent sidebar in portrait), but panels get breathing
+   room instead of stretching full-width. */
+html[data-device="tablet"] .modal{max-width:640px!important}
+html[data-device="tablet"] .cc-group{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+html[data-device="tablet"] .cc-group .cctab{width:100%}
+html[data-device="tablet"] #sheet{max-width:420px;inset-inline:auto;inset-inline-end:0;
+  border-radius:16px 0 0 16px;height:100vh;top:0}
+
+/* Touch-desktop (a touchscreen laptop, or a tablet with a keyboard docked):
+   desktop layout, just with slightly larger tap targets than a mouse needs. */
+html[data-device="touch-desktop"] .sheet-item,
+html[data-device="touch-desktop"] .cbtn{min-height:44px}
+@keyframes notifIn{ from{opacity:0;transform:translate(-50%,-12px)} to{opacity:1;transform:translate(-50%,0)} }
+@keyframes pulse{ 0%,100%{opacity:1} 50%{opacity:.3} }
+/* Control-centre tabs, grouped so ten of them are scannable instead of a wall. */
+.cc-group-label{font-size:10.5px;color:var(--muted);letter-spacing:.05em;margin:10px 2px 5px;opacity:.7}
+.cc-group{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:4px}
+.cc-group .cctab{padding:6px 12px;font-size:12px}
+.cc-badge{background:#fb7185;color:#fff;border-radius:9px;padding:0 6px;font-size:10px;font-weight:700;margin-inline-start:4px}
+/* The drawer is now the single entry point on every screen size. */
+#moreBtn{display:inline-flex!important}
+/* Family accounts: a quieter surface. Fewer edges, more room for the words. */
+.simple-mode .composer{padding:10px}
+.simple-mode #msgBox{font-size:15.5px}
+.simple-mode .welcome h2{font-size:20px}
+
+/* --- Calmer surface ---
+   Moving grids, scan lines and sweeps compete with the text for attention
+   and cost battery on a phone. A working tool should be quiet: the content
+   is the interesting part. Effects are dimmed everywhere and switched off
+   entirely on small screens. --- */
+.grid{opacity:.30}
+.scan{opacity:.16}
+.sweep{opacity:.35}
+@media(max-width:860px){
+  .grid,.scan,.sweep{display:none!important}
+  #fx3d{display:none!important}
+  .bg::before{opacity:.5}
+  /* Breathing room and a comfortable reading size on a phone. */
+  #scroll{padding:16px 15px 8px}
+  .msg{font-size:15px;line-height:1.85}
+  .welcome h2{font-size:19px;margin-bottom:6px}
+  .composer{gap:5px}
+  .cbtn{width:38px;height:38px}
+  .composer-wrap{padding:6px 10px calc(10px + env(safe-area-inset-bottom,0px))}
+  /* Keep the clock clear of the title. */
+  .topbar{padding-inline:10px}
+  .topbar h1{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:42vw}
+}
