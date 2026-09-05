@@ -156,7 +156,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.30';
+const APP_VERSION = '9.9.31';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -721,6 +721,13 @@ function requireAdmin(req, res, next) {
   if (!isAdmin(req.username)) return res.status(403).json({ error: 'دسترسی ادمین لازم است' });
   next();
 }
+
+// Step-up re-auth lives in auth-stepup.js. It is registered HERE, early, so
+// requireStepUp is a value before the admin/home routes that use it as
+// middleware are defined (Express evaluates middleware at registration time).
+const requireStepUp = require('./auth-stepup').register(app, {
+  requireAuth, loginLimiter, users, bcrypt, DUMMY_HASH,
+}).requireStepUp;
 
 app.get('/api/admin/presence', requireAuth, requireAdmin, (req, res) => {
   res.json({ users: whoIsOnline() });
@@ -6404,48 +6411,6 @@ codeLib.register(app, { requireAuth, requireAdmin, upload });
 
 // ---------------- Extensions (user plugins) — routes/plugins.js ----------------
 const pluginRoutes = require('./routes/plugins').register(app, { requireAuth, toolLimiter, PLUGINS_DIR, APP_VERSION });
-
-// ---------------- Step-up re-authentication ----------------
-//
-// Being signed in is enough for ordinary use. It is not enough to delete an
-// account, change who may control the television, or remove a device: those
-// are the actions someone would take with a phone that was left unlocked on a
-// table. So they ask for the password again, once, and the answer is good for
-// five minutes of work rather than for the whole session.
-//
-// The proof is a separate short-lived token bound to the session that earned
-// it. A stolen session token alone cannot perform any of these actions.
-
-const STEPUP_TTL_MS = 5 * 60 * 1000;
-const stepUps = new Map();               // step-up token -> { session, username, expires }
-
-function issueStepUp(sessionToken, username) {
-  const t = crypto.randomBytes(24).toString('hex');
-  stepUps.set(t, { session: sessionToken, username, expires: Date.now() + STEPUP_TTL_MS });
-  return t;
-}
-
-setInterval(() => {
-  const now = Date.now();
-  for (const [t, v] of stepUps) if (v.expires < now) stepUps.delete(t);
-}, 60 * 1000).unref();
-
-function requireStepUp(req, res, next) {
-  const t = String(req.headers['x-stepup'] || '');
-  const v = t ? stepUps.get(t) : null;
-  if (!v || v.expires < Date.now() || v.session !== req.token || v.username !== req.username) {
-    return res.status(401).json({ error: 'برای این کار رمز را دوباره وارد کنید.', stepUpRequired: true });
-  }
-  next();
-}
-
-app.post('/api/reauth', requireAuth, loginLimiter, async (req, res) => {
-  const password = String((req.body || {}).password || '');
-  const stored = users.get(req.username);
-  const ok = stored ? await bcrypt.compare(password, stored) : await bcrypt.compare(password, DUMMY_HASH);
-  if (!ok) return res.status(401).json({ error: 'رمز درست نیست.' });
-  res.json({ stepUp: issueStepUp(req.token, req.username), validForMinutes: STEPUP_TTL_MS / 60000 });
-});
 
 
 // ---------------- Home devices ----------------

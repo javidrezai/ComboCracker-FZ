@@ -50,7 +50,14 @@ npm test
 مجموعهٔ تستِ مسیرهای حیاتی (ورود، پیکربندی، حافظه، کانکتورها، SPA) با تست‌ران داخلی Node — بدون وابستگی جدید. سرور روی پورت موقت با داده‌های موقت اجرا می‌شود و داده‌های واقعی را دست نمی‌زند. Critical-path smoke tests via Node's built-in runner; boots the server on a temp port with throwaway state.
 
 ## نسخه / Version
-9.9.30
+9.9.31
+
+### تغییرات ۹.۹.۳۱ / Changelog 9.9.31 — ادامهٔ بخش‌بندی سرور (تأیید هویت دومرحله‌ای)
+- **جدا کردن «تأیید مجددِ رمز» (step-up) به `auth-stepup.js`** (قانون ۳.۴): توکنِ کوتاه‌عمرِ ۵ دقیقه‌ای برای کارهای حساس (حذف حساب/دستگاه، تغییر دسترسی تلویزیون). رفتار دقیقاً همان است.
+- **نکتهٔ احتیاطی:** `requireStepUp` میان‌افزارِ امنیتی است و در مسیرهایی *قبل از* محل تعریفش استفاده می‌شد؛ چون Express میان‌افزار را هنگام «ثبت مسیر» ارزیابی می‌کند، ماژول را **زودتر** (قبل از آن مسیرها) ثبت کردم تا سرور موقع بالا آمدن نخوابد. با تست تأیید شد.
+- `index.js` به **۸٬۳۶۵** خط رسید (از ابتدای این شاخه ~۵۷۵ خط سبک‌تر، در ۵ ماژول).
+- **تست جدید:** رمز اشتباه ۴۰۱، رمز درست توکن می‌دهد، و مسیرِ محافظت‌شده بدون توکن ۴۰۱ با `stepUpRequired` — مجموع تست‌ها ۱۹ و همه سبز.
+  Extracted step-up re-authentication into `auth-stepup.js`; registered early so the security middleware is defined before the routes that use it (Express evaluates middleware at registration time). Behavior unchanged; 19/19 tests green.
 
 ### تغییرات ۹.۹.۳۰ / Changelog 9.9.30 — ادامهٔ بخش‌بندی سرور (افزونه‌ها)
 - **جدا کردن مسیرهای افزونه به `routes/plugins.js`** (قانون ۳.۴): فهرست، بارگذاری مجدد، و اجرای افزونه. ماژول مالکِ لیستِ `PLUGINS` است (که با `/api/plugins/reload` تازه می‌شود) و `okCount()` را برای خطِ استارتاپ برمی‌گرداند؛ `require('./extensions')` بلااستفاده از `index.js` حذف شد.

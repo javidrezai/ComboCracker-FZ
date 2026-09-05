@@ -231,6 +231,24 @@ test('code library create, list, read, and delete round-trip', async () => {
   assert.ok(!after.some((l) => l.name === name), 'deleted library should be gone');
 });
 
+test('step-up re-auth issues a token and guards sensitive routes', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+
+  // Wrong password is refused.
+  const bad = await api('/api/reauth', { method: 'POST', token, body: { password: 'nope' } });
+  assert.equal(bad.status, 401);
+
+  // Correct password mints a short-lived step-up token.
+  const good = await api('/api/reauth', { method: 'POST', token, body: { password: ADMIN.password } });
+  assert.equal(good.status, 200);
+  assert.ok((await good.json()).stepUp, 'expected a step-up token');
+
+  // A step-up-guarded route rejects a normal session with a clear signal.
+  const guarded = await api('/api/admin/delete', { method: 'POST', token, body: { username: 'nobody' } });
+  assert.equal(guarded.status, 401);
+  assert.equal((await guarded.json()).stepUpRequired, true);
+});
+
 test('plugins endpoint reports a clean list and reloads', async () => {
   const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
 
