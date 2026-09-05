@@ -155,7 +155,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.20';
+const APP_VERSION = '9.9.21';
 
 // Loaded at boot and refreshable at runtime via /api/plugins/reload.
 let PLUGINS = extensions.loadPlugins(PLUGINS_DIR);
@@ -2433,6 +2433,69 @@ async function callAnthropicWithTools(providerId, model, systemPrompt, messages,
   return 'متأسفانه بعد از چند بار استفاده از ابزار، پاسخ نهایی آماده نشد — دوباره امتحان کن.';
 }
 
+// Tool-calling for OpenAI-compatible engines (Gemini, Groq, OpenRouter, …).
+// Same tools and the same dispatchTool() as Anthropic, so Gmail/Calendar/etc.
+// now work on the free engines the family actually uses — not just Claude.
+// If the chosen model doesn't support tools, it falls back to a plain chat so
+// the user still gets an answer.
+function openAiToolsFrom(ctx) {
+  return toolsFor(ctx).map((t) => ({
+    type: 'function',
+    function: { name: t.name, description: t.description, parameters: t.input_schema },
+  }));
+}
+async function callOpenAiWithTools(providerId, model, systemPrompt, messages, ctx, opts) {
+  opts = opts || {};
+  const tools = openAiToolsFrom(ctx);
+  if (!tools.length) return callOpenAiCompatible(providerId, model, systemPrompt, messages, false, opts);
+  if (providerId === 'gemini') model = GEMINI_MODEL;
+  const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${keys[providerId]}` };
+  if (providerId === 'openrouter') headers['X-Title'] = 'Setayesh AI';
+
+  let convo = [{ role: 'system', content: systemPrompt }, ...messages];
+  for (let round = 0; round < 4; round++) {
+    const res = await fetchWithTimeout(`${baseUrlFor(providerId)}/chat/completions`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(Object.assign(
+        { model, max_tokens: opts.maxTokens || 4096, messages: convo, tools, tool_choice: 'auto' },
+        opts.steady ? { temperature: 0.3 } : {})),
+    });
+    if (!res.ok) {
+      const detail = await res.text();
+      // Some free models reject `tools` outright — don't fail the chat over it,
+      // answer without tools instead.
+      if ((res.status === 400 || res.status === 404 || res.status === 422) && /tool|function/i.test(detail)) {
+        return callOpenAiCompatible(providerId, model, systemPrompt, messages, false, opts);
+      }
+      throw Object.assign(new Error('provider error'), { status: res.status, detail });
+    }
+    const data = await res.json();
+    const msg = ((data.choices || [])[0] || {}).message;
+    if (!msg) return '';
+    const calls = msg.tool_calls || [];
+    if (!calls.length) {
+      const c = msg.content;
+      return Array.isArray(c) ? c.filter((p) => p && p.type === 'text').map((p) => p.text).join('\n') : (c || '');
+    }
+    convo.push({ role: 'assistant', content: msg.content || '', tool_calls: calls });
+    for (const call of calls) {
+      let args = {};
+      try { args = JSON.parse((call.function && call.function.arguments) || '{}'); } catch (e) { args = {}; }
+      const result = await dispatchTool(call.function.name, args, ctx);
+      convo.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(result).slice(0, 8000) });
+    }
+  }
+  return 'متأسفانه بعد از چند بار استفاده از ابزار، پاسخ نهایی آماده نشد — دوباره امتحان کن.';
+}
+
+// One entry point for a tool-enabled call, whichever engine family answers.
+function callWithTools(providerId, model, systemPrompt, messages, ctx, opts) {
+  return PROVIDERS[providerId].kind === 'anthropic'
+    ? callAnthropicWithTools(providerId, model, systemPrompt, messages, ctx)
+    : callOpenAiWithTools(providerId, model, systemPrompt, messages, ctx, opts);
+}
+
 // Gemini's native API reads images AND PDFs directly (including scanned PDFs,
 // which it OCRs) with no extra dependency. When the user attaches files and the
 // chosen engine is Gemini, we go native instead of the OpenAI-compat shim so
@@ -3172,9 +3235,7 @@ app.post('/api/chat', requireAuth, chatLimiter, upload.array('files', 8), async 
     // really happened rather than assumptions.
     const reply = useGeminiNative
       ? await callGeminiNative(GEMINI_MODEL, systemPrompt, safeHistory, outboundMessage, req.files, { search: doGrounding || explicitSearch })
-      : target.id === 'anthropic'
-        ? await callAnthropicWithTools(target.id, target.model, systemPrompt, messages, toolCtx)
-        : await callProvider(target.id, target.model, systemPrompt, messages, callOpts);
+      : await callWithTools(target.id, target.model, systemPrompt, messages, toolCtx, callOpts);
     // Report which engine actually answered (grounding borrows Gemini).
     const answeredGemini = useGeminiNative;
     const outProvider = answeredGemini ? 'gemini' : target.id;
@@ -3234,9 +3295,7 @@ app.post('/api/chat', requireAuth, chatLimiter, upload.array('files', 8), async 
           const altModel = (PROVIDERS[altId].models[0] || {}).id;
           if (altId === 'gemini') await ensureGeminiModel();
           const altPrompt = promptFor(req.username, req.body.mode, safe, req.body.codelib, message);
-          const altReply = altId === 'anthropic'
-            ? await callAnthropicWithTools(altId, altModel, altPrompt, messages, toolCtx)
-            : await callProvider(altId, altModel, altPrompt, messages, callOpts);
+          const altReply = await callWithTools(altId, altModel, altPrompt, messages, toolCtx, callOpts);
           if (!altReply) continue;
 
           noteEngine(altId, true);
@@ -4964,6 +5023,51 @@ app.post('/api/admin/notify-test', requireAuth, requireAdmin, async (req, res) =
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ---------------- Self-healing: capture + alert (never auto-apply) ----------------
+// Charter rule 1.4: Setayesh CAPTURES and REPORTS live errors, it never edits
+// its own code automatically. A crash-worthy error is logged with its stack,
+// kept as a structured incident, and the owner is alerted (notification + email
+// if configured). The fix stays a human, admin-approved action (propose_change).
+const INCIDENTS_FILE = process.env.SETAYESH_INCIDENTS_FILE || path.join(DATA_DIR, '.setayesh-incidents.json');
+let incidents = loadJsonFile(INCIDENTS_FILE, []);
+if (!Array.isArray(incidents)) incidents = [];
+let _lastIncidentAlert = 0;
+function recordIncident(kind, err) {
+  try {
+    const e = err || {};
+    const item = {
+      id: crypto.randomBytes(6).toString('hex'),
+      at: new Date().toISOString(),
+      kind,
+      message: String((e && e.message) || e).slice(0, 300),
+      stack: (e && e.stack ? String(e.stack) : '').split('\n').slice(0, 8).join('\n').slice(0, 1200),
+    };
+    incidents.push(item);
+    if (incidents.length > 50) incidents = incidents.slice(-50);
+    saveJsonFile(INCIDENTS_FILE, incidents);
+    // Alert at most once every 10 minutes so an error storm can't bury the inbox.
+    if (Date.now() - _lastIncidentAlert > 10 * 60000) {
+      _lastIncidentAlert = Date.now();
+      Promise.resolve(notifyOwner({
+        level: 'urgent',
+        title: 'خطای سرور ثبت شد',
+        body: `${kind}: ${item.message}\n(ستایش سرِ پا ماند. برای رفع، از «پیشنهاد تغییر» با تأیید خودت استفاده کن.)`,
+        board: false,
+      })).catch(() => {});
+    }
+    return item;
+  } catch (e2) { return null; }
+}
+
+app.get('/api/admin/incidents', requireAuth, requireAdmin, (req, res) => {
+  res.json({ incidents: incidents.slice().reverse().slice(0, 50), count: incidents.length });
+});
+app.post('/api/admin/incidents/clear', requireAuth, requireAdmin, (req, res) => {
+  incidents = [];
+  saveJsonFile(INCIDENTS_FILE, incidents);
+  res.json({ ok: true });
+});
+
 // ---------------- Multi-file projects & multi-language run ----------------
 // A child asks before doing something that matters, and only the father says
 // yes. That rule is the whole design here: Setayesh can PREPARE a project and
@@ -5766,10 +5870,46 @@ function runBackup(reason) {
 // Daily, plus one at startup (scheduled below, after the server is listening).
 setInterval(() => runBackup('daily'), 24 * 60 * 60 * 1000).unref();
 
+// Zero-knowledge encrypted backup (charter rule 1.2 / roadmap §5). The backup
+// zip is encrypted on THIS machine with AES-256-GCM before it ever leaves —
+// the key is derived from the owner's passphrase (scrypt) and never stored, so
+// whatever cloud it's later uploaded to only ever holds unreadable bytes.
+// Decrypt anywhere with the shipped decrypt-backup.js (Node built-ins only).
+function runEncryptedBackup(passphrase, reason) {
+  const pass = String(passphrase || '');
+  if (pass.length < 8) throw new Error('رمز پشتیبان حداقل ۸ کاراکتر لازم است.');
+  const files = backupTargets();
+  if (!files.length) throw new Error('چیزی برای پشتیبان‌گیری نیست.');
+  fs.mkdirSync(BACKUP_DIR, { recursive: true });
+  const entries = files.map((f) => ({ name: path.basename(f), data: fs.readFileSync(f) }));
+  entries.push({ name: '_info.txt', data: Buffer.from(
+    `Setayesh AI encrypted backup\nversion: ${APP_VERSION}\nwhen: ${new Date().toISOString()}\nreason: ${reason || 'manual'}\nfiles: ${files.length}\n`, 'utf8') });
+  const zip = buildZip(entries);
+
+  const salt = crypto.randomBytes(16);
+  const iv = crypto.randomBytes(12);
+  const key = crypto.scryptSync(pass, salt, 32);
+  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+  const enc = Buffer.concat([cipher.update(zip), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  // Format: magic "STYS1"(5) | salt(16) | iv(12) | authTag(16) | ciphertext
+  const blob = Buffer.concat([Buffer.from('STYS1', 'ascii'), salt, iv, tag, enc]);
+
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  const out = path.join(BACKUP_DIR, `backup-${stamp}.enc`);
+  fs.writeFileSync(out, blob, { mode: 0o600 });
+  return { file: path.basename(out), bytes: blob.length, files: files.length };
+}
+
+app.post('/api/admin/backups/encrypt', requireAuth, requireAdmin, (req, res) => {
+  try { res.json({ ok: true, backup: runEncryptedBackup((req.body || {}).passphrase, 'manual-encrypted') }); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+});
+
 app.get('/api/admin/backups', requireAuth, requireAdmin, (req, res) => {
   let list = [];
   try {
-    list = fs.readdirSync(BACKUP_DIR).filter((f) => /^backup-.*\.zip$/.test(f)).sort().reverse()
+    list = fs.readdirSync(BACKUP_DIR).filter((f) => /^backup-.*\.(zip|enc)$/.test(f)).sort().reverse()
       .map((f) => {
         const st = fs.statSync(path.join(BACKUP_DIR, f));
         return { name: f, size: st.size, at: st.mtime.toISOString() };
@@ -5786,7 +5926,7 @@ app.post('/api/admin/backups/run', requireAuth, requireAdmin, (req, res) => {
 
 app.get('/api/admin/backups/:name', requireAuth, requireAdmin, (req, res) => {
   const name = String(req.params.name || '');
-  if (!/^backup-[\w-]+\.zip$/.test(name)) return res.status(400).json({ error: 'نامعتبر' });
+  if (!/^backup-[\w-]+\.(zip|enc)$/.test(name)) return res.status(400).json({ error: 'نامعتبر' });
   const full = path.resolve(BACKUP_DIR, name);
   if (!full.startsWith(path.resolve(BACKUP_DIR) + path.sep) || !fs.existsSync(full)) {
     return res.status(404).json({ error: 'پیدا نشد' });
@@ -8632,11 +8772,13 @@ process.on('uncaughtException', (err) => {
   if (err && err.stack) console.error('   ' + err.stack.split('\n').slice(1, 3).join('\n   '));
   try { fs.appendFileSync(path.join(DATA_DIR, 'error.log'),
     `\n[${new Date().toISOString()}] ${err && err.stack ? err.stack : err}\n`); } catch (e) {}
+  try { recordIncident('uncaughtException', err); } catch (e) {}
 });
 process.on('unhandledRejection', (reason) => {
   console.error('   ⚠ Unhandled promise rejection (server kept running):', reason && reason.message ? reason.message : reason);
   try { fs.appendFileSync(path.join(DATA_DIR, 'error.log'),
     `\n[${new Date().toISOString()}] rejection: ${reason && reason.stack ? reason.stack : reason}\n`); } catch (e) {}
+  try { recordIncident('unhandledRejection', reason); } catch (e) {}
 });
 server.on('error', (err) => {
   if (err && err.code === 'EADDRINUSE') {

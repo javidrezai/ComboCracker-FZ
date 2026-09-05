@@ -140,3 +140,40 @@ test('unknown paths fall through to the SPA shell', async () => {
   assert.equal(r.status, 200);
   assert.match(r.headers.get('content-type') || '', /text\/html/);
 });
+
+test('self-heal incidents endpoint starts empty', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  const d = await (await api('/api/admin/incidents', { token })).json();
+  assert.ok(Array.isArray(d.incidents), 'expected an incidents array');
+  assert.equal(d.count, 0);
+});
+
+test('encrypted backup encrypts and decrypts back to a valid zip', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  const pass = 'test-passphrase-123';
+  const made = await api('/api/admin/backups/encrypt', { method: 'POST', token, body: { passphrase: pass } });
+  assert.equal(made.status, 200);
+  const name = (await made.json()).backup.file;
+  assert.match(name, /^backup-.*\.enc$/);
+
+  // The encrypted file lands in the temp backup dir this test configured.
+  const encPath = path.join(tmp, 'backups', name);
+  assert.ok(fs.existsSync(encPath), 'encrypted backup should exist on disk');
+  assert.equal(fs.readFileSync(encPath).slice(0, 5).toString('ascii'), 'STYS1');
+
+  // Decrypt it with the shipped standalone tool (built-ins only) and confirm
+  // we get a real zip back.
+  const outZip = path.join(tmp, 'restored.zip');
+  const dec = require('node:child_process').spawnSync(
+    process.execPath, [path.join(ROOT, 'decrypt-backup.js'), encPath, outZip],
+    { env: Object.assign({}, process.env, { SETAYESH_BACKUP_PASSPHRASE: pass }), encoding: 'utf8' });
+  assert.equal(dec.status, 0, 'decrypt tool should succeed: ' + (dec.stderr || ''));
+  assert.ok(fs.existsSync(outZip), 'decrypted zip should exist');
+  assert.equal(fs.readFileSync(outZip).slice(0, 2).toString('ascii'), 'PK', 'output should be a zip');
+
+  // Wrong passphrase must fail (authenticated encryption).
+  const bad = require('node:child_process').spawnSync(
+    process.execPath, [path.join(ROOT, 'decrypt-backup.js'), encPath, path.join(tmp, 'nope.zip')],
+    { env: Object.assign({}, process.env, { SETAYESH_BACKUP_PASSPHRASE: 'wrong-pass' }), encoding: 'utf8' });
+  assert.notEqual(bad.status, 0, 'wrong passphrase must not decrypt');
+});

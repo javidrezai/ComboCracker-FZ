@@ -50,7 +50,13 @@ npm test
 مجموعهٔ تستِ مسیرهای حیاتی (ورود، پیکربندی، حافظه، کانکتورها، SPA) با تست‌ران داخلی Node — بدون وابستگی جدید. سرور روی پورت موقت با داده‌های موقت اجرا می‌شود و داده‌های واقعی را دست نمی‌زند. Critical-path smoke tests via Node's built-in runner; boots the server on a temp port with throwaway state.
 
 ## نسخه / Version
-9.9.20
+9.9.21
+
+### تغییرات ۹.۹.۲۱ / Changelog 9.9.21 — سه قابلیت جدید
+- **۰۱ · Tool-calling همگانی**: ابزارها (Gmail، تقویم، اسکریپت‌ها) از انحصار Claude خارج شد و روی موتورهای OpenAI-سازگار (Gemini, Groq, OpenRouter, …) هم در چت کار می‌کند؛ اگر مدلی ابزار را نپذیرد، بی‌خطا به پاسخ عادی برمی‌گردد. Tools now work on non-Claude engines via OpenAI-style function calling, with graceful fallback.
+- **۰۲ · خودترمیمیِ امن**: خطاهای زنده (`uncaughtException`/rejection) به‌صورت incident ثبت و مدیر هشدار می‌گیرد (اعلان + ایمیل). طبق قانون ۱.۴ **هیچ کدی خودکار اعمال نمی‌شود** — رفع، دستیِ مدیر با «پیشنهاد تغییر» است. Endpoint: `/api/admin/incidents`. Live errors are captured as incidents and the admin is alerted; no code is auto-applied.
+- **۰۳ · بکاپ ابری رمزنگاری‌شده**: بکاپ با **AES-256-GCM** روی همین دستگاه رمزنگاری می‌شود (کلید از رمز عبورِ تو با scrypt؛ هرگز ذخیره نمی‌شود). فایل `.enc` را هرجا آپلود کن — ابر فقط دادهٔ غیرقابل‌خواندن می‌بیند. رمزگشایی با `decrypt-backup.js` (بدون وابستگی). Route: `/api/admin/backups/encrypt`. Zero-knowledge encrypted backup with a standalone decrypt tool.
+- هر سه **بدون وابستگیِ جدید** و با **تست خودکار** (اکنون ۱۱ تست، شامل رفت‌وبرگشت کامل رمزنگاری). All three: zero new deps, covered by tests (11 now).
 
 ### تغییرات ۹.۹.۲۰ / Changelog 9.9.20
 - **HTTPS محلی (قانون ۲.۲)**: اگر `tls-cert.pem` + `tls-key.pem` کنار برنامه (یا `SETAYESH_TLS_CERT/KEY`) باشد، سرور HTTPS می‌شود و ترافیک LAN/Tailscale رمزنگاری می‌شود — **بدون وابستگیِ جدید** (فقط `https` داخلی Node). چک سلامتِ خودترمیمی هم پروتکل‌آگاه شد. اگر گواهی نباشد، رفتار قبلی (HTTP) بدون تغییر می‌ماند. Optional local HTTPS with zero new dependencies; falls back to HTTP when no cert is present; the self-heal health probe is now protocol-aware.
