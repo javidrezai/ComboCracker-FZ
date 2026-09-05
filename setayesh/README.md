@@ -50,7 +50,12 @@ npm test
 مجموعهٔ تستِ مسیرهای حیاتی (ورود، پیکربندی، حافظه، کانکتورها، SPA) با تست‌ران داخلی Node — بدون وابستگی جدید. سرور روی پورت موقت با داده‌های موقت اجرا می‌شود و داده‌های واقعی را دست نمی‌زند. Critical-path smoke tests via Node's built-in runner; boots the server on a temp port with throwaway state.
 
 ## نسخه / Version
-9.9.22
+9.9.23
+
+### تغییرات ۹.۹.۲۳ / Changelog 9.9.23
+- **انبارهٔ محلیِ رمزنگاری‌شده روی دستگاه کاربر (با انقضا)**: ماژول `secure-store.js` — داده فقط در همین مرورگر (origin-scoped)، رمزنگاری‌شده با **AES-256-GCM (Web Crypto)** و با **تاریخ انقضا** ذخیره می‌شود؛ در DevTools فقط متنِ رمزی دیده می‌شود و پس از انقضا خودکار پاک می‌گردد — فقط خودِ برنامه می‌خواند. Encrypted, expiring, device-local store (`window.secureStore`): AES-256-GCM at rest, auto-purge on expiry, opaque in DevTools.
+  - **کاربرد نمونه**: `draft-cache.js` پیش‌نویسِ نافرستادهٔ کادر چت را رمزنگاری‌شده و با انقضای ۲ روزه نگه می‌دارد؛ بعد از ارسال یا انقضا پاک می‌شود. Example use: the unsent chat draft is kept encrypted with a 2-day expiry.
+  - نکتهٔ صادقانه: مرورگر keystore امنِ واقعی برای JS ندارد؛ این لایه در برابر بازرسیِ ساده، خواندنِ بین‌سایتی و داده‌ی کهنه محافظت می‌کند، نه مهاجمی با کنترل کاملِ دستگاه. رمز/توکنِ بلندمدت در آن نگذارید.
 
 ### تغییرات ۹.۹.۲۲ / Changelog 9.9.22
 - **آپلود بکاپ رمزنگاری‌شده به Google Drive**: از پنل «کانکتورها»، دکمهٔ «رمزنگاری و آپلود به Google Drive» — رمز پشتیبان را بده تا بکاپ با AES-256-GCM رمزنگاری و در پوشهٔ «Setayesh Backups» درایو آپلود شود (درایو فقط دادهٔ غیرقابل‌خواندن می‌بیند). One-click encrypted backup upload to Google Drive.
