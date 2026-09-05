@@ -50,7 +50,14 @@ npm test
 مجموعهٔ تستِ مسیرهای حیاتی (ورود، پیکربندی، حافظه، کانکتورها، SPA) با تست‌ران داخلی Node — بدون وابستگی جدید. سرور روی پورت موقت با داده‌های موقت اجرا می‌شود و داده‌های واقعی را دست نمی‌زند. Critical-path smoke tests via Node's built-in runner; boots the server on a temp port with throwaway state.
 
 ## نسخه / Version
-9.9.31
+9.9.32
+
+### تغییرات ۹.۹.۳۲ / Changelog 9.9.32 — جدا کردن زیرسیستمِ دستگاه‌های خانه (بدون ریسک)
+- **کل زیرسیستمِ «دستگاه‌های خانه» (~۱۳۵۰ خط) به `homedevices.js` منتقل شد**: اسکنر شبکه، درایورها (Samsung TV، چاپگر Canon با IPP، Tuya/LSC ابری، Xiaomi miio)، رجیستری دستگاه‌ها، ماتریسِ دسترسیِ هر کاربر، ارسال فرمان به سخت‌افزار، و همهٔ مسیرهای `/api/home/*`.
+- **روشِ «بدون ریسک»:** اول رفتار فعلی با **تست‌های characterization** قفل شد (درایورها، وضعیت اسکن، رجیستری، ماتریس دسترسی، گاردِ step-up)، بعد جابه‌جاییِ **کلمه‌به‌کلمه**، بعد همان تست‌ها دوباره سبز. وابستگی‌های ورودی با تحلیلِ ایستا **کاملاً و اثبات‌شده** استخراج شدند (رفت و برگشت). `http`/`https` که داخل همان بخش تعریف شده بودند و سرور اصلی هم لازمشان داشت، به بالای `index.js` منتقل شدند.
+- `index.js` از ۸٬۳۶۵ به **۷٬۰۰۹** خط رسید — بزرگ‌ترین کاهش تا کنون؛ از ابتدای این شاخه ~۱٬۹۳۰ خط سبک‌تر.
+- **تست‌های جدید:** زیرسیستم دستگاه‌های خانه — مجموع تست‌ها ۲۰ و همه سبز.
+  Moved the entire home-devices subsystem (~1350 lines: LAN scanner, Samsung/Canon/Tuya/Xiaomi drivers, registry, permission matrix, hardware command dispatch, all /api/home/* routes) into homedevices.js. Zero-risk method: characterization tests locked behavior first, then a verbatim move with a statically-proven-complete inbound-dependency set, then the same tests green. index.js drops to 7,009 lines (~1,930 lighter since this branch began). 20/20 tests green.
 
 ### تغییرات ۹.۹.۳۱ / Changelog 9.9.31 — ادامهٔ بخش‌بندی سرور (تأیید هویت دومرحله‌ای)
 - **جدا کردن «تأیید مجددِ رمز» (step-up) به `auth-stepup.js`** (قانون ۳.۴): توکنِ کوتاه‌عمرِ ۵ دقیقه‌ای برای کارهای حساس (حذف حساب/دستگاه، تغییر دسترسی تلویزیون). رفتار دقیقاً همان است.

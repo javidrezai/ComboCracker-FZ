@@ -58,6 +58,7 @@ before(async () => {
     SETAYESH_MEMORY_FILE: path.join(tmp, 'memory.json'),
     SETAYESH_DEVICES_FILE: path.join(tmp, 'devices.json'),
     SETAYESH_RAG_FILE: path.join(tmp, 'rag.json'),
+    SETAYESH_HOMEDEV_FILE: path.join(tmp, 'homedevices.json'),
   });
   child = spawn(process.execPath, [path.join(ROOT, 'index.js')], { cwd: tmp, env, stdio: 'ignore' });
   child.on('error', (e) => { throw e; });
@@ -229,6 +230,36 @@ test('code library create, list, read, and delete round-trip', async () => {
   assert.equal(del.status, 200);
   const after = (await del.json()).libs;
   assert.ok(!after.some((l) => l.name === name), 'deleted library should be gone');
+});
+
+test('home devices: drivers, scan state, empty registry, and step-up guard', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+
+  // Registry starts empty for the admin.
+  const list = await (await api('/api/home/devices', { token })).json();
+  assert.ok(Array.isArray(list.devices), 'expected a devices array');
+  assert.equal(list.admin, true);
+
+  // Drivers are enumerable (Samsung TV, Canon printer, Tuya, Xiaomi, ...).
+  const drv = await (await api('/api/home/drivers', { token })).json();
+  assert.ok(Array.isArray(drv.drivers) && drv.drivers.length > 0, 'expected a drivers list');
+  assert.ok(drv.drivers.every((d) => d.id && d.label), 'each driver has an id and label');
+
+  // Scanner reports an idle state before any scan.
+  const scan = await (await api('/api/home/scan', { token })).json();
+  assert.equal(scan.running, false);
+  assert.ok('found' in scan, 'scan state exposes a found array');
+
+  // The permission matrix and the log are readable.
+  const perms = await (await api('/api/home/permissions', { token })).json();
+  assert.ok(perms.perms && Array.isArray(perms.grants), 'expected perms and grants');
+  const log = await (await api('/api/home/log', { token })).json();
+  assert.ok(Array.isArray(log.log), 'expected a log array');
+
+  // Deleting a device is a sensitive action — refused without a step-up token.
+  const del = await api('/api/home/devices/anything', { method: 'DELETE', token });
+  assert.equal(del.status, 401);
+  assert.equal((await del.json()).stepUpRequired, true);
 });
 
 test('step-up re-auth issues a token and guards sensitive routes', async () => {
