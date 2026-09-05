@@ -108,6 +108,7 @@ const { PROVIDERS, MODES, systemPromptFor } = require('./providers');
 const toolkit = require('./toolkit');
 const extensions = require('./extensions');
 const { makeConnectors } = require('./connectors');
+const { makeTelegram } = require('./telegram');
 
 // When packaged into a single .exe the web assets are baked into a generated
 // module; in normal dev they're read from public/ on disk.
@@ -155,7 +156,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.23';
+const APP_VERSION = '9.9.24';
 
 // Loaded at boot and refreshable at runtime via /api/plugins/reload.
 let PLUGINS = extensions.loadPlugins(PLUGINS_DIR);
@@ -186,6 +187,10 @@ const cfg = readConfigFile();
 // 0600 store next to the app, never committed. Credentials come from cfg.
 const CONNECTORS_STORE = path.join(DATA_DIR, '.setayesh-connectors.json');
 const connectors = makeConnectors({ storeFile: CONNECTORS_STORE, getCfg: () => cfg });
+
+// Telegram connector — reach Setayesh from outside the house (long-polling,
+// answers only the whitelisted chat). See telegram.js.
+const telegram = makeTelegram({ getCfg: () => cfg });
 
 const keys = {};           // providerId -> api key
 for (const id of Object.keys(PROVIDERS)) {
@@ -4608,6 +4613,36 @@ app.get('/api/mail/inbox', requireAuth, async (req, res) => {
 // ---------------- Connectors: Google (Gmail + Calendar) — routes/connectors.js ----------------
 require('./routes/connectors').register(app, { requireAuth, requireAdmin, connectors, isAdmin });
 
+// ---------------- Telegram connector ----------------
+// An inbound message from the whitelisted chat is answered as the owner: same
+// engine routing and the same tools (Gmail/Calendar/…) via callWithTools, so
+// the family can drive Setayesh from their phone outside the house.
+async function runTelegramTurn(text) {
+  const msg = String(text || '').trim();
+  if (!msg) return '';
+  if (!anyConfigured()) return 'هنوز هیچ موتور هوش مصنوعی روی سرور تنظیم نشده — از مرکز کنترل یک کلید API اضافه کن.';
+  const adminUser = Array.from(users.keys()).find((u) => isAdmin(u)) || Array.from(users.keys())[0];
+  let target;
+  try { target = resolveTarget(undefined, undefined, adminUser); }
+  catch (e) { return e.message || 'موتوری در دسترس نیست.'; }
+  const systemPrompt = promptFor(adminUser, 'chat', false, null, msg);
+  const toolCtx = { preferredId: target.id, basePrompt: systemPrompt, message: msg, sideEffects: {}, pinned: !!target.pinned, isAdmin: true, username: adminUser };
+  const reply = await callWithTools(target.id, target.model, systemPrompt, [{ role: 'user', content: msg }], toolCtx, {});
+  return reply || '(پاسخی نیامد)';
+}
+
+app.get('/api/admin/telegram', requireAuth, requireAdmin, (req, res) => {
+  res.json(telegram.status());
+});
+app.post('/api/admin/telegram/test', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    if (!telegram.configured()) return res.status(400).json({ error: 'ابتدا توکن ربات تلگرام را در تنظیمات ذخیره کن.' });
+    const ok = await telegram.send('✅ ستایش به تلگرام وصل است.');
+    if (!ok) return res.status(400).json({ error: 'Chat ID تنظیم نشده — یک پیام به ربات بفرست تا شناسه‌ات را بگوید، بعد آن را در تنظیمات بگذار.' });
+    res.json({ ok: true });
+  } catch (e) { res.status(502).json({ error: e.message }); }
+});
+
 // ---------------- Night work & safe self-update ----------------
 // The dangerous idea in this whole app: change your own code while nobody is
 // awake. The only thing that makes it acceptable is that a failure repairs
@@ -4980,6 +5015,10 @@ async function notifyOwner(opts) {
   if ((item.level === 'needs-approval' || item.level === 'urgent') && cfg.NOTIFY_EMAIL && cfg.MAIL_PASS) {
     try { await sendOwnerEmail('ستایش: ' + item.title, item.body || item.title); item.emailed = true; saveNotifications(); }
     catch (e) { item.emailError = e.message; saveNotifications(); }
+  }
+  // Also ping Telegram for the interrupt-worthy ones, if the bot is set up.
+  if ((item.level === 'needs-approval' || item.level === 'urgent') && telegram.configured()) {
+    try { await telegram.send('🔔 ' + item.title + (item.body ? '\n' + item.body : '')); } catch (e) {}
   }
   return item;
 }
@@ -6499,6 +6538,8 @@ const EDITABLE_KEYS = {
   MAIL_PASS:         { secret: true,  label: 'App Password ایمیل (نه رمز اصلی!)' },
   GOOGLE_CLIENT_ID:  { secret: false, label: 'Google OAuth Client ID (برای Gmail و تقویم)' },
   GOOGLE_CLIENT_SECRET: { secret: true, label: 'Google OAuth Client Secret' },
+  TELEGRAM_BOT_TOKEN: { secret: true,  label: 'توکن ربات تلگرام (از @BotFather)' },
+  TELEGRAM_CHAT_ID:   { secret: false, label: 'Chat ID مجاز تلگرام (فقط همین چت پاسخ می‌گیرد)' },
   MAIL_HOST:         { secret: false, label: 'سرور IMAP دستی (اختیاری)' },
   MAIL_PORT:         { secret: false, label: 'پورت IMAP (پیش‌فرض ۹۹۳)' },
   NOTIFY_EMAIL:      { secret: false, label: 'ایمیل تو برای دریافت اعلان‌های ستایش' },
@@ -6569,6 +6610,8 @@ app.post('/api/admin/settings', requireAuth, requireAdmin, (req, res) => {
     const fresh = readConfigFile();
     for (const [k] of Object.entries(EDITABLE_KEYS)) cfg[k] = fresh[k] || '';
     reloadKeys();
+    // A newly-pasted Telegram token should start polling without a restart.
+    try { telegram.start(runTelegramTurn); } catch (e) {}
     res.json({ ok: true, applied: true, note: 'ذخیره شد. کلیدها بلافاصله فعال شدند؛ تغییر موتور پیش‌فرض یا فعال‌سازی پایتون بعد از ری‌استارت اعمال می‌شود.' });
   } catch (e) {
     res.status(500).json({ error: 'ذخیره نشد: ' + e.message });
@@ -8790,6 +8833,9 @@ const server = (TLS ? https.createServer({ cert: TLS.cert, key: TLS.key }, app) 
 
   // If the previous boot was a self-update, prove it works or roll it back.
   checkPendingVerification();
+
+  // Start answering Telegram (no-op unless a bot token is configured).
+  try { telegram.start(runTelegramTurn); if (telegram.configured()) console.log('   Telegram: bot polling started ✓'); } catch (e) {}
 });
 
 // ---------------- Stay alive ----------------

@@ -184,3 +184,10 @@ test('drive upload is refused until Google is connected', async () => {
   assert.equal(r.status, 400);
   assert.match((await r.json()).error, /گوگل|کانکتور/);
 });
+
+test('telegram reports a clean not-configured state', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  const d = await (await api('/api/admin/telegram', { token })).json();
+  assert.equal(d.configured, false);
+  assert.equal(d.polling, false);
+});

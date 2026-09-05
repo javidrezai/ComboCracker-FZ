@@ -50,7 +50,13 @@ npm test
 مجموعهٔ تستِ مسیرهای حیاتی (ورود، پیکربندی، حافظه، کانکتورها، SPA) با تست‌ران داخلی Node — بدون وابستگی جدید. سرور روی پورت موقت با داده‌های موقت اجرا می‌شود و داده‌های واقعی را دست نمی‌زند. Critical-path smoke tests via Node's built-in runner; boots the server on a temp port with throwaway state.
 
 ## نسخه / Version
-9.9.23
+9.9.24
+
+### تغییرات ۹.۹.۲۴ / Changelog 9.9.24 — کانکتور تلگرام
+- **کنترل ستایش از بیرون خانه با تلگرام**: یک ربات (از @BotFather) بساز، `TELEGRAM_BOT_TOKEN` و `TELEGRAM_CHAT_ID` را در مرکز کنترل بگذار. پیام‌های همان چتِ مجاز، **مثل خودِ صاحب‌خانه** با همان موتور و همان ابزارها (Gmail/تقویم/…) پاسخ داده می‌شوند. Reach Setayesh from outside the house via a private Telegram bot; the whitelisted chat is answered as the owner, with tools.
+- **امن و بدون وابستگی**: long-polling (بدون نیاز به آدرس عمومی/webhook)، فقط به Chat ID مجاز پاسخ می‌دهد، توکن در تنظیمات ۰۶۰۰. اگر Chat ID را ندانی، یک پیام به ربات بده تا شناسه‌ات را بگوید. Zero-dep long-polling; answers only the whitelisted chat.
+- **هشدارها هم به تلگرام**: اعلان‌های فوری و incidentهای خودترمیمی، علاوه بر ایمیل، به تلگرام هم می‌روند. Urgent alerts / self-heal incidents also ping Telegram.
+- مسیرها: `GET /api/admin/telegram`، `POST /api/admin/telegram/test`.
 
 ### تغییرات ۹.۹.۲۳ / Changelog 9.9.23
 - **انبارهٔ محلیِ رمزنگاری‌شده روی دستگاه کاربر (با انقضا)**: ماژول `secure-store.js` — داده فقط در همین مرورگر (origin-scoped)، رمزنگاری‌شده با **AES-256-GCM (Web Crypto)** و با **تاریخ انقضا** ذخیره می‌شود؛ در DevTools فقط متنِ رمزی دیده می‌شود و پس از انقضا خودکار پاک می‌گردد — فقط خودِ برنامه می‌خواند. Encrypted, expiring, device-local store (`window.secureStore`): AES-256-GCM at rest, auto-purge on expiry, opaque in DevTools.
