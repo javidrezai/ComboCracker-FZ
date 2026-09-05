@@ -57,6 +57,7 @@ before(async () => {
     SETAYESH_BOARD_FILE: path.join(tmp, 'board.json'),
     SETAYESH_MEMORY_FILE: path.join(tmp, 'memory.json'),
     SETAYESH_DEVICES_FILE: path.join(tmp, 'devices.json'),
+    SETAYESH_RAG_FILE: path.join(tmp, 'rag.json'),
   });
   child = spawn(process.execPath, [path.join(ROOT, 'index.js')], { cwd: tmp, env, stdio: 'ignore' });
   child.on('error', (e) => { throw e; });
@@ -190,4 +191,16 @@ test('telegram reports a clean not-configured state', async () => {
   const d = await (await api('/api/admin/telegram', { token })).json();
   assert.equal(d.configured, false);
   assert.equal(d.polling, false);
+});
+
+test('local RAG indexes a memory and finds it by search', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  const needle = 'قرار دندانپزشکی سه‌شنبه با دکتر رضایی ' + Date.now();
+  const created = await api('/api/memory', { method: 'POST', token, body: { text: needle, kind: 'deadline' } });
+  assert.equal(created.status, 201);
+
+  const res = await (await api('/api/rag/search?q=' + encodeURIComponent('دندانپزشک دکتر') + '&limit=5', { token })).json();
+  assert.ok(Array.isArray(res.results) && res.results.length > 0, 'expected a RAG hit');
+  assert.match(res.results[0].snippet, /دندانپزشک/);
+  assert.ok(res.results[0].score > 0, 'expected a positive relevance score');
 });

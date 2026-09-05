@@ -50,7 +50,14 @@ npm test
 مجموعهٔ تستِ مسیرهای حیاتی (ورود، پیکربندی، حافظه، کانکتورها، SPA) با تست‌ران داخلی Node — بدون وابستگی جدید. سرور روی پورت موقت با داده‌های موقت اجرا می‌شود و داده‌های واقعی را دست نمی‌زند. Critical-path smoke tests via Node's built-in runner; boots the server on a temp port with throwaway state.
 
 ## نسخه / Version
-9.9.24
+9.9.25
+
+### تغییرات ۹.۹.۲۵ / Changelog 9.9.25 — RAG محلیِ سبک
+- **جستجوی معناییِ محلی روی حافظهٔ خانواده** (`rag.js`): یک ایندکس **TF-IDF + کسینوس** با **JS خالص** — بدون Qdrant، بدون سرور جانبی، بدون وابستگیِ جدید، کاملاً آفلاین و خصوصی. فارسی و انگلیسی. Private, offline, dependency-free local semantic-ish search over the family's notes/memories.
+- حافظه‌ها **خودکار ایندکس** می‌شوند (و با حذف، از ایندکس هم پاک می‌شوند). هر کاربر فقط دادهٔ **خودش** را می‌بیند؛ مدیر می‌تواند در همه جستجو کند. Memories are auto-indexed; per-user isolation (admin can search all).
+- **ابزار `recall` برای هوش مصنوعی**: ستایش در چت می‌تواند حافظه را معنایی جستجو کند و پاسخ را بر پایهٔ آنچه خانواده قبلاً گفته بنا کند (به‌جای حدس). New `recall` AI tool so answers are grounded in saved memory.
+- مسیرها: `GET /api/rag/search?q=`، `GET /api/admin/rag` (آمار)، `POST /api/admin/rag/reindex`.
+- نکتهٔ صادقانه: این بازیابیِ **لغوی/وزنی** است، نه امبدینگِ عصبی — برای «آنچه دربارهٔ X ذخیره کرده‌ام» عالی است؛ جای امبدینگ عصبی بعداً پشت همین API قابل‌جایگزینی است. Honest scope: lexical TF-IDF retrieval, swappable for a neural embedder later.
 
 ### تغییرات ۹.۹.۲۴ / Changelog 9.9.24 — کانکتور تلگرام
 - **کنترل ستایش از بیرون خانه با تلگرام**: یک ربات (از @BotFather) بساز، `TELEGRAM_BOT_TOKEN` و `TELEGRAM_CHAT_ID` را در مرکز کنترل بگذار. پیام‌های همان چتِ مجاز، **مثل خودِ صاحب‌خانه** با همان موتور و همان ابزارها (Gmail/تقویم/…) پاسخ داده می‌شوند. Reach Setayesh from outside the house via a private Telegram bot; the whitelisted chat is answered as the owner, with tools.

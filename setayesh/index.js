@@ -109,6 +109,7 @@ const toolkit = require('./toolkit');
 const extensions = require('./extensions');
 const { makeConnectors } = require('./connectors');
 const { makeTelegram } = require('./telegram');
+const { makeRag } = require('./rag');
 
 // When packaged into a single .exe the web assets are baked into a generated
 // module; in normal dev they're read from public/ on disk.
@@ -156,7 +157,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.24';
+const APP_VERSION = '9.9.25';
 
 // Loaded at boot and refreshable at runtime via /api/plugins/reload.
 let PLUGINS = extensions.loadPlugins(PLUGINS_DIR);
@@ -191,6 +192,10 @@ const connectors = makeConnectors({ storeFile: CONNECTORS_STORE, getCfg: () => c
 // Telegram connector — reach Setayesh from outside the house (long-polling,
 // answers only the whitelisted chat). See telegram.js.
 const telegram = makeTelegram({ getCfg: () => cfg });
+
+// Light local RAG — private semantic-ish search over the family's own notes
+// and memories, no external service. See rag.js.
+const rag = makeRag({ storeFile: process.env.SETAYESH_RAG_FILE || path.join(DATA_DIR, '.setayesh-rag.json') });
 
 const keys = {};           // providerId -> api key
 for (const id of Object.keys(PROVIDERS)) {
@@ -1623,6 +1628,18 @@ const TOOLS_SPEC = [
       required: ['title', 'start'],
     },
   },
+  {
+    name: 'recall',
+    description: "Search this user's own saved notes and memories by meaning/keywords and get the most relevant snippets back. Use it to ground an answer in what the family has told you before (appointments, preferences, facts, projects) instead of guessing. Returns up to `limit` matches with a relevance score.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'what to look for' },
+        limit: { type: 'number', description: '1–10, default 5' },
+      },
+      required: ['query'],
+    },
+  },
 ];
 
 // ---------------- Outbound privacy guard ----------------
@@ -2372,6 +2389,10 @@ async function dispatchTool(name, input, ctx) {
         return await connectors.calendarList(input.limit);
       case 'calendar_add':
         return await connectors.calendarAdd(input);
+      case 'recall': {
+        const hits = rag.search(String(input.query || ''), Number(input.limit) || 5, { user: ctx && ctx.username, all: !!(ctx && ctx.isAdmin) });
+        return hits.length ? { matches: hits.map((h) => ({ text: h.snippet, source: h.source, when: h.at, score: h.score })) } : { matches: [], note: 'چیزی در حافظه پیدا نشد.' };
+      }
       default:
         return { error: 'ابزار ناشناخته: ' + name };
     }
@@ -6224,6 +6245,8 @@ function addMemory(username, entry) {
   list.push(item);
   if (list.length > MEMORY_MAX_PER_USER) memory[username] = list.slice(-MEMORY_MAX_PER_USER);
   saveMemory();
+  // Index it for local semantic search (best-effort — never block a save).
+  try { rag.add({ id: item.id, text: item.text, user: username, source: 'memory' }); } catch (e) {}
   return item;
 }
 
@@ -6269,7 +6292,24 @@ app.delete('/api/memory/:id', requireAuth, (req, res) => {
   if (next.length === list.length) return res.status(404).json({ error: 'پیدا نشد' });
   memory[req.username] = next;
   saveMemory();
+  try { rag.remove(req.params.id); } catch (e) {}
   res.json({ ok: true });
+});
+
+// Local RAG: semantic-ish search over the caller's own notes/memories (admin
+// may search across everyone). Also the backing for the `recall` AI tool.
+app.get('/api/rag/search', requireAuth, (req, res) => {
+  const q = String(req.query.q || '');
+  if (!q.trim()) return res.json({ results: [] });
+  res.json({ results: rag.search(q, Number(req.query.limit) || 5, { user: req.username, all: isAdmin(req.username) }) });
+});
+app.get('/api/admin/rag', requireAuth, requireAdmin, (req, res) => res.json(rag.stats()));
+app.post('/api/admin/rag/reindex', requireAuth, requireAdmin, (req, res) => {
+  let n = 0;
+  for (const [user, list] of Object.entries(memory)) {
+    for (const m of (list || [])) { try { rag.add({ id: m.id, text: m.text, user, source: 'memory' }); n++; } catch (e) {} }
+  }
+  res.json({ ok: true, indexed: n, stats: rag.stats() });
 });
 
 // Admin oversight: see every account's memory in one place.
