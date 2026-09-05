@@ -129,6 +129,25 @@ const DATA_DIR = IS_PACKAGED ? path.dirname(process.execPath) : __dirname;
 
 const PORT = Number(process.env.PORT) || 3000;
 const HOST = process.env.SETAYESH_HOST || '0.0.0.0';
+
+// Optional local HTTPS (charter rule 2.2). Encrypts LAN/Tailscale traffic with
+// NO new dependency: if a cert + key are present the server speaks HTTPS,
+// otherwise it stays on plain HTTP exactly as before. Get a cert from Tailscale
+// (`tailscale cert <machine-name>`) or mkcert, and drop the files next to the
+// app as tls-cert.pem / tls-key.pem — or point SETAYESH_TLS_CERT / SETAYESH_TLS_KEY
+// at them.
+const TLS = (function loadTls() {
+  const certPath = process.env.SETAYESH_TLS_CERT || path.join(DATA_DIR, 'tls-cert.pem');
+  const keyPath = process.env.SETAYESH_TLS_KEY || path.join(DATA_DIR, 'tls-key.pem');
+  try {
+    if (fs.existsSync(certPath) && fs.existsSync(keyPath)) {
+      return { cert: fs.readFileSync(certPath), key: fs.readFileSync(keyPath) };
+    }
+  } catch (e) {
+    console.warn('   ⚠ TLS cert/key found but unreadable — starting on HTTP:', e.message);
+  }
+  return null;
+})();
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 // How long a "remember this device" trust lasts before the password is asked
 // for again. Deliberately the same length as a session: one habit, one rhythm.
@@ -136,7 +155,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.19';
+const APP_VERSION = '9.9.20';
 
 // Loaded at boot and refreshable at runtime via /api/plugins/reload.
 let PLUGINS = extensions.loadPlugins(PLUGINS_DIR);
@@ -4579,8 +4598,11 @@ function checkPendingVerification() {
 
   // Prove the server is actually serving, then clear the marker.
   setTimeout(() => {
-    const req = require('http').get(
-      { host: '127.0.0.1', port: PORT, path: '/api/health', timeout: 4000 },
+    // Match the server's protocol; the loopback self-signed cert is not worth
+    // verifying for a 127.0.0.1 health probe (this is not provider traffic).
+    const probe = TLS ? require('https') : require('http');
+    const req = probe.get(
+      { host: '127.0.0.1', port: PORT, path: '/api/health', timeout: 4000, rejectUnauthorized: false },
       (res) => {
         if (res.statusCode === 200) {
           try { fs.unlinkSync(VERIFY_FILE); } catch (e) {}
@@ -8500,16 +8522,18 @@ function localLanIps() {
   return out.sort((a, b) => rank(a) - rank(b));
 }
 
-const server = app.listen(PORT, HOST, () => {
+const server = (TLS ? https.createServer({ cert: TLS.cert, key: TLS.key }, app) : http.createServer(app))
+  .listen(PORT, HOST, () => {
   ensureGeminiModel();   // pick a Gemini model this key can actually use
   const configured = Object.keys(PROVIDERS).filter(isConfigured);
+  const scheme = TLS ? 'https' : 'http';
   console.log('');
   console.log('   ╔══════════════════════════════════════════╗');
   console.log('   ║   S E T A Y E S H   A I                  ║');
   console.log('   ╚══════════════════════════════════════════╝');
   console.log('');
-  console.log(`   Local:      http://localhost:${PORT}`);
-  for (const ip of localLanIps()) console.log(`   Network:    http://${ip}:${PORT}`);
+  console.log(`   Local:      ${scheme}://localhost:${PORT}`);
+  for (const ip of localLanIps()) console.log(`   Network:    ${scheme}://${ip}:${PORT}`);
   console.log('');
   console.log(`   AI engines: ${configured.length ? configured.join(', ') : 'NONE — no API key configured'}`);
   console.log(`   Accounts:   ${Array.from(users.keys()).join(', ')}`);
@@ -8547,6 +8571,11 @@ const server = app.listen(PORT, HOST, () => {
     warnings.push('  → For local-only use, start with SETAYESH_HOST=127.0.0.1');
   }
   if (INSECURE_TLS) warnings.push('TLS certificate verification is DISABLED (SETAYESH_INSECURE_TLS=1).');
+  if (!TLS && HOST === '0.0.0.0') {
+    warnings.push('Traffic is over plain HTTP. For encrypted phone/LAN access, add a cert:');
+    warnings.push('  → tls-cert.pem + tls-key.pem next to the app (Tailscale: `tailscale cert <name>`, or mkcert).');
+  }
+  if (TLS) console.log('   ✓  HTTPS on — LAN/Tailscale traffic is encrypted.\n');
   if (!privacy.enabled) warnings.push('Outbound family-privacy filter is switched OFF.');
 
   if (warnings.length) {

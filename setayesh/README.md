@@ -30,6 +30,14 @@ SETAYESH_HOST=127.0.0.1 npm start
 - کلیدهای API از طریق پنل تنظیمات وارد می‌شوند.
 - اگر پیام «Could not reach the server» دیدید یعنی سرور اجرا نیست یا پنجره‌اش بسته شده — لانچر را دوباره اجرا و از `http://localhost:3000` وارد شوید (نه با باز کردن مستقیم فایل).
 
+## HTTPS محلی (اختیاری) / Local HTTPS (optional)
+برای رمزنگاری ترافیک روی LAN/Tailscale، یک گواهی کنار برنامه بگذارید — بدون هیچ وابستگیِ جدید:
+- فایل‌ها را با نام `tls-cert.pem` و `tls-key.pem` کنار برنامه قرار دهید (یا مسیرشان را در `SETAYESH_TLS_CERT` / `SETAYESH_TLS_KEY` بدهید).
+- گرفتن گواهی: با **Tailscale** (`tailscale cert <نام-دستگاه>`) یا **mkcert**.
+- اگر گواهی نباشد، برنامه مثل قبل روی HTTP اجرا می‌شود (بدون تغییر).
+
+Drop `tls-cert.pem` + `tls-key.pem` next to the app (or set `SETAYESH_TLS_CERT`/`SETAYESH_TLS_KEY`) to serve HTTPS; get a cert from Tailscale or mkcert. No cert → plain HTTP as before.
+
 ## نکات امنیتی / Security notes
 - رمز پیش‌فرض حساب `admin` را در اولین ورود تغییر دهید.
 - فایل‌های حالت زمان‌اجرا (`.setayesh-users.json`، `backups/`، `code-library/` و ...) کامیت نمی‌شوند و در `.gitignore` قرار دارند.
@@ -42,7 +50,10 @@ npm test
 مجموعهٔ تستِ مسیرهای حیاتی (ورود، پیکربندی، حافظه، کانکتورها، SPA) با تست‌ران داخلی Node — بدون وابستگی جدید. سرور روی پورت موقت با داده‌های موقت اجرا می‌شود و داده‌های واقعی را دست نمی‌زند. Critical-path smoke tests via Node's built-in runner; boots the server on a temp port with throwaway state.
 
 ## نسخه / Version
-9.9.19
+9.9.20
+
+### تغییرات ۹.۹.۲۰ / Changelog 9.9.20
+- **HTTPS محلی (قانون ۲.۲)**: اگر `tls-cert.pem` + `tls-key.pem` کنار برنامه (یا `SETAYESH_TLS_CERT/KEY`) باشد، سرور HTTPS می‌شود و ترافیک LAN/Tailscale رمزنگاری می‌شود — **بدون وابستگیِ جدید** (فقط `https` داخلی Node). چک سلامتِ خودترمیمی هم پروتکل‌آگاه شد. اگر گواهی نباشد، رفتار قبلی (HTTP) بدون تغییر می‌ماند. Optional local HTTPS with zero new dependencies; falls back to HTTP when no cert is present; the self-heal health probe is now protocol-aware.
 
 ### تغییرات ۹.۹.۱۹ / Changelog 9.9.19
 - **شروع ماژول‌بندی سرور (ساختار `routes/`)**: مسیرهای کانکتور گوگل از `index.js` به `routes/connectors.js` منتقل شد و با `register(app, deps)` ثبت می‌شود — اولین گامِ امنِ شکستن `index.js`، با رفتار بدون تغییر و تست‌های سبز. First safe step of splitting the server monolith: Google connector routes moved to `routes/connectors.js` (registered via `register()`), behavior unchanged, tests green.

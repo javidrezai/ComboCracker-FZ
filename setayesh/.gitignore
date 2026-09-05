@@ -17,3 +17,8 @@ uploads/
 inbox/
 assets.generated.js
 antivirus-root.pem
+
+# Local TLS cert/key (never commit)
+tls-cert.pem
+tls-key.pem
+*.pem
