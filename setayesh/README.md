@@ -50,7 +50,13 @@ npm test
 مجموعهٔ تستِ مسیرهای حیاتی (ورود، پیکربندی، حافظه، کانکتورها، SPA) با تست‌ران داخلی Node — بدون وابستگی جدید. سرور روی پورت موقت با داده‌های موقت اجرا می‌شود و داده‌های واقعی را دست نمی‌زند. Critical-path smoke tests via Node's built-in runner; boots the server on a temp port with throwaway state.
 
 ## نسخه / Version
-9.9.27
+9.9.28
+
+### تغییرات ۹.۹.۲۸ / Changelog 9.9.28 — ادامهٔ بخش‌بندی سرور (کتابخانهٔ کد)
+- **جدا کردن «کتابخانهٔ کد» از فایل بزرگ به `codelib.js`** (قانون ۳.۴ منشور). کل ویژگی — توابع کمکی و همهٔ ۷ مسیر HTTP — در یک ماژول جمع شد؛ `index.js` فقط `codeLibrary()` را برای ساختِ پرامپتِ چت نگه می‌دارد. رفتار دقیقاً همان است.
+- `index.js` از ۸٬۷۵۹ به ۸٬۵۱۹ خط رسید (این نسخه ~۲۴۰ خط، از ابتدای این شاخه ~۴۲۰ خط سبک‌تر).
+- **تست جدید:** رفت‌وبرگشتِ ساخت/فهرست/خواندن/حذفِ کتابخانه — مجموع تست‌ها ۱۶ و همه سبز.
+  Extracted the code-library feature into `codelib.js` (helpers + all 7 routes), keeping only `codeLibrary()` in index.js for the chat prompt builder. Behavior unchanged; index.js ~240 lines lighter (~420 since this branch began); new codelib round-trip smoke test (16/16 green).
 
 ### تغییرات ۹.۹.۲۷ / Changelog 9.9.27 — ادامهٔ بخش‌بندی سرور (تابلوی خانواده)
 - **جدا کردن «تابلوی خانواده» از فایل بزرگ به `routes/board.js`** (قانون ۳.۴ منشور: شکستن تک‌فایلِ سرور، ماژول‌به‌ماژول و پشتِ تست). رفتار دقیقاً همان است؛ فقط جای کد عوض شده. `index.js` حدود ۱۸۰ خط سبک‌تر شد.

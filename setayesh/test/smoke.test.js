@@ -212,6 +212,25 @@ test('family board post, list, and delete round-trip', async () => {
   assert.ok(!list2.messages.some((m) => m.id === id), 'deleted message should be gone');
 });
 
+test('code library create, list, read, and delete round-trip', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  const name = 'smoketest-' + Date.now();
+  const text = 'print("hello from a smoke test")';
+
+  const made = await api('/api/codelib', { method: 'POST', token, body: { name, text } });
+  assert.equal(made.status, 200);
+  const libs = (await made.json()).libs;
+  assert.ok(libs.some((l) => l.name === name), 'new library should appear in the list');
+
+  const read = await (await api('/api/codelib?name=' + encodeURIComponent(name), { token })).json();
+  assert.equal(read.text, text);
+
+  const del = await api('/api/codelib?name=' + encodeURIComponent(name), { method: 'DELETE', token });
+  assert.equal(del.status, 200);
+  const after = (await del.json()).libs;
+  assert.ok(!after.some((l) => l.name === name), 'deleted library should be gone');
+});
+
 test('local RAG indexes a memory and finds it by search', async () => {
   const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
   const needle = 'قرار دندانپزشکی سه‌شنبه با دکتر رضایی ' + Date.now();
