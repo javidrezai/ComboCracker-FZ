@@ -50,7 +50,13 @@ npm test
 مجموعهٔ تستِ مسیرهای حیاتی (ورود، پیکربندی، حافظه، کانکتورها، SPA) با تست‌ران داخلی Node — بدون وابستگی جدید. سرور روی پورت موقت با داده‌های موقت اجرا می‌شود و داده‌های واقعی را دست نمی‌زند. Critical-path smoke tests via Node's built-in runner; boots the server on a temp port with throwaway state.
 
 ## نسخه / Version
-9.9.29
+9.9.30
+
+### تغییرات ۹.۹.۳۰ / Changelog 9.9.30 — ادامهٔ بخش‌بندی سرور (افزونه‌ها)
+- **جدا کردن مسیرهای افزونه به `routes/plugins.js`** (قانون ۳.۴): فهرست، بارگذاری مجدد، و اجرای افزونه. ماژول مالکِ لیستِ `PLUGINS` است (که با `/api/plugins/reload` تازه می‌شود) و `okCount()` را برای خطِ استارتاپ برمی‌گرداند؛ `require('./extensions')` بلااستفاده از `index.js` حذف شد.
+- `index.js` از ۸٬۴۲۲ به **۸٬۴۰۰** خط رسید (از ابتدای این شاخه ~۵۴۰ خط سبک‌تر، در ۴ ماژول).
+- **تست جدید:** فهرست/بارگذاری‌مجدد افزونه‌ها و ۴۰۴ برای افزونهٔ ناموجود — مجموع تست‌ها ۱۸ و همه سبز.
+  Extracted the plugin routes into `routes/plugins.js` (module owns the reloadable PLUGINS list, returns okCount() for the startup line); dropped the now-unused extensions require from index.js. Behavior unchanged; 18/18 tests green.
 
 ### تغییرات ۹.۹.۲۹ / Changelog 9.9.29 — ادامهٔ بخش‌بندی سرور (مسیرهای ابزار)
 - **جدا کردن مسیرهای سادهٔ ابزار به `routes/tools.js`** (قانون ۳.۴): اسکنِ شبکه/پورت/وب، بازرسِ SSL، هش، QR و مشخصاتِ سخت‌افزار. رفتار دقیقاً همان است.

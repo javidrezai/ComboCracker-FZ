@@ -106,7 +106,6 @@ const multer = require('multer');
 
 const { PROVIDERS, MODES, systemPromptFor } = require('./providers');
 const toolkit = require('./toolkit');
-const extensions = require('./extensions');
 const { makeConnectors } = require('./connectors');
 const { makeTelegram } = require('./telegram');
 const { makeRag } = require('./rag');
@@ -157,10 +156,9 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.29';
+const APP_VERSION = '9.9.30';
 
-// Loaded at boot and refreshable at runtime via /api/plugins/reload.
-let PLUGINS = extensions.loadPlugins(PLUGINS_DIR);
+// Plugins are loaded and served by routes/plugins.js (registered below).
 
 // ---------------- Credentials ----------------
 // Keys can come from the config file (KEY_GEMINI=...), from env
@@ -6404,31 +6402,8 @@ app.post('/api/tool/genimage', requireAuth, toolLimiter, async (req, res) => {
 // ---------------- Code libraries (multi, downloadable/uploadable) ----------------
 codeLib.register(app, { requireAuth, requireAdmin, upload });
 
-// ---------------- Extensions (user plugins) ----------------
-function pluginList() {
-  return PLUGINS.map(p => ({ id: p.id, name: p.name, description: p.description, inputLabel: p.inputLabel, error: !!p.error }));
-}
-
-app.get('/api/plugins', requireAuth, (req, res) => {
-  res.json({ version: APP_VERSION, dir: PLUGINS_DIR, plugins: pluginList() });
-});
-
-app.post('/api/plugins/reload', requireAuth, (req, res) => {
-  PLUGINS = extensions.loadPlugins(PLUGINS_DIR);
-  res.json({ plugins: pluginList() });
-});
-
-app.post('/api/plugin/run', requireAuth, toolLimiter, async (req, res) => {
-  const { id, input } = req.body || {};
-  const plugin = PLUGINS.find(p => p.id === id && !p.error);
-  if (!plugin) return res.status(404).json({ error: 'افزونه پیدا نشد' });
-  try {
-    const result = await extensions.runPlugin(plugin, input, 15000);
-    res.json({ result });
-  } catch (err) {
-    res.status(400).json({ error: 'خطا در اجرای افزونه: ' + err.message });
-  }
-});
+// ---------------- Extensions (user plugins) — routes/plugins.js ----------------
+const pluginRoutes = require('./routes/plugins').register(app, { requireAuth, toolLimiter, PLUGINS_DIR, APP_VERSION });
 
 // ---------------- Step-up re-authentication ----------------
 //
@@ -8289,7 +8264,7 @@ const server = (TLS ? https.createServer({ cert: TLS.cert, key: TLS.key }, app) 
   console.log('');
   console.log(`   AI engines: ${configured.length ? configured.join(', ') : 'NONE — no API key configured'}`);
   console.log(`   Accounts:   ${Array.from(users.keys()).join(', ')}`);
-  const okPlugins = PLUGINS.filter(p => !p.error).length;
+  const okPlugins = pluginRoutes.okCount();
   console.log(`   Extensions: ${okPlugins} loaded  (drop .js files in ${PLUGINS_DIR})`);
   console.log(`   Version:    ${APP_VERSION}`);
   console.log('');

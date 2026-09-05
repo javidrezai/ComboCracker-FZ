@@ -231,6 +231,21 @@ test('code library create, list, read, and delete round-trip', async () => {
   assert.ok(!after.some((l) => l.name === name), 'deleted library should be gone');
 });
 
+test('plugins endpoint reports a clean list and reloads', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+
+  const d = await (await api('/api/plugins', { token })).json();
+  assert.ok(Array.isArray(d.plugins), 'expected a plugins array');
+  assert.equal(d.version, PKG.version);
+
+  const reloaded = await api('/api/plugins/reload', { method: 'POST', token });
+  assert.equal(reloaded.status, 200);
+  assert.ok(Array.isArray((await reloaded.json()).plugins), 'reload should return a plugins array');
+
+  const missing = await api('/api/plugin/run', { method: 'POST', token, body: { id: 'does-not-exist', input: 'x' } });
+  assert.equal(missing.status, 404);
+});
+
 test('utility tool routes: interfaces list and hashing work', async () => {
   const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
 
