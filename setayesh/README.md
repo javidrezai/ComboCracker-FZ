@@ -50,7 +50,14 @@ npm test
 مجموعهٔ تستِ مسیرهای حیاتی (ورود، پیکربندی، حافظه، کانکتورها، SPA) با تست‌ران داخلی Node — بدون وابستگی جدید. سرور روی پورت موقت با داده‌های موقت اجرا می‌شود و داده‌های واقعی را دست نمی‌زند. Critical-path smoke tests via Node's built-in runner; boots the server on a temp port with throwaway state.
 
 ## نسخه / Version
-9.9.28
+9.9.29
+
+### تغییرات ۹.۹.۲۹ / Changelog 9.9.29 — ادامهٔ بخش‌بندی سرور (مسیرهای ابزار)
+- **جدا کردن مسیرهای سادهٔ ابزار به `routes/tools.js`** (قانون ۳.۴): اسکنِ شبکه/پورت/وب، بازرسِ SSL، هش، QR و مشخصاتِ سخت‌افزار. رفتار دقیقاً همان است.
+- **ساختِ تصویر (`genimage`)** عمداً در `index.js` ماند، چون به دلِ موتور Gemini گره خورده — با احتیاط جابه‌جا نشد.
+- `index.js` از ۸٬۵۱۹ به **۸٬۴۲۲** خط رسید (از ابتدای این شاخه ~۵۱۶ خط سبک‌تر).
+- **تست جدید:** فهرستِ اینترفیس‌ها و هش — مجموع تست‌ها ۱۷ و همه سبز.
+  Extracted the self-contained utility tool routes (network/port/web scan, SSL inspector, hashing, QR, hardware) into `routes/tools.js`; image generation stays inline (woven into the Gemini engine). Behavior unchanged; index.js ~516 lines lighter since this branch began; 17/17 tests green.
 
 ### تغییرات ۹.۹.۲۸ / Changelog 9.9.28 — ادامهٔ بخش‌بندی سرور (کتابخانهٔ کد)
 - **جدا کردن «کتابخانهٔ کد» از فایل بزرگ به `codelib.js`** (قانون ۳.۴ منشور). کل ویژگی — توابع کمکی و همهٔ ۷ مسیر HTTP — در یک ماژول جمع شد؛ `index.js` فقط `codeLibrary()` را برای ساختِ پرامپتِ چت نگه می‌دارد. رفتار دقیقاً همان است.

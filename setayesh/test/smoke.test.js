@@ -231,6 +231,19 @@ test('code library create, list, read, and delete round-trip', async () => {
   assert.ok(!after.some((l) => l.name === name), 'deleted library should be gone');
 });
 
+test('utility tool routes: interfaces list and hashing work', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+
+  const ifaces = await (await api('/api/tool/interfaces', { token })).json();
+  assert.ok(Array.isArray(ifaces.interfaces), 'expected an interfaces array');
+
+  const hashed = await api('/api/tool/hash', { method: 'POST', token, body: { value: 'setayesh', action: 'hash' } });
+  assert.equal(hashed.status, 200);
+  const d = await hashed.json();
+  assert.ok(d.hashes && typeof d.hashes === 'object', 'expected a hashes object');
+  assert.ok(Object.keys(d.hashes).length > 0, 'expected at least one hash algorithm');
+});
+
 test('local RAG indexes a memory and finds it by search', async () => {
   const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
   const needle = 'قرار دندانپزشکی سه‌شنبه با دکتر رضایی ' + Date.now();
