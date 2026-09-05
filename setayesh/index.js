@@ -157,7 +157,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.26';
+const APP_VERSION = '9.9.27';
 
 // Loaded at boot and refreshable at runtime via /api/plugins/reload.
 let PLUGINS = extensions.loadPlugins(PLUGINS_DIR);
@@ -645,7 +645,7 @@ function announceNewDevice(username, devId, req) {
   try {
     const d = devices[devId] || {};
     const label = d.label || 'یک دستگاه';
-    board.push({
+    boardRoutes.add({
       id: crypto.randomBytes(6).toString('hex'),
       by: 'system',
       text: `🔐 ورود به حساب «${username}» از ${label} — اگر کار تو نبود، رمزت را عوض کن.`,
@@ -654,7 +654,6 @@ function announceNewDevice(username, devId, req) {
       at: new Date().toISOString(),
       seenBy: [],
     });
-    saveBoard();
     console.log(`   [login] ${username} signed in from a new device (${label})`);
   } catch (e) { /* never block a login over a notice */ }
 }
@@ -3690,7 +3689,7 @@ function generateSuggestions() {
   }
 
   // Backups piling up — gentle housekeeping nudge.
-  const boardMsgs = board.length;
+  const boardMsgs = boardRoutes.getBoard().length;
   if (boardMsgs >= 40 && !seen.has('board-full')) {
     out.push({ key: 'board-full', kind: 'housekeeping',
       title: 'تابلوی خانواده شلوغ شده',
@@ -3783,7 +3782,7 @@ app.get('/api/admin/brain', requireAuth, requireAdmin, (req, res) => {
     },
     sourceFiles,
     engines,
-    board: { messages: board.length },
+    board: { messages: boardRoutes.getBoard().length },
     projects: (typeof listProjects === 'function') ? listProjects().length : 0,
     scripts: (typeof listScripts === 'function') ? listScripts().length : 0,
     pendingActions: (typeof pendingActions !== 'undefined') ? pendingActions.filter((a) => a.status === 'pending').length : 0,
@@ -4848,7 +4847,7 @@ function syncDecrypt(b64) {
 // The shared state this machine currently holds.
 function syncSnapshot() {
   const snap = {};
-  if (sync.what.board) snap.board = board;
+  if (sync.what.board) snap.board = boardRoutes.getBoard();
   if (sync.what.memory) snap.memory = memory;
   if (sync.what.devices) snap.devices = devices;
   if (sync.what.knowledge) snap.knowledge = knowledge;
@@ -4870,8 +4869,7 @@ function mergeSnapshot(incoming) {
     return Object.values(byId);
   };
   if (sync.what.board && incoming.board) {
-    board = mergeById(board, incoming.board, 'at').sort((a, b) => new Date(a.at) - new Date(b.at));
-    saveBoard();
+    boardRoutes.setBoard(mergeById(boardRoutes.getBoard(), incoming.board, 'at').sort((a, b) => new Date(a.at) - new Date(b.at)));
   }
   if (sync.what.knowledge && incoming.knowledge) {
     knowledge = mergeById(knowledge, incoming.knowledge, 'createdAt');
@@ -5037,10 +5035,9 @@ async function notifyOwner(opts) {
   // the shared board, so the same message never appears in two places.
   if (opts.board === true && item.level === 'urgent') {
     try {
-      board.push({ id: crypto.randomBytes(6).toString('hex'), by: 'system', system: true,
+      boardRoutes.add({ id: crypto.randomBytes(6).toString('hex'), by: 'system', system: true,
         text: '⚠️ ' + item.title + (item.body ? ' — ' + item.body : ''),
         pinned: true, at: new Date().toISOString(), seenBy: [] });
-      saveBoard();
     } catch (e) {}
   }
 
@@ -6045,185 +6042,11 @@ app.get('/api/admin/backups/:name', requireAuth, requireAdmin, (req, res) => {
 // These messages stay on this machine. They are never sent to any AI model,
 // unlike a chat with Setayesh. Whoever posts can delete their own; the admin
 // can delete anything.
-const BOARD_FILE = process.env.SETAYESH_BOARD_FILE || path.join(DATA_DIR, '.setayesh-board.json');
-let board = loadJsonFile(BOARD_FILE, []);
-const BOARD_MAX = 500;
-
-function saveBoard() {
-  if (board.length > BOARD_MAX) board = board.slice(-BOARD_MAX);
-  saveJsonFile(BOARD_FILE, board);
-}
-
-app.get('/api/board', requireAuth, (req, res) => {
-  const since = String(req.query.since || '');
-  const list = since ? board.filter((m) => m.at > since) : board.slice(-120);
-  // Track what each person has seen, so the unread badge is per-person.
-  res.json({
-    messages: list,
-    unread: board.filter((m) => m.by !== req.username && !(m.seenBy || []).includes(req.username)).length,
-  });
-});
-
-// Attachments live on disk next to the app, not inside the JSON — a photo
-// base64'd into a message file would bloat it until the board stopped loading.
-const BOARD_FILES_DIR = process.env.SETAYESH_BOARD_FILES || path.join(DATA_DIR, 'board-files');
-const BOARD_MAX_FILE = 250 * 1024 * 1024;   // 250MB
-
-const boardUpload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: BOARD_MAX_FILE, files: 4 },
-});
-
-function boardKind(mime, name) {
-  const m = String(mime || '').toLowerCase();
-  if (m.startsWith('image/')) return 'image';
-  if (m.startsWith('audio/')) return 'audio';
-  if (m.startsWith('video/')) return 'video';
-  if (m === 'application/pdf' || /\.pdf$/i.test(name || '')) return 'pdf';
-  return 'file';
-}
-
-app.post('/api/board', requireAuth, boardUpload.array('files', 4), (req, res) => {
-  const text = String((req.body || {}).text || '').trim().slice(0, 2000);
-  const pinned = String((req.body || {}).pinned) === 'true' && isAdmin(req.username);
-  const files = req.files || [];
-  if (!text && !files.length) return res.status(400).json({ error: 'پیام خالی است.' });
-
-  const id = crypto.randomBytes(6).toString('hex');
-  const attachments = [];
-  try {
-    if (files.length) fs.mkdirSync(BOARD_FILES_DIR, { recursive: true });
-    for (const f of files) {
-      // The original filename comes from the client, so it is never used as a
-      // path — only stored as a label. The stored name is generated here.
-      const ext = (path.extname(f.originalname || '').match(/^\.[A-Za-z0-9]{1,8}$/) || [''])[0].toLowerCase();
-      const stored = id + '_' + crypto.randomBytes(4).toString('hex') + ext;
-      fs.writeFileSync(path.join(BOARD_FILES_DIR, stored), f.buffer, { mode: 0o600 });
-      attachments.push({
-        stored,
-        name: String(f.originalname || 'file').slice(0, 120),
-        size: f.size,
-        mime: f.mimetype,
-        kind: boardKind(f.mimetype, f.originalname),
-      });
-    }
-  } catch (e) {
-    return res.status(500).json({ error: 'ذخیره‌ی فایل ناموفق بود: ' + e.message });
-  }
-
-  // Optional location. Sent only when someone taps the button — never
-  // collected in the background, and never stored beyond the message itself.
-  let location = null;
-  const lat = Number((req.body || {}).lat), lon = Number((req.body || {}).lon);
-  if (Number.isFinite(lat) && Number.isFinite(lon) && Math.abs(lat) <= 90 && Math.abs(lon) <= 180) {
-    location = {
-      lat: Math.round(lat * 1e5) / 1e5,
-      lon: Math.round(lon * 1e5) / 1e5,
-      acc: Math.max(0, Math.min(100000, Number((req.body || {}).acc) || 0)),
-    };
-  }
-
-  // A shared answer from Setayesh, so the family can see where it came from
-  // rather than it looking like something a person wrote.
-  const shared = String((req.body || {}).shared || '').slice(0, 60) || null;
-
-  const msg = {
-    id, by: req.username, text, pinned,
-    attachments,
-    location,
-    shared,
-    at: new Date().toISOString(),
-    seenBy: [req.username],
-  };
-  board.push(msg);
-  saveBoard();
-  res.status(201).json({ ok: true, message: msg });
-});
-
-// Serve an attachment. The stored name is validated and resolved inside the
-// folder, so a crafted name cannot walk out of it.
-app.get('/api/board/file/:name', requireAuth, (req, res) => {
-  const name = String(req.params.name || '');
-  if (!/^[a-f0-9]{12}_[a-f0-9]{8}(\.[A-Za-z0-9]{1,8})?$/.test(name)) return res.status(400).json({ error: 'نامعتبر' });
-  const full = path.resolve(BOARD_FILES_DIR, name);
-  if (!full.startsWith(path.resolve(BOARD_FILES_DIR) + path.sep) || !fs.existsSync(full)) {
-    return res.status(404).json({ error: 'پیدا نشد' });
-  }
-  const msg = board.find((m) => (m.attachments || []).some((a) => a.stored === name));
-  const att = msg && (msg.attachments || []).find((a) => a.stored === name);
-  if (att) {
-    // Never let the browser execute an attachment as a page.
-    const safeMime = /^(image|audio|video)\//.test(att.mime) || att.mime === 'application/pdf'
-      ? att.mime : 'application/octet-stream';
-    res.type(safeMime);
-    res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
-    res.setHeader('X-Content-Type-Options', 'nosniff');
-    if (safeMime === 'application/octet-stream') {
-      res.setHeader('Content-Disposition', 'attachment; filename="' + att.name.replace(/[^\w.\- ]/g, '_') + '"');
-    }
-  }
-  res.sendFile(full);
-});
-
-// Mark everything currently on the board as seen by this person.
-app.post('/api/board/seen', requireAuth, (req, res) => {
-  let n = 0;
-  for (const m of board) {
-    if (!m.seenBy) m.seenBy = [];
-    if (!m.seenBy.includes(req.username)) { m.seenBy.push(req.username); n++; }
-  }
-  if (n) saveBoard();
-  res.json({ ok: true, marked: n });
-});
-
-app.delete('/api/board/:id', requireAuth, (req, res) => {
-  const m = board.find((x) => x.id === req.params.id);
-  if (!m) return res.status(404).json({ error: 'پیدا نشد' });
-  // Your own message, or anything if you are the admin.
-  if (m.by !== req.username && !isAdmin(req.username)) {
-    return res.status(403).json({ error: 'فقط پیام خودت را می‌توانی حذف کنی.' });
-  }
-  for (const a of (m.attachments || [])) {
-    try { fs.unlinkSync(path.join(BOARD_FILES_DIR, a.stored)); } catch (e) {}
-  }
-  board = board.filter((x) => x.id !== req.params.id);
-  saveBoard();
-  res.json({ ok: true });
-});
-
-// Clear the board. Everyone can clear their own messages; the admin can wipe
-// the whole board when it has served its purpose.
-app.post('/api/board/clear', requireAuth, (req, res) => {
-  const scope = String((req.body || {}).scope || 'mine');
-  const before = board.length;
-  if (scope === 'all' || scope === 'everything') {
-    if (!isAdmin(req.username)) return res.status(403).json({ error: 'پاک کردن کل تابلو فقط برای مدیر است.' });
-    const keepPinned = scope === 'all';   // 'all' spares pins; 'everything' wipes them too
-    for (const m of board) {
-      if (keepPinned && m.pinned) continue;
-      for (const a of (m.attachments || [])) {
-        try { fs.unlinkSync(path.join(BOARD_FILES_DIR, a.stored)); } catch (e) {}
-      }
-    }
-    board = keepPinned ? board.filter((m) => m.pinned) : [];
-  } else if (scope === 'read') {
-    // Tidy up: drop everything everyone has already seen, keep pins.
-    const users_ = Array.from(users.keys());
-    board = board.filter((m) => m.pinned || !users_.every((u) => (m.seenBy || []).includes(u)));
-  } else {
-    board = board.filter((m) => m.by !== req.username || m.pinned);
-  }
-  saveBoard();
-  res.json({ ok: true, removed: before - board.length, remaining: board.length });
-});
-
-// Pin a notice to the top — the "read this" slot for the whole house.
-app.post('/api/board/:id/pin', requireAuth, requireAdmin, (req, res) => {
-  const m = board.find((x) => x.id === req.params.id);
-  if (!m) return res.status(404).json({ error: 'پیدا نشد' });
-  m.pinned = !m.pinned;
-  saveBoard();
-  res.json({ ok: true, pinned: m.pinned });
+// Registered from routes/board.js — the module owns the board array and
+// saveBoard(); boardRoutes exposes add/getBoard/setBoard/saveBoard for the
+// few callers below (login notice, sync merge, urgent notify, home summary).
+const boardRoutes = require('./routes/board').register(app, {
+  requireAuth, requireAdmin, isAdmin, multer, DATA_DIR, loadJsonFile, saveJsonFile, usersMap: users,
 });
 
 // ---------------- Long-term memory (per user) ----------------
@@ -6422,7 +6245,7 @@ function buildBriefing(username) {
   }
 
   // Unread notices on the family board.
-  const unread = board.filter((m) => m.by !== username && !(m.seenBy || []).includes(username));
+  const unread = boardRoutes.getBoard().filter((m) => m.by !== username && !(m.seenBy || []).includes(username));
   if (unread.length) {
     items.push({ kind: 'board', urgency: 'normal', count: unread.length,
                  from: [...new Set(unread.map((m) => m.by))] });

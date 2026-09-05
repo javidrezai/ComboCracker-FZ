@@ -193,6 +193,25 @@ test('telegram reports a clean not-configured state', async () => {
   assert.equal(d.polling, false);
 });
 
+test('family board post, list, and delete round-trip', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  const text = 'پیام تابلو تست ' + Date.now();
+
+  const created = await api('/api/board', { method: 'POST', token, body: { text } });
+  assert.equal(created.status, 201);
+  const id = (await created.json()).message.id;
+  assert.ok(id, 'expected a new board message id');
+
+  const list1 = await (await api('/api/board', { token })).json();
+  assert.ok(list1.messages.some((m) => m.id === id), 'new message should appear on the board');
+
+  const del = await api('/api/board/' + id, { method: 'DELETE', token });
+  assert.equal(del.status, 200);
+
+  const list2 = await (await api('/api/board', { token })).json();
+  assert.ok(!list2.messages.some((m) => m.id === id), 'deleted message should be gone');
+});
+
 test('local RAG indexes a memory and finds it by search', async () => {
   const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
   const needle = 'قرار دندانپزشکی سه‌شنبه با دکتر رضایی ' + Date.now();

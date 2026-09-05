@@ -50,7 +50,13 @@ npm test
 مجموعهٔ تستِ مسیرهای حیاتی (ورود، پیکربندی، حافظه، کانکتورها، SPA) با تست‌ران داخلی Node — بدون وابستگی جدید. سرور روی پورت موقت با داده‌های موقت اجرا می‌شود و داده‌های واقعی را دست نمی‌زند. Critical-path smoke tests via Node's built-in runner; boots the server on a temp port with throwaway state.
 
 ## نسخه / Version
-9.9.26
+9.9.27
+
+### تغییرات ۹.۹.۲۷ / Changelog 9.9.27 — ادامهٔ بخش‌بندی سرور (تابلوی خانواده)
+- **جدا کردن «تابلوی خانواده» از فایل بزرگ به `routes/board.js`** (قانون ۳.۴ منشور: شکستن تک‌فایلِ سرور، ماژول‌به‌ماژول و پشتِ تست). رفتار دقیقاً همان است؛ فقط جای کد عوض شده. `index.js` حدود ۱۸۰ خط سبک‌تر شد.
+- ماژول مالکِ آرایهٔ `board` و `saveBoard()` است و یک API کوچک (`add/getBoard/setBoard/saveBoard`) به چند صداکنندهٔ داخلی (اعلان ورود، همگام‌سازی، هشدار فوری، خلاصهٔ خانه) می‌دهد.
+- **تست جدید:** رفت‌وبرگشتِ ثبت/فهرست/حذفِ پیام تابلو — مجموع تست‌ها به ۱۵ رسید و همه سبز.
+  Extracted the family board into `routes/board.js` (server-monolith split, charter 3.4) — behavior unchanged, `index.js` ~180 lines lighter, plus a new board round-trip smoke test (15/15 green).
 
 ### تغییرات ۹.۹.۲۶ / Changelog 9.9.26 — شخصی‌سازی درسی هر عضو خانواده
 - **تمرکز درسیِ اختصاصی برای هر کاربر** (نقشهٔ `TUTORS` در `index.js`، بدون تغییر UI و بدون وابستگیِ جدید):
