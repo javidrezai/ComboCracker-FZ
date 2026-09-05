@@ -50,7 +50,12 @@ npm test
 مجموعهٔ تستِ مسیرهای حیاتی (ورود، پیکربندی، حافظه، کانکتورها، SPA) با تست‌ران داخلی Node — بدون وابستگی جدید. سرور روی پورت موقت با داده‌های موقت اجرا می‌شود و داده‌های واقعی را دست نمی‌زند. Critical-path smoke tests via Node's built-in runner; boots the server on a temp port with throwaway state.
 
 ## نسخه / Version
-9.9.38
+9.9.39
+
+### تغییرات ۹.۹.۳۹ / Changelog 9.9.39 — رفع حلقهٔ نصبِ به‌روزرسانی
+- **رفع باگِ حلقهٔ نصب:** حالا فایلِ zipِ به‌روزرسانی **بلافاصله بعد از اعتبارسنجی و پیش از نوشتن/ری‌استارت** از پوشهٔ updates بیرون برده می‌شود، پس هر بسته دقیقاً یک‌بار نصب می‌شود؛ اگر ری‌استارت وسطِ کار قطع شود دیگر بی‌نهایت‌بار همان نسخه دوباره نصب نمی‌شود. (نصبِ نسخهٔ قدیمی‌تر از قبل رد می‌شد.)
+  Fix the auto-update reinstall loop: the update zip is now moved out of the updates folder right after it validates (contents already in memory) and before writing files or restarting, so each package installs exactly once even if the restart is interrupted.
+
 
 ### تغییرات ۹.۹.۳۸ / Changelog 9.9.38 — شروع شکستن رابط: جدا کردن ترجمه‌ها (بدون ریسک)
 - **اولین برشِ `app.js` (۴٬۶۶۲ خطی):** شیءِ بزرگِ ترجمه‌ها (`LANG`، فارسی/انگلیسی/آلمانی، ~۹۰ خط دادهٔ خالص) به `public/app-i18n.js` منتقل شد و به‌صورتِ `window.__LANG` قبل از `app.js` بارگذاری می‌شود؛ در `app.js` فقط یک خط شد: `var LANG = window.__LANG`.

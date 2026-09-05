@@ -158,7 +158,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.38';
+const APP_VERSION = '9.9.39';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -5209,7 +5209,18 @@ async function inspectUpdateZip(zipPath) {
 }
 
 async function applyUpdateZip(zipPath, who) {
-  const info = await inspectUpdateZip(zipPath);
+  const info = await inspectUpdateZip(zipPath);   // reads every file into memory + version/syntax checks
+
+  // Move the zip OUT of the scan folder NOW — right after it validates and its
+  // contents are already in memory, BEFORE writing files or restarting. This
+  // guarantees each package is processed exactly once: if the write or the
+  // restart is interrupted, the zip is no longer in the folder, so it can never
+  // trigger an endless reinstall loop.
+  try {
+    fs.mkdirSync(path.join(UPDATES_DIR, 'installed'), { recursive: true });
+    fs.renameSync(zipPath, path.join(UPDATES_DIR, 'installed', path.basename(zipPath)));
+  } catch (e) {}
+
   nightLog(`بسته‌ی ${info.version} بررسی شد (${info.count} فایل) — در حال نصب…`, 'info');
 
   runBackup('before-auto-update');
@@ -5221,12 +5232,6 @@ async function applyUpdateZip(zipPath, who) {
     fs.mkdirSync(path.dirname(full), { recursive: true });
     fs.writeFileSync(full, data);
   }
-
-  // Move the zip aside so it is not installed twice.
-  try {
-    fs.mkdirSync(path.join(UPDATES_DIR, 'installed'), { recursive: true });
-    fs.renameSync(zipPath, path.join(UPDATES_DIR, 'installed', path.basename(zipPath)));
-  } catch (e) {}
 
   nightLog(`نسخه ${info.version} نصب شد — ری‌استارت برای فعال شدن.`, 'ok');
   return info;
