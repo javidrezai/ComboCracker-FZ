@@ -50,7 +50,12 @@ npm test
 مجموعهٔ تستِ مسیرهای حیاتی (ورود، پیکربندی، حافظه، کانکتورها، SPA) با تست‌ران داخلی Node — بدون وابستگی جدید. سرور روی پورت موقت با داده‌های موقت اجرا می‌شود و داده‌های واقعی را دست نمی‌زند. Critical-path smoke tests via Node's built-in runner; boots the server on a temp port with throwaway state.
 
 ## نسخه / Version
-9.9.39
+9.9.40
+
+### تغییرات ۹.۹.۴۰ / Changelog 9.9.40 — بالا آمدن مطمئن با فایلِ گم‌شده
+- **اگر یک ماژولِ اختیاری (کانکتور گوگل `connectors.js` یا `telegram.js`) در پوشه نباشد، دیگر کلِ سرور نمی‌خوابد.** به‌جای کرشِ «Cannot find module»، یک استاب بار می‌شود: آن قابلیت «تنظیم‌نشده» گزارش می‌شود و بقیهٔ برنامه (لاگین، چت، …) کار می‌کند. با شبیه‌سازیِ نبودِ هر دو فایل تأیید شد که سرور سالم بالا می‌آید.
+  Boot resiliently when an optional module file is missing: connectors.js / telegram.js are now loaded defensively, so a half-copied update folder no longer crashes the whole server with "Cannot find module" — the feature just reports not-configured and login/chat keep working.
+
 
 ### تغییرات ۹.۹.۳۹ / Changelog 9.9.39 — رفع حلقهٔ نصبِ به‌روزرسانی
 - **رفع باگِ حلقهٔ نصب:** حالا فایلِ zipِ به‌روزرسانی **بلافاصله بعد از اعتبارسنجی و پیش از نوشتن/ری‌استارت** از پوشهٔ updates بیرون برده می‌شود، پس هر بسته دقیقاً یک‌بار نصب می‌شود؛ اگر ری‌استارت وسطِ کار قطع شود دیگر بی‌نهایت‌بار همان نسخه دوباره نصب نمی‌شود. (نصبِ نسخهٔ قدیمی‌تر از قبل رد می‌شد.)

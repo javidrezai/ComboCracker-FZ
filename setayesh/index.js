@@ -108,9 +108,32 @@ const multer = require('multer');
 
 const { PROVIDERS, MODES, systemPromptFor } = require('./providers');
 const toolkit = require('./toolkit');
-const { makeConnectors } = require('./connectors');
-const { makeTelegram } = require('./telegram');
 const { makeRag } = require('./rag');
+
+// Optional feature modules (Google connectors, Telegram). If one of these files
+// is missing — e.g. a half-finished manual update where not every file was
+// copied into the folder — the server must NOT die on boot. It loads a stub
+// instead: the feature simply reports "not configured" and any direct use
+// returns a clear error, while login and the rest of the app keep working.
+function loadOptional(name, factory, stubFactory) {
+  try { return require(name)[factory]; }
+  catch (e) {
+    console.warn(`   [warn] ${name} در دسترس نیست (${e.code || e.message}) — این قابلیت خاموش می‌ماند.`);
+    return stubFactory;
+  }
+}
+const OPT_MISSING = 'این قابلیت در این نصب موجود نیست — فایل ماژولش کنار برنامه کپی نشده. نسخه‌ی کامل را دوباره نصب کن.';
+const makeConnectors = loadOptional('./connectors', 'makeConnectors', () => new Proxy({}, { get(_t, p) {
+  if (p === 'configured' || p === 'connected') return () => false;
+  if (p === 'status') return () => ({ configured: false, connected: false, missing: true });
+  return () => { throw new Error(OPT_MISSING); };
+} }));
+const makeTelegram = loadOptional('./telegram', 'makeTelegram', () => new Proxy({}, { get(_t, p) {
+  if (p === 'configured' || p === 'polling') return () => false;
+  if (p === 'status') return () => ({ configured: false, polling: false, missing: true });
+  if (p === 'start' || p === 'stop') return () => ({ ok: false, error: OPT_MISSING });
+  return () => { throw new Error(OPT_MISSING); };
+} }));
 
 // When packaged into a single .exe the web assets are baked into a generated
 // module; in normal dev they're read from public/ on disk.
@@ -158,7 +181,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.39';
+const APP_VERSION = '9.9.40';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
