@@ -158,7 +158,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.32';
+const APP_VERSION = '9.9.33';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -4791,124 +4791,17 @@ app.post('/api/admin/sync/now', requireAuth, requireAdmin, async (req, res) => {
 // cannot be told to email anyone else, so an instruction hidden in some file
 // ("email this to X") has nowhere to go. That single constraint is what makes
 // an outbound channel safe on a family machine.
-const NOTIFY_FILE = process.env.SETAYESH_NOTIFY_FILE || path.join(DATA_DIR, '.setayesh-notify.json');
-let notifications = loadJsonFile(NOTIFY_FILE, { items: [] });
-function saveNotifications() {
-  if (notifications.items.length > 100) notifications.items = notifications.items.slice(-100);
-  saveJsonFile(NOTIFY_FILE, notifications);
-}
-
-// Send a plain email over SMTP, directly, no dependency. Recipient is always
-// the owner's own address from config — never an argument.
-function sendOwnerEmail(subject, body) {
-  return new Promise((resolve, reject) => {
-    const to = cfg.NOTIFY_EMAIL;
-    if (!to || !cfg.MAIL_USER || !cfg.MAIL_PASS) return reject(new Error('ایمیل اعلان تنظیم نشده.'));
-    const preset = MAIL_PRESETS[cfg.MAIL_PROVIDER || 'gmail'] || {};
-    const host = cfg.SMTP_HOST || (cfg.MAIL_PROVIDER === 'outlook' ? 'smtp.office365.com' : 'smtp.gmail.com');
-    const port = 465;
-    const sock = tls.connect({ host, port, servername: host, rejectUnauthorized: true }, () => {});
-    let stage = 0, done = false;
-    const finish = (err) => { if (done) return; done = true; try { sock.end(); } catch (e) {} err ? reject(err) : resolve(); };
-    const timer = setTimeout(() => finish(new Error('SMTP زمان‌بر شد.')), 20000);
-    const b64 = (x) => Buffer.from(x, 'utf8').toString('base64');
-    const steps = [
-      'EHLO setayesh',
-      'AUTH LOGIN',
-      b64(cfg.MAIL_USER),
-      b64(cfg.MAIL_PASS),
-      `MAIL FROM:<${cfg.MAIL_USER}>`,
-      `RCPT TO:<${to}>`,
-      'DATA',
-      `From: Setayesh <${cfg.MAIL_USER}>\r\nTo: ${to}\r\nSubject: =?UTF-8?B?${b64(subject)}?=\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\nContent-Transfer-Encoding: base64\r\n\r\n${b64(body)}\r\n.`,
-      'QUIT',
-    ];
-    sock.on('data', (d) => {
-      const code = parseInt(d.toString().slice(0, 3), 10);
-      if (code >= 400) { clearTimeout(timer); return finish(new Error('SMTP: ' + d.toString().slice(0, 80))); }
-      if (stage < steps.length) { sock.write(steps[stage++] + '\r\n'); }
-      else { clearTimeout(timer); finish(null); }
-    });
-    sock.on('error', (e) => { clearTimeout(timer); finish(e); });
-  });
-}
-
-// The one call everything else uses. level: info | needs-approval | done | urgent
-async function notifyOwner(opts) {
-  const item = {
-    id: crypto.randomBytes(6).toString('hex'),
-    at: new Date().toISOString(),
-    level: opts.level || 'info',
-    title: String(opts.title || '').slice(0, 120),
-    body: String(opts.body || '').slice(0, 500),
-    from: opts.from || 'setayesh',
-    seen: false,
-  };
-  notifications.items.push(item);
-  saveNotifications();
-
-  // Only URGENT things also go to the family board (where everyone, including
-  // the phone, sees them). Approval requests and routine "done" notices are
-  // the father's business alone — they live in his notification bell, not on
-  // the shared board, so the same message never appears in two places.
-  if (opts.board === true && item.level === 'urgent') {
-    try {
-      boardRoutes.add({ id: crypto.randomBytes(6).toString('hex'), by: 'system', system: true,
-        text: '⚠️ ' + item.title + (item.body ? ' — ' + item.body : ''),
-        pinned: true, at: new Date().toISOString(), seenBy: [] });
-    } catch (e) {}
-  }
-
-  // Email, only for things worth interrupting for, and only if set up.
-  if ((item.level === 'needs-approval' || item.level === 'urgent') && cfg.NOTIFY_EMAIL && cfg.MAIL_PASS) {
-    try { await sendOwnerEmail('ستایش: ' + item.title, item.body || item.title); item.emailed = true; saveNotifications(); }
-    catch (e) { item.emailError = e.message; saveNotifications(); }
-  }
-  // Also ping Telegram for the interrupt-worthy ones, if the bot is set up.
-  if ((item.level === 'needs-approval' || item.level === 'urgent') && telegram.configured()) {
-    try { await telegram.send('🔔 ' + item.title + (item.body ? '\n' + item.body : '')); } catch (e) {}
-  }
-  return item;
-}
-
-app.get('/api/notifications', requireAuth, (req, res) => {
-  if (!isAdmin(req.username)) return res.json({ items: [], unseen: 0 });
-  res.json({
-    items: notifications.items.slice(-30).reverse(),
-    unseen: notifications.items.filter((n) => !n.seen).length,
-  });
+// Notifications + owner email + Telegram alert live in notify.js. notifyOwner
+// is re-exposed as a hoisted wrapper so its existing call sites (and the
+// `typeof notifyOwner === 'function'` guard) keep working unchanged. boardRoutes
+// and pendingActions are defined later in this file, so they are passed lazily.
+const _notify = require('./notify').register(app, {
+  requireAuth, requireAdmin, isAdmin, cfg, MAIL_PRESETS,
+  loadJsonFile, saveJsonFile, DATA_DIR, telegram,
+  boardRoutes: { add: (m) => boardRoutes.add(m) },
+  getPending: () => pendingActions,
 });
-app.post('/api/notifications/seen', requireAuth, requireAdmin, (req, res) => {
-  notifications.items.forEach((n) => { n.seen = true; });
-  saveNotifications();
-  res.json({ ok: true });
-});
-app.post('/api/notifications/clear', requireAuth, requireAdmin, (req, res) => {
-  // Keep anything still needing approval; clear the rest.
-  const before = notifications.items.length;
-  const pendingIds = new Set(pendingActions.filter((a) => a.status === 'pending').map((a) => a.title));
-  notifications.items = notifications.items.filter((n) => n.level === 'needs-approval' && pendingIds.has(n.title));
-  saveNotifications();
-  res.json({ ok: true, cleared: before - notifications.items.length });
-});
-app.delete('/api/notifications/:id', requireAuth, requireAdmin, (req, res) => {
-  notifications.items = notifications.items.filter((n) => n.id !== req.params.id);
-  saveNotifications();
-  res.json({ ok: true });
-});
-app.get('/api/admin/notify-status', requireAuth, requireAdmin, (req, res) => {
-  res.json({
-    emailConfigured: !!(cfg.NOTIFY_EMAIL && cfg.MAIL_PASS),
-    address: cfg.NOTIFY_EMAIL ? String(cfg.NOTIFY_EMAIL).replace(/(.{2}).*(@.*)/, '$1•••$2') : '',
-  });
-});
-app.post('/api/admin/notify-test', requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const n = await notifyOwner({ level: 'info', title: 'پیام آزمایشی',
-      body: 'اگر این را می‌بینی، اعلان‌ها کار می‌کنند.', board: false });
-    res.json({ ok: true, emailed: !!n.emailed, emailError: n.emailError || null });
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
+function notifyOwner(opts) { return _notify.notifyOwner(opts); }
 
 // ---------------- Self-healing: capture + alert (never auto-apply) ----------------
 // Charter rule 1.4: Setayesh CAPTURES and REPORTS live errors, it never edits

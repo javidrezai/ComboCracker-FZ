@@ -59,6 +59,7 @@ before(async () => {
     SETAYESH_DEVICES_FILE: path.join(tmp, 'devices.json'),
     SETAYESH_RAG_FILE: path.join(tmp, 'rag.json'),
     SETAYESH_HOMEDEV_FILE: path.join(tmp, 'homedevices.json'),
+    SETAYESH_NOTIFY_FILE: path.join(tmp, 'notify.json'),
   });
   child = spawn(process.execPath, [path.join(ROOT, 'index.js')], { cwd: tmp, env, stdio: 'ignore' });
   child.on('error', (e) => { throw e; });
@@ -230,6 +231,21 @@ test('code library create, list, read, and delete round-trip', async () => {
   assert.equal(del.status, 200);
   const after = (await del.json()).libs;
   assert.ok(!after.some((l) => l.name === name), 'deleted library should be gone');
+});
+
+test('notifications: clean list, notify-status, and mark-seen work', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+
+  const list = await (await api('/api/notifications', { token })).json();
+  assert.ok(Array.isArray(list.items), 'expected an items array');
+  assert.equal(typeof list.unseen, 'number');
+
+  const status = await (await api('/api/admin/notify-status', { token })).json();
+  assert.equal(status.emailConfigured, false);
+
+  const seen = await api('/api/notifications/seen', { method: 'POST', token });
+  assert.equal(seen.status, 200);
+  assert.equal((await seen.json()).ok, true);
 });
 
 test('home devices: drivers, scan state, empty registry, and step-up guard', async () => {

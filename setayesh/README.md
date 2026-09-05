@@ -50,7 +50,14 @@ npm test
 مجموعهٔ تستِ مسیرهای حیاتی (ورود، پیکربندی، حافظه، کانکتورها، SPA) با تست‌ران داخلی Node — بدون وابستگی جدید. سرور روی پورت موقت با داده‌های موقت اجرا می‌شود و داده‌های واقعی را دست نمی‌زند. Critical-path smoke tests via Node's built-in runner; boots the server on a temp port with throwaway state.
 
 ## نسخه / Version
-9.9.32
+9.9.33
+
+### تغییرات ۹.۹.۳۳ / Changelog 9.9.33 — جدا کردن اعلان‌ها و ایمیل و تلگرام (بدون ریسک)
+- **زیرسیستمِ اعلان‌ها به `notify.js` منتقل شد**: مخزن اعلان‌ها، ارسال ایمیلِ SMTP (فقط به آدرسِ خودِ صاحب‌خانه)، آلارمِ تلگرام، و تابعِ مرکزیِ `notifyOwner` + مسیرهای `/api/notifications` و `/api/admin/notify-*`.
+- **روشِ بدون‌ریسک:** تحلیل ایستای دوطرفه برای اثباتِ کاملِ وابستگی‌ها؛ کدِ **کلمه‌به‌کلمه** منتقل شد. چون `boardRoutes` و `pendingActions` در `index.js` **بعد از** این بلوک تعریف می‌شوند، به‌صورت **تنبل (lazy)** پاس داده شدند تا موقع بالا آمدن سرور خطای TDZ ندهد. `notifyOwner` با یک wrapperِ hoist‌شده دوباره در `index.js` معرفی شد تا هر ۶ نقطهٔ فراخوانی (و گاردِ `typeof notifyOwner === 'function'`) دقیقاً مثل قبل کار کنند.
+- `index.js` از ۷٬۰۰۹ به **۶٬۸۹۸** خط رسید (از ابتدای این شاخه ~۲٬۰۴۰ خط سبک‌تر، در ۷ ماژول).
+- **تست جدید:** فهرست اعلان‌ها، وضعیت ایمیل، و علامتِ خوانده‌شده — مجموع تست‌ها ۲۱ و همه سبز.
+  Extracted notifications + owner email + Telegram alert into notify.js. Zero-risk: two-way static dep proof, verbatim move, lazy-passed boardRoutes/pendingActions (defined later in index.js) to avoid a boot-time TDZ, and a hoisted notifyOwner wrapper so all six call sites are byte-for-byte unchanged. 21/21 tests green.
 
 ### تغییرات ۹.۹.۳۲ / Changelog 9.9.32 — جدا کردن زیرسیستمِ دستگاه‌های خانه (بدون ریسک)
 - **کل زیرسیستمِ «دستگاه‌های خانه» (~۱۳۵۰ خط) به `homedevices.js` منتقل شد**: اسکنر شبکه، درایورها (Samsung TV، چاپگر Canon با IPP، Tuya/LSC ابری، Xiaomi miio)، رجیستری دستگاه‌ها، ماتریسِ دسترسیِ هر کاربر، ارسال فرمان به سخت‌افزار، و همهٔ مسیرهای `/api/home/*`.
