@@ -50,7 +50,14 @@ npm test
 مجموعهٔ تستِ مسیرهای حیاتی (ورود، پیکربندی، حافظه، کانکتورها، SPA) با تست‌ران داخلی Node — بدون وابستگی جدید. سرور روی پورت موقت با داده‌های موقت اجرا می‌شود و داده‌های واقعی را دست نمی‌زند. Critical-path smoke tests via Node's built-in runner; boots the server on a temp port with throwaway state.
 
 ## نسخه / Version
-9.9.34
+9.9.35
+
+### تغییرات ۹.۹.۳۵ / Changelog 9.9.35 — جدا کردن مسیرهای «شب/دستیار شبانه» (بدون ریسک)
+- **مسیرهای تنظیماتِ شب و فهرستِ کارهای شب به `routes/night.js` منتقل شد** (به‌همراه تابعِ خالصِ `inQuietHours`).
+- **عمداً منتقل نشد:** خودِ موتورِ self-heal/تأیید/rollback/به‌روزرسانی خودکار (که `process.exit` و ری‌استارت می‌کند) و state (`night`/`saveNight`/`nightLog`) در `index.js` ماندند — این ماشینِ حساس جای دست‌کاریِ سرسری نیست. فقط مسیرهای کوچک و **تست‌پذیر** جدا شدند و `night` با ارجاع (تغییرِ درجا) پاس داده شد.
+- `index.js` از ۶٬۸۱۵ به **۶٬۷۸۹** خط رسید.
+- **تست جدید:** خواندن تنظیمات، تغییرِ بازهٔ ساعت، افزودن و حذفِ کارِ شب — مجموع تست‌ها ۲۲ و همه سبز.
+  Extracted the night settings + task-list routes (and the pure inQuietHours helper) into routes/night.js. The self-heal/verify/rollback/auto-update engine and the night state stay in index.js on purpose — that restart machinery is not something to relocate casually. night is passed by reference. 22/22 tests green.
 
 ### تغییرات ۹.۹.۳۴ / Changelog 9.9.34 — جدا کردن حافظهٔ بلندمدت + RAG (بدون ریسک)
 - **حافظهٔ بلندمدتِ هر کاربر و مسیرهای RAG به `memory.js` منتقل شد**: مخزنِ `memory`، `addMemory`/`memoryFor`/`memoryBlock` (بلوکِ تزریق‌شده به پرامپت با ردکشنِ حریم خصوصی)، و مسیرهای `/api/memory`, `/api/rag/search`, `/api/admin/rag`, `/api/admin/memory`.

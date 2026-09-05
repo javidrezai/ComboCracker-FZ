@@ -158,7 +158,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.34';
+const APP_VERSION = '9.9.35';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -4577,43 +4577,11 @@ function applyWithVerification(fileList, reason) {
   return files.length;
 }
 
-function inQuietHours() {
-  const h = new Date().getHours();
-  return night.startHour <= night.endHour
-    ? (h >= night.startHour && h < night.endHour)
-    : (h >= night.startHour || h < night.endHour);   // window crossing midnight
-}
-
-app.get('/api/admin/night', requireAuth, requireAdmin, (req, res) => {
-  res.json({
-    settings: night,
-    inQuietHours: inQuietHours(),
-    restartSupported: RESTART_SUPPORTED,
-    pendingVerification: fs.existsSync(VERIFY_FILE),
-  });
-});
-
-app.post('/api/admin/night/settings', requireAuth, requireAdmin, (req, res) => {
-  const b = req.body || {};
-  if (typeof b.enabled === 'boolean') night.enabled = b.enabled;
-  if (Number.isFinite(Number(b.startHour))) night.startHour = Math.max(0, Math.min(23, Number(b.startHour)));
-  if (Number.isFinite(Number(b.endHour)))   night.endHour   = Math.max(0, Math.min(23, Number(b.endHour)));
-  saveNight();
-  res.json({ ok: true, settings: night });
-});
-
-app.post('/api/admin/night/tasks', requireAuth, requireAdmin, (req, res) => {
-  const text = String((req.body || {}).text || '').trim().slice(0, 400);
-  if (!text) return res.status(400).json({ error: 'دستور لازم است.' });
-  night.tasks.push({ id: crypto.randomBytes(4).toString('hex'), text, at: new Date().toISOString(), done: false });
-  saveNight();
-  res.json({ ok: true, tasks: night.tasks });
-});
-
-app.delete('/api/admin/night/tasks/:id', requireAuth, requireAdmin, (req, res) => {
-  night.tasks = night.tasks.filter((t) => t.id !== req.params.id);
-  saveNight();
-  res.json({ ok: true, tasks: night.tasks });
+// Night settings + task-list routes live in routes/night.js. The state
+// (night, saveNight, nightLog) and the self-heal/verify/rollback engine above
+// stay here on purpose. night is shared by reference and mutated in place.
+require('./routes/night').register(app, {
+  requireAuth, requireAdmin, night, saveNight, RESTART_SUPPORTED, VERIFY_FILE,
 });
 
 // ---------------- Sync between the family's own computers ----------------

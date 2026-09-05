@@ -233,6 +233,30 @@ test('code library create, list, read, and delete round-trip', async () => {
   assert.ok(!after.some((l) => l.name === name), 'deleted library should be gone');
 });
 
+test('night: read settings, update window, add and delete a task', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+
+  const st = await (await api('/api/admin/night', { token })).json();
+  assert.ok(st.settings && typeof st.settings.enabled === 'boolean', 'expected night settings');
+  assert.equal(typeof st.inQuietHours, 'boolean');
+
+  const upd = await api('/api/admin/night/settings', { method: 'POST', token, body: { startHour: 1, endHour: 6 } });
+  assert.equal(upd.status, 200);
+  const s2 = (await upd.json()).settings;
+  assert.equal(s2.startHour, 1);
+  assert.equal(s2.endHour, 6);
+
+  const add = await api('/api/admin/night/tasks', { method: 'POST', token, body: { text: 'کار شب تست' } });
+  assert.equal(add.status, 200);
+  const tasks = (await add.json()).tasks;
+  const id = tasks[tasks.length - 1].id;
+  assert.ok(id, 'expected a task id');
+
+  const del = await api('/api/admin/night/tasks/' + id, { method: 'DELETE', token });
+  assert.equal(del.status, 200);
+  assert.ok(!(await del.json()).tasks.some((t) => t.id === id), 'task should be gone');
+});
+
 test('notifications: clean list, notify-status, and mark-seen work', async () => {
   const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
 
