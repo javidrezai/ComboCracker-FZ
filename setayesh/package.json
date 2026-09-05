@@ -1,10 +1,11 @@
 {
   "name": "setayesh",
-  "version": "9.9.16",
+  "version": "9.9.17",
   "private": true,
   "main": "index.js",
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "test": "node --test"
   },
   "engines": {
     "node": ">=18"

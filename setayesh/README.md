@@ -33,8 +33,17 @@ SETAYESH_HOST=127.0.0.1 npm start
 - فایل‌های حالت زمان‌اجرا (`.setayesh-users.json`، `backups/`، `code-library/` و ...) کامیت نمی‌شوند و در `.gitignore` قرار دارند.
 - گواهی TLS هرگز به‌صورت پیش‌فرض غیرفعال نمی‌شود.
 
+## تست / Tests
+```bash
+npm test
+```
+مجموعهٔ تستِ مسیرهای حیاتی (ورود، پیکربندی، حافظه، کانکتورها، SPA) با تست‌ران داخلی Node — بدون وابستگی جدید. سرور روی پورت موقت با داده‌های موقت اجرا می‌شود و داده‌های واقعی را دست نمی‌زند. Critical-path smoke tests via Node's built-in runner; boots the server on a temp port with throwaway state.
+
 ## نسخه / Version
-9.9.16
+9.9.17
+
+### تغییرات ۹.۹.۱۷ / Changelog 9.9.17
+- **تست خودکار (تور ایمنی)**: افزودن `test/smoke.test.js` — بوت سرور روی پورت/داده‌ی موقت و بررسی مسیرهای حیاتی: سلامت، نسخه، ورود درست/نادرست، گیت احراز هویت، CRUD حافظه، وضعیت کانکتورها، و catch-all رابط. اولین قدمِ «اول تست، بعد بازآرایی». Automated smoke tests as the safety net before refactoring the monoliths — the first step of "tests before refactor".
 
 ### تغییرات ۹.۹.۱۶ / Changelog 9.9.16
 - **لانچر آمادهٔ اجرا**: افزودن `Start-Setayesh.bat` (ویندوز) و `start.sh` (مک/لینوکس) که خودشان وابستگی‌ها را نصب، سرور را با تنظیمات درست اجرا (فعال‌سازی دکمهٔ ری‌استارت و استفاده از گواهی سیستم)، مرورگر را باز و در صورت ری‌استارت دوباره اجرا می‌کنند. Ready-to-run launchers (`Start-Setayesh.bat`, `start.sh`) that install deps, start the server correctly (enable the in-app Restart, use the OS trust store), open the browser, and relaunch on restart.
