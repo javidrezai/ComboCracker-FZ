@@ -50,7 +50,14 @@ npm test
 مجموعهٔ تستِ مسیرهای حیاتی (ورود، پیکربندی، حافظه، کانکتورها، SPA) با تست‌ران داخلی Node — بدون وابستگی جدید. سرور روی پورت موقت با داده‌های موقت اجرا می‌شود و داده‌های واقعی را دست نمی‌زند. Critical-path smoke tests via Node's built-in runner; boots the server on a temp port with throwaway state.
 
 ## نسخه / Version
-9.9.35
+9.9.36
+
+### تغییرات ۹.۹.۳۶ / Changelog 9.9.36 — جدا کردن همگام‌سازی بین کامپیوترها (بدون ریسک)
+- **کل زیرسیستمِ Sync به `sync.js` منتقل شد**: رمزنگاریِ AES-256-GCM با کلید مشترک، snapshot/merge (board/memory/devices/knowledge)، endpointِ همتا `/api/sync/exchange`، حلقهٔ ۹۰ثانیه‌ای، و مسیرهای `/api/admin/sync*`.
+- **روشِ بدون‌ریسک:** تحلیل دوطرفه نشان داد **هیچ نمادی به بیرون نشت نمی‌کند**، پس کل بخش تمیز جدا شد. چون وابستگی‌ها (board/memory/devices/knowledge و savers) **بعدتر** در `index.js` تعریف می‌شوند، ماژول **دیرتر** (بعد از تعریفشان و قبل از catch-all) ثبت شد. `knowledge` و `devices` در `index.js` بازتخصیص می‌شوند، پس با getter/setter دسترسی می‌شوند؛ `memory` و `boardRoutes` ارجاعِ پایدارند و مستقیم پاس شدند؛ `localLanIps` چون تابعِ hoist‌شده است مستقیم پاس شد.
+- `index.js` از ۶٬۷۸۹ به **۶٬۶۴۶** خط رسید (از ابتدای این شاخه ~۲٬۳۰۰ خط سبک‌تر، در ۱۰ ماژول).
+- **تست جدید:** وضعیت sync، ردِ exchange وقتی خاموش است (۴۰۳)، به‌روزرسانی تنظیمات، و ردِ کلیدِ اشتباه (۴۰۱) — مجموع تست‌ها ۲۳ و همه سبز.
+  Extracted the whole peer-sync subsystem into sync.js (AES-256-GCM shared-key transit encryption, snapshot/merge, the /api/sync/exchange peer endpoint, the 90s loop, /api/admin/sync* routes). Zero-risk: two-way analysis showed nothing leaks out; registered late (deps defined later, before the catch-all); knowledge/devices reached via accessors (they get reassigned), memory/boardRoutes passed directly. 23/23 tests green.
 
 ### تغییرات ۹.۹.۳۵ / Changelog 9.9.35 — جدا کردن مسیرهای «شب/دستیار شبانه» (بدون ریسک)
 - **مسیرهای تنظیماتِ شب و فهرستِ کارهای شب به `routes/night.js` منتقل شد** (به‌همراه تابعِ خالصِ `inQuietHours`).

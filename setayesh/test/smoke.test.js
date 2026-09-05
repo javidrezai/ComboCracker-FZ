@@ -60,6 +60,7 @@ before(async () => {
     SETAYESH_RAG_FILE: path.join(tmp, 'rag.json'),
     SETAYESH_HOMEDEV_FILE: path.join(tmp, 'homedevices.json'),
     SETAYESH_NOTIFY_FILE: path.join(tmp, 'notify.json'),
+    SETAYESH_SYNC_FILE: path.join(tmp, 'sync.json'),
   });
   child = spawn(process.execPath, [path.join(ROOT, 'index.js')], { cwd: tmp, env, stdio: 'ignore' });
   child.on('error', (e) => { throw e; });
@@ -231,6 +232,29 @@ test('code library create, list, read, and delete round-trip', async () => {
   assert.equal(del.status, 200);
   const after = (await del.json()).libs;
   assert.ok(!after.some((l) => l.name === name), 'deleted library should be gone');
+});
+
+test('sync: status, exchange refused when off, and settings update', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+
+  const st = await (await api('/api/admin/sync', { token })).json();
+  assert.equal(st.enabled, false);
+  assert.equal(st.keySet, false);
+  assert.ok(Array.isArray(st.myAddresses), 'expected myAddresses');
+
+  // The peer endpoint refuses everyone while sync is off (no shared key).
+  const off = await api('/api/sync/exchange', { method: 'POST', body: { payload: 'x' } });
+  assert.equal(off.status, 403);
+
+  const upd = await api('/api/admin/sync/settings', { method: 'POST', token, body: { enabled: true, role: 'peer', sharedKey: 'test-shared-key' } });
+  assert.equal(upd.status, 200);
+  const s2 = await upd.json();
+  assert.equal(s2.enabled, true);
+  assert.equal(s2.keySet, true);
+
+  // A wrong-key payload now fails to decrypt -> 401, proving the key gates it.
+  const bad = await api('/api/sync/exchange', { method: 'POST', body: { payload: 'not-valid-base64-cipher' } });
+  assert.equal(bad.status, 401);
 });
 
 test('night: read settings, update window, add and delete a task', async () => {
