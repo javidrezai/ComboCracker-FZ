@@ -234,6 +234,30 @@ test('code library create, list, read, and delete round-trip', async () => {
   assert.ok(!after.some((l) => l.name === name), 'deleted library should be gone');
 });
 
+test('devices: register (phone layout), set prefs, list, and revoke', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  const id = 'testdev-' + Date.now();
+
+  const reg = await api('/api/device', { method: 'POST', token, body: { id, screenW: 400, screenH: 800, touch: true, platform: 'TestOS' } });
+  assert.equal(reg.status, 200);
+  const d = await reg.json();
+  assert.equal(d.kind, 'phone');
+  assert.equal(d.layout.compact, true);
+  assert.equal(d.known, false);
+
+  const prefs = await api('/api/device/prefs', { method: 'POST', token, body: { id, prefs: { engine: 'anthropic' } } });
+  assert.equal(prefs.status, 200);
+  assert.equal((await prefs.json()).prefs.engine, 'anthropic');
+
+  const list = await (await api('/api/admin/devices', { token })).json();
+  assert.ok(list.devices.some((x) => x.id === id), 'registered device should be listed');
+
+  const del = await api('/api/admin/devices/' + id, { method: 'DELETE', token });
+  assert.equal(del.status, 200);
+  const list2 = await (await api('/api/admin/devices', { token })).json();
+  assert.ok(!list2.devices.some((x) => x.id === id), 'revoked device should be gone');
+});
+
 test('sync: status, exchange refused when off, and settings update', async () => {
   const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
 

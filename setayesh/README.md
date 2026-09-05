@@ -50,7 +50,14 @@ npm test
 مجموعهٔ تستِ مسیرهای حیاتی (ورود، پیکربندی، حافظه، کانکتورها، SPA) با تست‌ران داخلی Node — بدون وابستگی جدید. سرور روی پورت موقت با داده‌های موقت اجرا می‌شود و داده‌های واقعی را دست نمی‌زند. Critical-path smoke tests via Node's built-in runner; boots the server on a temp port with throwaway state.
 
 ## نسخه / Version
-9.9.36
+9.9.37
+
+### تغییرات ۹.۹.۳۷ / Changelog 9.9.37 — جدا کردن مسیرهای دستگاه (بدون ریسک)
+- **مسیرهای دستگاه (ثبتِ صفحه/چیدمان، ترجیحاتِ هر دستگاه، فهرست و لغوِ دسترسی توسط مدیر) به `routes/devices.js` منتقل شد**، به‌همراه دو تابعِ خالصِ `classifyDevice`/`deviceLabel` که فقط همان‌جا استفاده می‌شدند.
+- **عمداً منتقل نشد:** خودِ state (`devices`, `saveDevices`) و **مسیرِ امنیتیِ ورودِ دستگاهِ مورد اعتماد** (auto-login) در `index.js` ماند. ماژول به `devices` از طریقِ `getDevices()` دسترسی می‌کند، چون `saveDevices()` هنگام هرس به ۶۰ دستگاهِ اخیر آن را **بازتخصیص** می‌کند و یک ارجاعِ ثابت کهنه می‌شد.
+- `index.js` از ۶٬۶۴۶ به **۶٬۵۵۱** خط رسید (از ابتدای این شاخه ~۲٬۳۹۰ خط سبک‌تر، در ۱۱ ماژول).
+- **تست جدید:** ثبتِ دستگاه (چیدمانِ موبایل)، تنظیمِ ترجیحات، فهرست، و لغوِ دسترسی — مجموع تست‌ها ۲۴ و همه سبز.
+  Extracted the device routes (screen/layout registration, per-device prefs, admin list + revoke) plus the pure classifyDevice/deviceLabel helpers into routes/devices.js. The devices state and the security-critical trusted-device login flow stay in index.js; the module reaches `devices` via getDevices() because saveDevices() reassigns it on trim. 24/24 tests green.
 
 ### تغییرات ۹.۹.۳۶ / Changelog 9.9.36 — جدا کردن همگام‌سازی بین کامپیوترها (بدون ریسک)
 - **کل زیرسیستمِ Sync به `sync.js` منتقل شد**: رمزنگاریِ AES-256-GCM با کلید مشترک، snapshot/merge (board/memory/devices/knowledge)، endpointِ همتا `/api/sync/exchange`، حلقهٔ ۹۰ثانیه‌ای، و مسیرهای `/api/admin/sync*`.
