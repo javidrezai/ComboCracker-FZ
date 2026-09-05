@@ -50,7 +50,14 @@ npm test
 مجموعهٔ تستِ مسیرهای حیاتی (ورود، پیکربندی، حافظه، کانکتورها، SPA) با تست‌ران داخلی Node — بدون وابستگی جدید. سرور روی پورت موقت با داده‌های موقت اجرا می‌شود و داده‌های واقعی را دست نمی‌زند. Critical-path smoke tests via Node's built-in runner; boots the server on a temp port with throwaway state.
 
 ## نسخه / Version
-9.9.37
+9.9.38
+
+### تغییرات ۹.۹.۳۸ / Changelog 9.9.38 — شروع شکستن رابط: جدا کردن ترجمه‌ها (بدون ریسک)
+- **اولین برشِ `app.js` (۴٬۶۶۲ خطی):** شیءِ بزرگِ ترجمه‌ها (`LANG`، فارسی/انگلیسی/آلمانی، ~۹۰ خط دادهٔ خالص) به `public/app-i18n.js` منتقل شد و به‌صورتِ `window.__LANG` قبل از `app.js` بارگذاری می‌شود؛ در `app.js` فقط یک خط شد: `var LANG = window.__LANG`.
+- چون `app.js` یک IIFE است (درونش خصوصی)، داده از طریقِ یک گلوبالِ `window` به اشتراک گذاشته شد — نه گلوبال‌سازیِ توابع.
+- **راستی‌آزماییِ واقعی:** سرور بالا آمد و صفحه با **کرومیومِ headless** رِندر شد؛ متنِ رابط (دکمهٔ «ورود» که از `LANG` می‌آید) در DOMِ پس‌از‌JS حاضر بود — یعنی چیزی نشکسته.
+- `app.js` از ۴٬۶۶۲ به **۴٬۵۷۳** خط رسید. تست‌ها ۲۴ و همه سبز.
+  First cut of the 4,662-line client monolith: moved the big fa/en/de translations object (LANG, ~90 lines of pure data) out to public/app-i18n.js as window.__LANG, loaded before app.js; app.js now reads it in one line. Since app.js is an IIFE, the data is shared via a window global. Verified by a real headless-Chromium render (the login UI text from LANG appears in the post-JS DOM). app.js drops to 4,573 lines; 24/24 tests green.
 
 ### تغییرات ۹.۹.۳۷ / Changelog 9.9.37 — جدا کردن مسیرهای دستگاه (بدون ریسک)
 - **مسیرهای دستگاه (ثبتِ صفحه/چیدمان، ترجیحاتِ هر دستگاه، فهرست و لغوِ دسترسی توسط مدیر) به `routes/devices.js` منتقل شد**، به‌همراه دو تابعِ خالصِ `classifyDevice`/`deviceLabel` که فقط همان‌جا استفاده می‌شدند.
