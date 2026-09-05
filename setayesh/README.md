@@ -50,7 +50,14 @@ npm test
 مجموعهٔ تستِ مسیرهای حیاتی (ورود، پیکربندی، حافظه، کانکتورها، SPA) با تست‌ران داخلی Node — بدون وابستگی جدید. سرور روی پورت موقت با داده‌های موقت اجرا می‌شود و داده‌های واقعی را دست نمی‌زند. Critical-path smoke tests via Node's built-in runner; boots the server on a temp port with throwaway state.
 
 ## نسخه / Version
-9.9.25
+9.9.26
+
+### تغییرات ۹.۹.۲۶ / Changelog 9.9.26 — شخصی‌سازی درسی هر عضو خانواده
+- **تمرکز درسیِ اختصاصی برای هر کاربر** (نقشهٔ `TUTORS` در `index.js`، بدون تغییر UI و بدون وابستگیِ جدید):
+  - **ستایش** → **کلاس هفتم (Klasse 7) مدرسه در برلین**؛ تمرکز روی برنامهٔ درسیِ آلمان: **Deutsch** (محور)، **Mathematik** (کسر، اعداد منفی، معادله، درصد، هندسه)، **Englisch**، **Biologie**، **Geografie**، **Geschichte**؛ کمک به هر درس به زبان همان درس.
+  - **فردین** → **کلاس دوم (Klasse 2) Grundschule در برلین**؛ درس‌های ابتدایی به زبان آلمانی: خواندن/نوشتن **Deutsch**، **Mathematik** تا ۱۰۰ و ضرب، **Sachunterricht** و انگلیسیِ ساده، با لحن بازیگوش و مثال‌های کوچک.
+  - **آرزو** → تمرکز بیشتر روی **کارِ پرستاری و Pflegekraft در آلمان**: مستندات پرستاری (Pflegedokumentation)، تحویل شیفت (Übergabe)، اصطلاحات تخصصیِ آلمانیِ Pflege، ارتباط محترمانه، و پشتیبانی برای مدرک/آزمون؛ همراه با هشدارِ «پزشک نیستم» برای تصمیم‌های درمانی.
+  Per-member school/work personalization: Setayesh (Berlin Klasse 7 German curriculum), Fardin (Berlin Klasse 2 Grundschule), Arezou (German Pflegekraft/nursing focus with real Pflege terminology). Server-side prompt tuning only; all 14 smoke tests green.
 
 ### تغییرات ۹.۹.۲۵ / Changelog 9.9.25 — RAG محلیِ سبک
 - **جستجوی معناییِ محلی روی حافظهٔ خانواده** (`rag.js`): یک ایندکس **TF-IDF + کسینوس** با **JS خالص** — بدون Qdrant، بدون سرور جانبی، بدون وابستگیِ جدید، کاملاً آفلاین و خصوصی. فارسی و انگلیسی. Private, offline, dependency-free local semantic-ish search over the family's notes/memories.
