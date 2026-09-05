@@ -42,7 +42,10 @@ npm test
 مجموعهٔ تستِ مسیرهای حیاتی (ورود، پیکربندی، حافظه، کانکتورها، SPA) با تست‌ران داخلی Node — بدون وابستگی جدید. سرور روی پورت موقت با داده‌های موقت اجرا می‌شود و داده‌های واقعی را دست نمی‌زند. Critical-path smoke tests via Node's built-in runner; boots the server on a temp port with throwaway state.
 
 ## نسخه / Version
-9.9.18
+9.9.19
+
+### تغییرات ۹.۹.۱۹ / Changelog 9.9.19
+- **شروع ماژول‌بندی سرور (ساختار `routes/`)**: مسیرهای کانکتور گوگل از `index.js` به `routes/connectors.js` منتقل شد و با `register(app, deps)` ثبت می‌شود — اولین گامِ امنِ شکستن `index.js`، با رفتار بدون تغییر و تست‌های سبز. First safe step of splitting the server monolith: Google connector routes moved to `routes/connectors.js` (registered via `register()`), behavior unchanged, tests green.
 
 ### تغییرات ۹.۹.۱۸ / Changelog 9.9.18
 - **ماژول‌بندی رابط کاربری (کاهش فایل‌های بزرگ پرریسک)**: `public/index.html` از ۷٬۸۰۵ خط به **۹۹۴ خط** رسید. منطق و استایل به فایل‌های جدا منتقل شد: `app.css`، `app.js`، `brain3d.js`، `login-fx.js`، `memory-panel.js`، `connectors-panel.js` — با همان ترتیب بارگذاری (رفتار بدون تغییر) و نسخه‌گذاریِ `?v=` برای جلوگیری از کش کهنه پس از به‌روزرسانی. UI modularized: `index.html` 7,805 → 994 lines; CSS/JS split into separate files loaded in the same order (behavior unchanged), with `?v=` cache-busting.
