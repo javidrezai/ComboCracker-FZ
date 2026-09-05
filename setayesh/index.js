@@ -158,7 +158,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.33';
+const APP_VERSION = '9.9.34';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -5770,100 +5770,18 @@ const boardRoutes = require('./routes/board').register(app, {
 // deadline tracker for official letters: a Frist recorded once is surfaced
 // every session until it is dealt with.
 const MEMORY_FILE = process.env.SETAYESH_MEMORY_FILE || path.join(DATA_DIR, '.setayesh-memory.json');
-let memory = loadJsonFile(MEMORY_FILE, {});   // username -> [entries]
-function saveMemory() { saveJsonFile(MEMORY_FILE, memory); }
-
-const MEMORY_MAX_PER_USER = 200;
-const MEMORY_INJECT_CHARS = 2200;
-
-function memoryFor(username) { return memory[username] || []; }
-
-function addMemory(username, entry) {
-  const list = memory[username] || (memory[username] = []);
-  const item = {
-    id: crypto.randomBytes(6).toString('hex'),
-    text: String(entry.text || '').slice(0, 600),
-    kind: ['fact', 'preference', 'project', 'document', 'deadline'].includes(entry.kind) ? entry.kind : 'fact',
-    due: entry.due ? String(entry.due).slice(0, 30) : null,
-    createdAt: new Date().toISOString(),
-  };
-  if (!item.text) throw new Error('متن حافظه لازم است.');
-  list.push(item);
-  if (list.length > MEMORY_MAX_PER_USER) memory[username] = list.slice(-MEMORY_MAX_PER_USER);
-  saveMemory();
-  // Index it for local semantic search (best-effort — never block a save).
-  try { rag.add({ id: item.id, text: item.text, user: username, source: 'memory' }); } catch (e) {}
-  return item;
-}
-
-// What gets pushed into the system prompt each turn.
-//
-// IMPORTANT: memory is redacted on the way out, exactly like a typed message.
-// Memory is only useful because it holds context, but that context goes to a
-// cloud provider on every single turn — so the same shield applies. Names and
-// identifiers are stripped; the useful shape ("works in road construction",
-// "has a letter due 14 March") survives, which is what actually helps.
-function memoryBlock(username) {
-  const list = memoryFor(username);
-  if (!list.length) return '';
-  const today = new Date().toISOString().slice(0, 10);
-
-  const open = list.filter((m) => m.due && m.due >= today).sort((a, b) => a.due.localeCompare(b.due));
-  const overdue = list.filter((m) => m.due && m.due < today);
-  const rest = list.filter((m) => !m.due).slice(-30).reverse();
-
-  let out = '';
-  const push = (line) => { if (out.length + line.length < MEMORY_INJECT_CHARS) out += line + '\n'; };
-  for (const m of overdue) push(`• [مهلت گذشته: ${m.due}] ${m.text}`);
-  for (const m of open) push(`• [مهلت: ${m.due}] ${m.text}`);
-  for (const m of rest) push(`• ${m.text}`);
-  if (!out.trim()) return '';
-
-  const safe = privacy.enabled ? redactOutbound(out) : out;
-  return `\n\n*** آنچه درباره‌ی این کاربر می‌دانی ***\nاین‌ها را قبلاً یاد گرفته‌ای. طبیعی استفاده کن، فهرست‌وار تکرارشان نکن. اگر مهلتی نزدیک یا گذشته است، یک‌بار کوتاه یادآوری کن:\n${safe.trim()}`;
-}
-
-app.get('/api/memory', requireAuth, (req, res) => {
-  res.json({ memory: memoryFor(req.username).slice().reverse() });
+const _mem = require('./memory').register(app, {
+  requireAuth, requireAdmin, isAdmin, users, rag, privacy, redactOutbound,
+  loadJsonFile, saveJsonFile, MEMORY_FILE,
 });
-
-app.post('/api/memory', requireAuth, (req, res) => {
-  try { res.status(201).json({ ok: true, entry: addMemory(req.username, req.body || {}) }); }
-  catch (e) { res.status(400).json({ error: e.message }); }
-});
-
-app.delete('/api/memory/:id', requireAuth, (req, res) => {
-  const list = memoryFor(req.username);
-  const next = list.filter((m) => m.id !== req.params.id);
-  if (next.length === list.length) return res.status(404).json({ error: 'پیدا نشد' });
-  memory[req.username] = next;
-  saveMemory();
-  try { rag.remove(req.params.id); } catch (e) {}
-  res.json({ ok: true });
-});
-
-// Local RAG: semantic-ish search over the caller's own notes/memories (admin
-// may search across everyone). Also the backing for the `recall` AI tool.
-app.get('/api/rag/search', requireAuth, (req, res) => {
-  const q = String(req.query.q || '');
-  if (!q.trim()) return res.json({ results: [] });
-  res.json({ results: rag.search(q, Number(req.query.limit) || 5, { user: req.username, all: isAdmin(req.username) }) });
-});
-app.get('/api/admin/rag', requireAuth, requireAdmin, (req, res) => res.json(rag.stats()));
-app.post('/api/admin/rag/reindex', requireAuth, requireAdmin, (req, res) => {
-  let n = 0;
-  for (const [user, list] of Object.entries(memory)) {
-    for (const m of (list || [])) { try { rag.add({ id: m.id, text: m.text, user, source: 'memory' }); n++; } catch (e) {} }
-  }
-  res.json({ ok: true, indexed: n, stats: rag.stats() });
-});
-
-// Admin oversight: see every account's memory in one place.
-app.get('/api/admin/memory', requireAuth, requireAdmin, (req, res) => {
-  const out = {};
-  for (const u of users.keys()) out[u] = memoryFor(u).slice().reverse();
-  res.json({ memory: out });
-});
+// Re-exposed so existing call sites (chat tools, prompt builder, sync,
+// suggestions) keep working byte-for-byte; memory is the same object, mutated
+// in place, so in-place writes elsewhere (e.g. the sync merge) still work.
+const memory = _mem.memory;
+function memoryFor(u) { return _mem.memoryFor(u); }
+function addMemory(u, e) { return _mem.addMemory(u, e); }
+function memoryBlock(u) { return _mem.memoryBlock(u); }
+function saveMemory() { return _mem.saveMemory(); }
 
 // ---------------- Catching commitments in conversation ----------------
 // A good assistant hears "I have to call the Jobcenter on Thursday" and

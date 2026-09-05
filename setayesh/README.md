@@ -50,7 +50,14 @@ npm test
 مجموعهٔ تستِ مسیرهای حیاتی (ورود، پیکربندی، حافظه، کانکتورها، SPA) با تست‌ران داخلی Node — بدون وابستگی جدید. سرور روی پورت موقت با داده‌های موقت اجرا می‌شود و داده‌های واقعی را دست نمی‌زند. Critical-path smoke tests via Node's built-in runner; boots the server on a temp port with throwaway state.
 
 ## نسخه / Version
-9.9.33
+9.9.34
+
+### تغییرات ۹.۹.۳۴ / Changelog 9.9.34 — جدا کردن حافظهٔ بلندمدت + RAG (بدون ریسک)
+- **حافظهٔ بلندمدتِ هر کاربر و مسیرهای RAG به `memory.js` منتقل شد**: مخزنِ `memory`، `addMemory`/`memoryFor`/`memoryBlock` (بلوکِ تزریق‌شده به پرامپت با ردکشنِ حریم خصوصی)، و مسیرهای `/api/memory`, `/api/rag/search`, `/api/admin/rag`, `/api/admin/memory`.
+- **روشِ بدون‌ریسک:** رفتار از قبل با تست‌های CRUD حافظه و جستجوی RAG قفل شده بود؛ تحلیل ایستای دوطرفه وابستگی‌ها را اثبات کرد؛ کد **کلمه‌به‌کلمه** منتقل شد. شیءِ `memory` همان شیء است (در جا تغییر می‌کند) تا نوشتنِ درجای بیرونی (مثلاً ادغامِ همگام‌سازی) دست‌نخورده کار کند؛ توابع با wrapperهای hoist‌شده دوباره معرفی شدند. `MEMORY_FILE` در `index.js` ماند (فهرستِ پشتیبان به آن ارجاع دارد) و پاس داده شد.
+- `index.js` از ۶٬۸۹۸ به **۶٬۸۱۵** خط رسید (از ابتدای این شاخه ~۲٬۱۲۰ خط سبک‌تر، در ۸ ماژول).
+- تست‌ها ۲۱ و همه سبز.
+  Extracted per-user long-term memory + the RAG routes into memory.js. Zero-risk: behavior already locked by the memory-CRUD and RAG-search tests, two-way static dep proof, verbatim move, the memory object shared in place (so the sync merge still works), hoisted function wrappers, MEMORY_FILE kept in index.js for the backup list. 21/21 tests green.
 
 ### تغییرات ۹.۹.۳۳ / Changelog 9.9.33 — جدا کردن اعلان‌ها و ایمیل و تلگرام (بدون ریسک)
 - **زیرسیستمِ اعلان‌ها به `notify.js` منتقل شد**: مخزن اعلان‌ها، ارسال ایمیلِ SMTP (فقط به آدرسِ خودِ صاحب‌خانه)، آلارمِ تلگرام، و تابعِ مرکزیِ `notifyOwner` + مسیرهای `/api/notifications` و `/api/admin/notify-*`.
