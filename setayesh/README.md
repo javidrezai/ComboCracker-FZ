@@ -11,6 +11,10 @@ A private, family AI assistant that runs locally on the family's own machine.
 - نمای «مغز سه‌بعدی» بر پایهٔ three.js
 
 ## اجرا / Run
+**ساده‌ترین راه (ویندوز):** روی فایل **`Start-Setayesh.bat`** دوبار کلیک کن — خودش وابستگی‌ها را نصب، سرور را اجرا و مرورگر را باز می‌کند. **پنجرهٔ مشکی را باز نگه دار.**
+**مک/لینوکس:** `./start.sh` را اجرا کن.
+
+راه دستی:
 ```bash
 npm install
 npm start
@@ -20,7 +24,9 @@ npm start
 SETAYESH_HOST=127.0.0.1 npm start
 ```
 
-نیازمند Node.js 18 یا بالاتر. کلیدهای API از طریق پنل تنظیمات وارد می‌شوند.
+- نیازمند Node.js 18 یا بالاتر (برای دکمهٔ «ری‌استارت» داخل برنامه، از لانچر استفاده کنید).
+- کلیدهای API از طریق پنل تنظیمات وارد می‌شوند.
+- اگر پیام «Could not reach the server» دیدید یعنی سرور اجرا نیست یا پنجره‌اش بسته شده — لانچر را دوباره اجرا و از `http://localhost:3000` وارد شوید (نه با باز کردن مستقیم فایل).
 
 ## نکات امنیتی / Security notes
 - رمز پیش‌فرض حساب `admin` را در اولین ورود تغییر دهید.
@@ -28,7 +34,11 @@ SETAYESH_HOST=127.0.0.1 npm start
 - گواهی TLS هرگز به‌صورت پیش‌فرض غیرفعال نمی‌شود.
 
 ## نسخه / Version
-9.9.15
+9.9.16
+
+### تغییرات ۹.۹.۱۶ / Changelog 9.9.16
+- **لانچر آمادهٔ اجرا**: افزودن `Start-Setayesh.bat` (ویندوز) و `start.sh` (مک/لینوکس) که خودشان وابستگی‌ها را نصب، سرور را با تنظیمات درست اجرا (فعال‌سازی دکمهٔ ری‌استارت و استفاده از گواهی سیستم)، مرورگر را باز و در صورت ری‌استارت دوباره اجرا می‌کنند. Ready-to-run launchers (`Start-Setayesh.bat`, `start.sh`) that install deps, start the server correctly (enable the in-app Restart, use the OS trust store), open the browser, and relaunch on restart.
+- **پیام خطای واضح‌تر**: هنگام در دسترس نبودن سرور، پیام ورود حالا دقیقاً می‌گوید پنجرهٔ برنامه را باز نگه دار و از `http://localhost:3000` وارد شو. Clearer login error that tells the user to keep the app window open and use `http://localhost:3000`.
 
 ### تغییرات ۹.۹.۱۵ / Changelog 9.9.15
 - **کانکتور گوگل (Gmail + تقویم)**: پنل جدید «کانکتورها» (مدیر) برای اتصال حساب گوگل با OAuth2. پس از اتصال، ستایش می‌تواند **ایمیل بخواند و بفرستد** و **قرار در تقویم ثبت/فهرست کند** — هم مستقیم از پنل و هم به‌صورت ابزار در گفت‌وگو (وقتی موتور فعال Claude باشد). New **Google connector (Gmail + Calendar)** via OAuth2: an admin "Connectors" panel to connect a Google account, then read/send email and create/list calendar events — from the panel and as AI tools in chat.
