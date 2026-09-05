@@ -177,3 +177,10 @@ test('encrypted backup encrypts and decrypts back to a valid zip', async () => {
     { env: Object.assign({}, process.env, { SETAYESH_BACKUP_PASSPHRASE: 'wrong-pass' }), encoding: 'utf8' });
   assert.notEqual(bad.status, 0, 'wrong passphrase must not decrypt');
 });
+
+test('drive upload is refused until Google is connected', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  const r = await api('/api/admin/backups/encrypt-upload', { method: 'POST', token, body: { passphrase: 'test-passphrase-123' } });
+  assert.equal(r.status, 400);
+  assert.match((await r.json()).error, /گوگل|کانکتور/);
+});

@@ -22,6 +22,9 @@ const GOOGLE_SCOPES = [
   'https://www.googleapis.com/auth/gmail.send',
   'https://www.googleapis.com/auth/calendar.events',
   'https://www.googleapis.com/auth/calendar.readonly',
+  // drive.file = least privilege: the app can only see/manage files IT created
+  // (used to upload encrypted backups), never the rest of the owner's Drive.
+  'https://www.googleapis.com/auth/drive.file',
   'openid', 'email', 'profile',
 ];
 
@@ -219,6 +222,47 @@ function makeConnectors(opts) {
     return { id: d.id, link: d.htmlLink || '', created: true };
   }
 
+  // ---------------- Drive (encrypted-backup upload) ----------------
+  async function driveEnsureFolder(name) {
+    const q = `name='${String(name).replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+    const found = await apiGet('https://www.googleapis.com/drive/v3/files?spaces=drive&fields=files(id)&q=' + encodeURIComponent(q));
+    if (found.files && found.files.length) return found.files[0].id;
+    const created = await apiPost('https://www.googleapis.com/drive/v3/files', { name, mimeType: 'application/vnd.google-apps.folder' });
+    return created.id;
+  }
+  async function driveUpload(o) {
+    o = o || {};
+    const name = o.name || 'backup';
+    const data = Buffer.isBuffer(o.data) ? o.data : Buffer.from(o.data || '');
+    if (!data.length) throw new Error('دادهٔ فایل خالی است.');
+    const mime = o.mimeType || 'application/octet-stream';
+    const t = await accessToken();
+    let parents;
+    try { const fid = await driveEnsureFolder(o.folder || 'Setayesh Backups'); if (fid) parents = [fid]; } catch (e) { /* upload to root if the folder step fails */ }
+    const meta = parents ? { name, parents } : { name };
+    const boundary = '----setayesh' + Date.now().toString(36) + Math.random().toString(36).slice(2);
+    const body = Buffer.concat([
+      Buffer.from(`--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n`),
+      Buffer.from(JSON.stringify(meta)),
+      Buffer.from(`\r\n--${boundary}\r\nContent-Type: ${mime}\r\n\r\n`),
+      data,
+      Buffer.from(`\r\n--${boundary}--\r\n`),
+    ]);
+    const r = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink,size', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + t, 'Content-Type': `multipart/related; boundary=${boundary}` },
+      body,
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      if (r.status === 403 || /insufficient|scope/i.test(JSON.stringify(d))) {
+        throw new Error('دسترسی Drive داده نشده — از پنل کانکتورها یک بار دوباره «اتصال به گوگل» را بزن تا دسترسی درایو اضافه شود.');
+      }
+      throw new Error((d.error && (d.error.message || d.error)) || ('HTTP ' + r.status));
+    }
+    return { id: d.id, name: d.name, link: d.webViewLink || '', bytes: data.length };
+  }
+
   function status() {
     return {
       id: 'google',
@@ -237,6 +281,7 @@ function makeConnectors(opts) {
     authUrl, exchangeCode,
     gmailList, gmailGet, gmailSend,
     calendarList, calendarAdd,
+    driveUpload,
   };
 }
 

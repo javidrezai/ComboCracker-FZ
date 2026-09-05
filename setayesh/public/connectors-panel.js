@@ -85,6 +85,25 @@
         note('cxActionNote','ایمیل ارسال شد ✅',true); el('cxTo').value=el('cxSubject').value=el('cxBody').value=''; })
       .catch(function(){ note('cxActionNote','خطای شبکه'); });
   }
+  function backupToDrive(){
+    var pass=(el('cxBkPass').value||'');
+    if(pass.length<8){ note('cxActionNote','رمز پشتیبان حداقل ۸ حرف لازم است.'); return; }
+    note('cxActionNote','در حال رمزنگاری و آپلود به درایو…',true);
+    var btn=el('cxBackupDrive'); if(btn)btn.disabled=true;
+    fetch('/api/admin/backups/encrypt-upload',{method:'POST',headers:authH({'Content-Type':'application/json'}),
+      body:JSON.stringify({passphrase:pass})})
+      .then(function(r){return r.json().then(function(d){return {ok:r.ok,d:d};});})
+      .then(function(x){ if(btn)btn.disabled=false;
+        if(!x.ok){ note('cxActionNote',(x.d&&x.d.error)||'آپلود ناموفق'); return; }
+        el('cxBkPass').value='';
+        var link=(x.d.drive&&x.d.drive.link)||'';
+        note('cxActionNote','آپلود شد ✅ '+((x.d.backup&&x.d.backup.file)||''),true);
+        if(link){ var box=el('cxResult'); box.innerHTML=''; var a=document.createElement('a');
+          a.href=link; a.target='_blank'; a.textContent='باز کردن در Google Drive';
+          a.setAttribute('style','display:inline-block;padding:8px 12px;border-radius:10px;background:rgba(52,211,153,.12);border:1px solid rgba(52,211,153,.34);color:#6ee7b7;font-size:12.5px'); box.appendChild(a); }
+      })
+      .catch(function(){ if(btn)btn.disabled=false; note('cxActionNote','خطای شبکه'); });
+  }
   function addEvent(){
     var title=(el('cxEvTitle').value||'').trim(), start=el('cxEvStart').value, end=el('cxEvEnd').value;
     if(!title||!start){ note('cxActionNote','عنوان و زمان شروع لازم است.'); return; }
@@ -110,5 +129,6 @@
     el('cxListCal').addEventListener('click',listCal);
     el('cxSendMail').addEventListener('click',sendMail);
     el('cxAddEvent').addEventListener('click',addEvent);
+    el('cxBackupDrive').addEventListener('click',backupToDrive);
   });
 })();

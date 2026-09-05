@@ -155,7 +155,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.21';
+const APP_VERSION = '9.9.22';
 
 // Loaded at boot and refreshable at runtime via /api/plugins/reload.
 let PLUGINS = extensions.loadPlugins(PLUGINS_DIR);
@@ -5904,6 +5904,36 @@ function runEncryptedBackup(passphrase, reason) {
 app.post('/api/admin/backups/encrypt', requireAuth, requireAdmin, (req, res) => {
   try { res.json({ ok: true, backup: runEncryptedBackup((req.body || {}).passphrase, 'manual-encrypted') }); }
   catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+// Upload an existing backup file to Google Drive (into a "Setayesh Backups"
+// folder). For a .enc it's already zero-knowledge; Drive only holds ciphertext.
+app.post('/api/admin/backups/upload', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    if (!connectors.connected()) return res.status(400).json({ error: 'ابتدا در پنل کانکتورها به گوگل وصل شو.' });
+    const name = String((req.body || {}).name || '');
+    if (!/^backup-[\w-]+\.(zip|enc)$/.test(name)) return res.status(400).json({ error: 'نام بکاپ نامعتبر است.' });
+    const full = path.resolve(BACKUP_DIR, name);
+    if (!full.startsWith(path.resolve(BACKUP_DIR) + path.sep) || !fs.existsSync(full)) {
+      return res.status(404).json({ error: 'فایل بکاپ پیدا نشد.' });
+    }
+    const up = await connectors.driveUpload({ name, data: fs.readFileSync(full), mimeType: name.endsWith('.enc') ? 'application/octet-stream' : 'application/zip' });
+    res.json({ ok: true, drive: up });
+  } catch (e) { res.status(502).json({ error: e.message }); }
+});
+
+// Convenience: encrypt a fresh backup and upload it to Drive in one step.
+app.post('/api/admin/backups/encrypt-upload', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    if (!connectors.connected()) return res.status(400).json({ error: 'ابتدا در پنل کانکتورها به گوگل وصل شو.' });
+    const made = runEncryptedBackup((req.body || {}).passphrase, 'encrypted-drive');
+    const full = path.join(BACKUP_DIR, made.file);
+    const up = await connectors.driveUpload({ name: made.file, data: fs.readFileSync(full), mimeType: 'application/octet-stream' });
+    res.json({ ok: true, backup: made, drive: up });
+  } catch (e) {
+    const code = /حداقل|passphrase/.test(e.message) ? 400 : 502;
+    res.status(code).json({ error: e.message });
+  }
 });
 
 app.get('/api/admin/backups', requireAuth, requireAdmin, (req, res) => {

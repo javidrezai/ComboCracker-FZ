@@ -50,7 +50,12 @@ npm test
 مجموعهٔ تستِ مسیرهای حیاتی (ورود، پیکربندی، حافظه، کانکتورها، SPA) با تست‌ران داخلی Node — بدون وابستگی جدید. سرور روی پورت موقت با داده‌های موقت اجرا می‌شود و داده‌های واقعی را دست نمی‌زند. Critical-path smoke tests via Node's built-in runner; boots the server on a temp port with throwaway state.
 
 ## نسخه / Version
-9.9.21
+9.9.22
+
+### تغییرات ۹.۹.۲۲ / Changelog 9.9.22
+- **آپلود بکاپ رمزنگاری‌شده به Google Drive**: از پنل «کانکتورها»، دکمهٔ «رمزنگاری و آپلود به Google Drive» — رمز پشتیبان را بده تا بکاپ با AES-256-GCM رمزنگاری و در پوشهٔ «Setayesh Backups» درایو آپلود شود (درایو فقط دادهٔ غیرقابل‌خواندن می‌بیند). One-click encrypted backup upload to Google Drive.
+  - scope حداقلی `drive.file` اضافه شد (فقط فایل‌هایی که خودِ برنامه می‌سازد، نه بقیهٔ درایو). **اگر قبلاً به گوگل وصل بوده‌ای، یک بار دوباره «اتصال به گوگل» را بزن تا دسترسی درایو اضافه شود.** Uses the least-privilege `drive.file` scope; existing connections must reconnect once.
+  - مسیرها: `POST /api/admin/backups/upload`، `POST /api/admin/backups/encrypt-upload`.
 
 ### تغییرات ۹.۹.۲۱ / Changelog 9.9.21 — سه قابلیت جدید
 - **۰۱ · Tool-calling همگانی**: ابزارها (Gmail، تقویم، اسکریپت‌ها) از انحصار Claude خارج شد و روی موتورهای OpenAI-سازگار (Gemini, Groq, OpenRouter, …) هم در چت کار می‌کند؛ اگر مدلی ابزار را نپذیرد، بی‌خطا به پاسخ عادی برمی‌گردد. Tools now work on non-Claude engines via OpenAI-style function calling, with graceful fallback.
