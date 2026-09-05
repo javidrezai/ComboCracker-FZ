@@ -3,6 +3,8 @@
 یک دستیار هوش مصنوعی خانوادگی و خصوصی که به‌صورت محلی روی دستگاه خانواده اجرا می‌شود.
 A private, family AI assistant that runs locally on the family's own machine.
 
+> 📜 قوانین و ضوابط توسعه در [`RULES.md`](RULES.md) — و راهنمای Claude Code در [`CLAUDE.md`](CLAUDE.md). Development charter in `RULES.md`.
+
 ## امکانات / Features
 - چت با چند ارائه‌دهنده (Anthropic, Gemini, Groq, OpenRouter, Cerebras, Mistral, OpenAI, و سرور محلی Ollama/LM Studio)
 - پنل مدیریت، حساب‌های کاربری، حافظه، تابلوی خانواده، اعلان‌ها
