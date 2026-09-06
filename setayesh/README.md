@@ -50,7 +50,12 @@ npm test
 مجموعهٔ تستِ مسیرهای حیاتی (ورود، پیکربندی، حافظه، کانکتورها، SPA) با تست‌ران داخلی Node — بدون وابستگی جدید. سرور روی پورت موقت با داده‌های موقت اجرا می‌شود و داده‌های واقعی را دست نمی‌زند. Critical-path smoke tests via Node's built-in runner; boots the server on a temp port with throwaway state.
 
 ## نسخه / Version
-9.9.44
+9.9.45
+
+### تغییرات ۹.۹.۴۵ / Changelog 9.9.45 — رفع «دکمه‌ها ناپدید شدند» (کش مرورگر)
+- **همهٔ نسخه‌های `?v=` اسکریپت/CSS در `index.html` به 9.9.45 بروز شد** تا مرورگر مجبور شود همهٔ فایل‌های رابط (app.js، پنل‌ها، CSS) را تازه بارگذاری کند. اگر بعد از یک به‌روزرسانی دکمه‌ها/منوها ناقص یا ناپدید شده بودند (به‌خاطر نسخهٔ کهنهٔ کش‌شده)، این آن را حل می‌کند. بیلد با رندرِ headless بررسی شد؛ صفحه سالم بارگذاری می‌شود.
+  Fix "buttons disappeared" caused by a stale browser cache: every ?v= cache-busting string for the UI scripts/CSS in index.html is bumped to 9.9.45, forcing a fresh reload of app.js, the panels and the stylesheet. Verified with a headless render.
+
 
 ### تغییرات ۹.۹.۴۴ / Changelog 9.9.44 — ابزار گیت‌هاب (کتابخانه‌های متن‌باز)
 - **دو ابزار جدید و بدون‌کلید برای مغز:** `github_search` (جستجوی مخازن/کتابخانه‌ها با ستاره و زبان و توضیح) و `github_file` (خواندنِ متنِ هر فایل از یک مخزنِ عمومی، مثل سورس یا README). فقط‌خواندنی — هیچ‌وقت چیزی را push یا تغییر نمی‌دهد. حالا ستایش می‌تواند کتابخانه پیدا کند و کدِ واقعی‌اش را بخواند به‌جای حدس. محتوا «داده» است نه دستور (همان قانونِ اعتمادِ وب).
