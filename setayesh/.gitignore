@@ -1,0 +1,24 @@
+# Dependencies
+node_modules/
+
+# Runtime-generated state (never commit — may contain secrets)
+.setayesh-*
+.setayesh-config
+*.log
+error.log
+
+# Runtime data & artifacts
+backups/
+code-library/
+plugins/
+rollback/
+data/
+uploads/
+inbox/
+assets.generated.js
+antivirus-root.pem
+
+# Local TLS cert/key (never commit)
+tls-cert.pem
+tls-key.pem
+*.pem

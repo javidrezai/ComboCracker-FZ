@@ -1,0 +1,1002 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0a0e1a">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Setayesh">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/icon-192.png">
+<link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">
+<link rel="icon" type="image/png" sizes="512x512" href="/icon-512.png">
+<title>Setayesh AI</title>
+<link rel="stylesheet" href="/app.css?v=9.9.45">
+</head>
+<body>
+<div class="bg"></div><canvas id="fx3d" aria-hidden="true"></canvas><div class="grid"></div><div class="scan"></div><div class="sweep"></div>
+<div class="scene3d" id="scene3d">
+<div class="robot" id="robot" aria-hidden="true">
+  <svg viewBox="0 0 200 240" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <linearGradient id="rg" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="var(--violet-2)"/><stop offset="1" stop-color="var(--cyan)"/>
+      </linearGradient>
+    </defs>
+    <g stroke="url(#rg)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="55" y="60" width="90" height="80" rx="16"/>
+      <rect x="72" y="30" width="56" height="42" rx="12"/>
+      <line x1="100" y1="18" x2="100" y2="30"/><circle cx="100" cy="14" r="4" fill="url(#rg)"/>
+      <circle class="eye" cx="88" cy="50" r="6" fill="url(#rg)"/>
+      <circle class="eye" cx="112" cy="50" r="6" fill="url(#rg)"/>
+      <path d="M86 62h28"/>
+      <rect x="70" y="150" width="60" height="55" rx="12"/>
+      <line x1="55" y1="80" x2="30" y2="105"/><circle cx="26" cy="110" r="6"/>
+      <line x1="145" y1="80" x2="170" y2="105"/><circle cx="174" cy="110" r="6"/>
+      <line x1="82" y1="205" x2="82" y2="228"/><line x1="118" y1="205" x2="118" y2="228"/>
+      <path d="M70 95h16M114 95h16M78 112h12" opacity=".6"/>
+    </g>
+  </svg>
+</div>
+</div>
+
+<!-- ============ LOGIN ============ -->
+<div id="loginView">
+  <div id="loginCard" class="glass">
+    <div class="logo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 2l2.4 6.2L21 10l-5.2 4 1.5 6.6L12 17l-5.3 3.6L8.2 14 3 10l6.6-1.8z"/>
+      </svg>
+    </div>
+    <h1 class="brand">Setayesh AI</h1>
+    <p class="brand-sub" data-i18n="tagline">دستیار مهندسی خصوصی · کد، امنیت، معماری</p>
+
+    <div class="field">
+      <label for="uField" data-i18n="username">نام کاربری</label>
+      <input class="input" type="text" id="uField" autocapitalize="off" autocomplete="username">
+    </div>
+    <div class="field">
+      <label for="pField" data-i18n="password">رمز عبور</label>
+      <input class="input" type="password" id="pField" autocomplete="current-password" placeholder="••••••••">
+    </div>
+    <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--muted);margin:2px 0 12px;cursor:pointer">
+      <input type="checkbox" id="rememberDev" checked>
+      <span>این دستگاه را بشناس و دفعه‌ی بعد خودکار وارد شو</span>
+    </label>
+    <button class="btn" id="loginBtn" data-i18n="login">ورود</button>
+    <div class="note" id="loginNote"></div>
+    <div class="login-foot">
+      <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/>
+      </svg>
+      <span data-i18n="loginFoot">اجرا روی سرور شخصی شما · نشست ۸ ساعته</span>
+    </div>
+    <button class="ibtn" id="langBtnLogin" style="position:absolute;top:14px;inset-inline-end:14px;width:auto;padding:0 10px;height:26px;font-size:10.5px;font-family:var(--mono)">EN</button>
+  </div>
+</div>
+
+<!-- ============ APP ============ -->
+<div id="appView">
+  <div class="scrim" id="scrim"></div>
+
+  <aside class="sidebar" id="sidebar">
+    <div class="side-head">
+      <div class="logo-sm">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 2l2.4 6.2L21 10l-5.2 4 1.5 6.6L12 17l-5.3 3.6L8.2 14 3 10l6.6-1.8z"/>
+        </svg>
+      </div>
+      <div style="flex:1;min-width:0">
+        <h1>Setayesh AI</h1><span class="ver" id="verTag">…</span>
+      </div>
+      <button class="ibtn" id="langBtn">EN</button>
+    </div>
+
+    <button class="btn ghost" id="newChatBtn" style="margin-top:0;padding:9px;font-size:12.5px;display:flex;align-items:center;justify-content:center;gap:7px">
+      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+      <span data-i18n="newChat">گفت‌وگوی جدید</span>
+    </button>
+
+    <button class="mode-btn" id="toolkitBtn" type="button" style="border:1px solid rgba(34,211,238,.32);background:linear-gradient(100deg,rgba(34,211,238,.12),rgba(123,92,255,.08))">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--cyan)">
+        <path d="M14.7 6.3a4 4 0 00-5.4 5.4L3 18v3h3l6.3-6.3a4 4 0 005.4-5.4l-2.6 2.6-2-2 2.6-2.6z"/>
+      </svg>
+      <span data-i18n="toolkit">جعبه‌ابزار امنیت</span>
+    </button>
+
+    <button class="mode-btn" id="devicesBtn" type="button" style="border:1px solid rgba(63,178,127,.32);background:linear-gradient(100deg,rgba(63,178,127,.14),rgba(34,211,238,.06))">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:#3fb27f">
+        <rect x="2" y="4" width="20" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>
+      </svg>
+      <span data-i18n="devicesTitle">دستگاه‌های خانه</span>
+    </button>
+
+    <div class="side-sec">
+      <div class="side-label" data-i18n="mode">حالت</div>
+      <div id="modeList"></div>
+    </div>
+
+    <div class="side-sec">
+      <div class="side-label" data-i18n="engine">موتور</div>
+      <select class="picker" id="modelPicker"></select>
+    </div>
+
+    <div class="side-sec" style="flex:1;min-height:0">
+      <div class="side-label" data-i18n="history">گفت‌وگوها</div>
+      <div class="chatlist" id="chatList"></div>
+    </div>
+
+    <div class="side-foot">
+      <div class="avatar" id="avatar">?</div>
+      <div class="who" id="whoLine"></div>
+      <button class="ibtn" id="adminBtn" title="Users" style="display:none;color:var(--cyan)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/>
+        </svg>
+      </button>
+      <button class="ibtn" id="boardBtn" title="تابلوی خانواده" style="position:relative">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 5a2 2 0 012-2h14a2 2 0 012 2v10a2 2 0 01-2 2H8l-5 4V5z"/>
+        </svg>
+        <span id="boardDot" style="display:none;position:absolute;top:4px;inset-inline-end:4px;width:8px;height:8px;border-radius:99px;background:#fb7185"></span>
+      </button>
+      <button class="ibtn" id="ccBtn" title="مرکز کنترل" style="display:none !important;display:none;color:var(--cyan)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09A1.65 1.65 0 008 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06A1.65 1.65 0 004.6 15a1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06A1.65 1.65 0 009 4.6a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06A1.65 1.65 0 0019.4 9c.14.36.47.62.86.7H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"/>
+        </svg>
+      </button>
+      <button class="ibtn" id="learnBtn" title="یادگیری خودکار" style="display:none !important;display:none;color:var(--cyan)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 2a4 4 0 00-4 4 3 3 0 00-2 5.5A3.5 3.5 0 007 18a3 3 0 005 2 3 3 0 005-2 3.5 3.5 0 001-6.5A3 3 0 0016 6a4 4 0 00-4-4z"/><path d="M12 2v20"/>
+        </svg>
+      </button>
+      <button class="ibtn" id="settingsBtn" title="Settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06A1.65 1.65 0 005 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06A1.65 1.65 0 019 4.6a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/>
+        </svg>
+      </button>
+      <button class="ibtn" id="logoutBtn" title="Log out">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/>
+        </svg>
+      </button>
+    </div>
+  </aside>
+
+  <div class="main">
+    <div class="topbar">
+      <button class="ibtn burger" id="burger">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+      </button>
+      <div>
+        <div class="title" id="modeTitle">Chat</div>
+        <div class="sub" id="modeSub"></div>
+      </div>
+      <div class="spacer"></div>
+      <button class="tbtn" id="settingsBtnTop" title="Settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06A1.65 1.65 0 005 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06A1.65 1.65 0 019 4.6a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+        <span data-i18n="settings">تنظیمات</span>
+      </button>
+      <span class="tag" id="engineTag"><span class="dot"></span><span id="engineTagText">—</span></span>
+    </div>
+
+    <div id="scroll"><div class="thread" id="thread"></div></div>
+
+    <div class="composer-wrap">
+      <div class="composer-inner">
+        <div class="cmpbar" id="cmpbar">
+          <span class="lbl" data-i18n="compareWith">مقایسه بین</span>
+          <div id="cmpChips" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+        </div>
+        <div id="pending"></div>
+        <div class="composer">
+          <input type="file" id="fileInput" multiple hidden>
+          <button class="cbtn" id="moreBtn" title="ابزارها" aria-label="ابزارها">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 5v14M5 12h14"/>
+            </svg>
+          </button>
+          <button class="cbtn tool" id="attachBtn" title="Attach">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/>
+            </svg>
+          </button>
+          <button class="cbtn tool" id="cmpBtn" title="Compare models">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="4" width="7" height="16" rx="1.5"/><rect x="14" y="4" width="7" height="16" rx="1.5"/>
+            </svg>
+          </button>
+          <button class="cbtn tool" id="searchBtn" data-i18n-title="liveSearch" title="جستجوی زنده">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 010 18M12 3a15 15 0 000 18"/>
+            </svg>
+          </button>
+          <button class="cbtn tool" id="micBtn" title="صحبت کن">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0014 0M12 18v3"/>
+            </svg>
+          </button>
+          <button class="cbtn tool" id="speakBtn" title="خواندن پاسخ با صدا">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M11 5L6 9H2v6h4l5 4V5z"/><path d="M15.5 8.5a5 5 0 010 7M19 5a9 9 0 010 14"/>
+            </svg>
+          </button>
+          <button class="cbtn tool" id="settingsBtnComposer" title="Settings">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06A1.65 1.65 0 005 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06A1.65 1.65 0 019 4.6a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/>
+            </svg>
+          </button>
+          <textarea id="msgBox" rows="1" dir="auto" data-i18n-placeholder="askPlaceholder" placeholder="سوال، کد، یا فایل خود را بفرستید..."></textarea>
+          <button id="sendBtn" data-i18n-arialabel="send" aria-label="ارسال">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/>
+            </svg>
+          </button>
+        </div>
+        <div class="hint" id="hintLine"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ TOOLKIT ============ -->
+<div class="overlay" id="toolkitOverlay">
+  <div class="tk-shell glass">
+    <div class="tk-head">
+      <div class="tk-title">
+        <svg viewBox="0 0 24 24" fill="none" stroke="var(--cyan)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18">
+          <path d="M14.7 6.3a4 4 0 00-5.4 5.4L3 18v3h3l6.3-6.3a4 4 0 005.4-5.4l-2.6 2.6-2-2 2.6-2.6z"/></svg>
+        <span data-i18n="toolkit">جعبه‌ابزار امنیت</span>
+        <span class="tk-badge" data-i18n="defensive">دفاعی · فقط شبکه‌ی خودتان</span>
+      </div>
+      <button class="ibtn" id="tkClose"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+    </div>
+    <div class="tk-tabs" id="tkTabs"></div>
+    <div class="tk-body" id="tkBody"></div>
+  </div>
+</div>
+
+<!-- ============ HOME DEVICES ============ -->
+<div class="overlay" id="devicesOverlay">
+  <div class="tk-shell glass">
+    <div class="tk-head">
+      <div class="tk-title">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#3fb27f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18">
+          <rect x="2" y="4" width="20" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>
+        <span data-i18n="devicesTitle">دستگاه‌های خانه</span>
+      </div>
+      <button class="ibtn" id="devClose"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+    </div>
+    <div class="tk-tabs" id="devTabs">
+      <button class="tk-tab on" data-devtab="list" data-i18n="devTabList">دستگاه‌ها</button>
+      <button class="tk-tab" data-devtab="scan" data-i18n="devTabScan">جستجو</button>
+      <button class="tk-tab" data-devtab="perms" data-i18n="devTabPerms">دسترسی‌ها</button>
+    </div>
+    <div class="tk-body" id="devBody"></div>
+  </div>
+</div>
+<!-- ============ ADMIN (account management) ============ -->
+<!-- ===== Family board: one shared room everyone reads ===== -->
+<div class="overlay" id="boardOverlay">
+  <div class="modal glass" style="max-width:560px">
+    <h3>🏠 تابلوی خانواده</h3>
+    <p class="msub" style="margin-bottom:12px">همه می‌بینند و همه می‌نویسند. این پیام‌ها روی همین کامپیوتر می‌مانند و به هیچ هوش مصنوعی فرستاده نمی‌شوند.</p>
+
+    <div id="boardList" style="max-height:52vh;overflow-y:auto;margin-bottom:12px"></div>
+
+    <div id="boardPending" style="margin-bottom:8px"></div>
+    <input type="file" id="boardFile" multiple hidden accept="image/*,audio/*,video/*,.pdf,.txt,.doc,.docx,.xls,.xlsx,.zip">
+    <div class="board-compose">
+      <textarea class="input" id="boardText" rows="2" placeholder="چیزی برای خانواده بنویس..."></textarea>
+      <div class="board-actions">
+        <button class="btn ghost bc-icon" id="boardAttach" title="فایل یا عکس">📎</button>
+        <button class="btn ghost bc-icon" id="boardMic" title="ضبط صدا">🎤</button>
+        <button class="btn ghost bc-icon" id="boardLoc" title="فرستادن موقعیت">📍</button>
+        <button class="btn" id="boardSend">بفرست</button>
+      </div>
+    </div>
+    <label id="boardPinWrap" style="display:none;align-items:center;gap:7px;font-size:12px;color:var(--muted);margin-top:8px;cursor:pointer">
+      <input type="checkbox" id="boardPin"> <span>سنجاق کن (بالای تابلو بماند)</span>
+    </label>
+
+    <div class="tk-row" style="gap:6px;margin-top:10px;flex-wrap:wrap">
+      <button class="btn ghost" id="boardClearMine" style="padding:6px 12px;font-size:12px">پاک کردن پیام‌های من</button>
+      <button class="btn ghost" id="boardClearRead" style="padding:6px 12px;font-size:12px">پاک کردن خوانده‌شده‌ها</button>
+      <button class="btn ghost" id="boardClearAll" style="display:none;padding:6px 12px;font-size:12px;color:#fb7185">پاک کردن همه (به‌جز سنجاق‌شده)</button>
+      <button class="btn ghost" id="boardClearPinned" style="display:none;padding:6px 12px;font-size:12px;color:#fb7185">پاک کردن همه (با سنجاق‌شده‌ها)</button>
+    </div>
+
+    <div class="note" id="boardNote"></div>
+    <div class="modal-actions">
+      <button class="btn ghost" id="boardClose">بستن</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Bottom sheet: the whole menu, reachable by thumb on a phone ===== -->
+<div class="sheet-scrim" id="sheetScrim"></div>
+<div class="sheet" id="sheet" role="dialog" aria-label="منو">
+  <div class="sheet-grip"></div>
+  <div id="sheetVer" style="text-align:center;font-size:11px;color:var(--muted);margin:-6px 0 10px">…</div>
+
+  <div class="sheet-title">گفتگو</div>
+  <button class="sheet-item" id="shNew">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+    <span class="si-txt">گفتگوی جدید</span>
+  </button>
+  <button class="sheet-item" id="shChats">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+    <span class="si-txt">گفتگوهای قبلی</span>
+  </button>
+
+  <button class="sheet-item" id="shAttach">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.4 11.05l-9.19 9.19a5 5 0 01-7.07-7.07l9.19-9.19a3.5 3.5 0 014.95 4.95l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
+    <span class="si-txt">پیوست فایل<span class="si-sub">عکس، PDF، متن</span></span>
+  </button>
+  <button class="sheet-item" id="shMic">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2M12 19v4"/></svg>
+    <span class="si-txt">گفتن با صدا</span>
+  </button>
+  <button class="sheet-item" id="shSearch">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 010 20 15 15 0 010-20"/></svg>
+    <span class="si-txt">جستجوی زنده در اینترنت</span>
+  </button>
+
+  <div class="sheet-title">خانواده</div>
+  <button class="sheet-item" id="shBoard">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5a2 2 0 012-2h14a2 2 0 012 2v10a2 2 0 01-2 2H8l-5 4V5z"/></svg>
+    <span class="si-txt">تابلوی خانواده<span class="si-sub">پیام‌های همه‌ی خانه</span></span>
+    <span class="sheet-badge" id="shBoardBadge" style="display:none">0</span>
+  </button>
+  <button class="sheet-item" id="shMemory">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a4 4 0 00-4 4 3 3 0 00-2 5.5A3.5 3.5 0 007 18a3 3 0 005 2 3 3 0 005-2 3.5 3.5 0 001-6.5A3 3 0 0016 6a4 4 0 00-4-4z"/><path d="M12 2v20M8 9h.01M16 9h.01M9 14h6"/></svg>
+    <span class="si-txt">حافظه‌ی من<span class="si-sub">کوتاه‌مدت و بلندمدت</span></span>
+    <span class="sheet-badge" id="shMemoryBadge" style="display:none">0</span>
+  </button>
+
+  <div class="sheet-title" id="shAdminTitle" style="display:none">مدیریت</div>
+  <button class="sheet-item" id="shCC" style="display:none">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09A1.65 1.65 0 008 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06A1.65 1.65 0 004.6 15a1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06A1.65 1.65 0 009 4.6a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06A1.65 1.65 0 0019.4 9c.14.36.47.62.86.7H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+    <span class="si-txt">مرکز کنترل<span class="si-sub">کلیدها، کاربران، حریم خصوصی، قابلیت‌ها</span></span>
+  </button>
+  <button class="sheet-item" id="shLearn" style="display:none">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a4 4 0 00-4 4 3 3 0 00-2 5.5A3.5 3.5 0 007 18a3 3 0 005 2 3 3 0 005-2 3.5 3.5 0 001-6.5A3 3 0 0016 6a4 4 0 00-4-4z"/><path d="M12 2v20"/></svg>
+    <span class="si-txt">یادگیری خودکار<span class="si-sub">آنچه یاد گرفته را تأیید کن</span></span>
+    <span class="sheet-badge" id="shLearnBadge" style="display:none">0</span>
+  </button>
+  <button class="sheet-item" id="shUsers" style="display:none">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/></svg>
+    <span class="si-txt">کاربران<span class="si-sub">افزودن، رمز، حالت کودک</span></span>
+  </button>
+  <button class="sheet-item" id="shConnectors" style="display:none">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 007 0l3-3a5 5 0 00-7-7l-1 1"/><path d="M14 11a5 5 0 00-7 0l-3 3a5 5 0 007 7l1-1"/></svg>
+    <span class="si-txt">کانکتورها<span class="si-sub">گوگل، Gmail، تقویم</span></span>
+  </button>
+
+  <div class="sheet-title">ابزارها</div>
+  <button class="sheet-item" id="shTools">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/></svg>
+    <span class="si-txt">جعبه‌ابزار<span class="si-sub">شبکه، امنیت، هش، QR</span></span>
+  </button>
+  <button class="sheet-item" id="shDevices">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>
+    <span class="si-txt">دستگاه‌های خانه<span class="si-sub">تلویزیون، پرینتر، دوربین</span></span>
+  </button>
+
+  <div class="sheet-title">حساب</div>
+  <button class="sheet-item" id="shPass">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09A1.65 1.65 0 008 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06A1.65 1.65 0 004.6 15a1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06A1.65 1.65 0 009 4.6a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06A1.65 1.65 0 0019.4 9c.14.36.47.62.86.7H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+    <span class="si-txt">تنظیمات<span class="si-sub">رمز، تم، اندازه‌ی متن، راهنما</span></span>
+  </button>
+  <button class="sheet-item" id="shBrain" style="display:none !important">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a4 4 0 00-4 4 3 3 0 00-2 5.2A3 3 0 006 17a3 3 0 003 3 3 3 0 003 1 3 3 0 003-1 3 3 0 003-3 3 3 0 000-5.8A3 3 0 0016 6a4 4 0 00-4-4z"/><path d="M12 2v19M8 6a4 4 0 004 4M16 6a4 4 0 01-4 4M6 11.2A4 4 0 0012 13M18 11.2A4 4 0 0112 13"/></svg>
+    <span class="si-txt">مغز ستایش<span class="si-sub">ببین چه می‌کند، چه می‌داند، ویرایش کن</span></span>
+  </button>
+  <button class="sheet-item" id="shLang">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 010 20M12 2a15.3 15.3 0 000 20"/></svg>
+    <span class="si-txt" id="shLangTxt">English<span class="si-sub">تغییر زبان برنامه</span></span>
+  </button>
+  <button class="sheet-item" id="shDiag">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg>
+    <span class="si-txt">وضعیت حساب<span class="si-sub">اگر چیزی درست نیست، این را ببین</span></span>
+  </button>
+  <button class="sheet-item" id="shLogout">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/></svg>
+    <span class="si-txt">خروج</span>
+  </button>
+</div>
+
+<!-- ===== Control centre (admin): everything in one place ===== -->
+<div class="overlay" id="ccOverlay">
+  <div class="modal glass" style="max-width:620px">
+    <h3>⚙️ مرکز کنترل</h3>
+    <div id="ccLive" class="msub" style="margin-bottom:12px"></div>
+
+    <div class="tk-row" style="gap:6px;margin-bottom:14px;flex-wrap:wrap">
+      <div class="cc-group-label">روزمره</div>
+      <div class="cc-group">
+        <button class="btn ghost cctab" data-cc="engines">موتورها و کلیدها</button>
+        <button class="btn ghost cctab" data-cc="actions">تأییدها <span id="ccActBadge" class="cc-badge" style="display:none"></span></button>
+        <button class="btn ghost cctab" data-cc="users">کاربران</button>
+      </div>
+      <div class="cc-group-label">ابزار و کد</div>
+      <div class="cc-group">
+        <button class="btn ghost cctab" data-cc="scripts">اسکریپت‌ها و پروژه‌ها</button>
+        <button class="btn ghost cctab" data-cc="power">قابلیت‌ها</button>
+      </div>
+      <div class="cc-group-label">سیستم</div>
+      <div class="cc-group">
+        <button class="btn ghost cctab" data-cc="sync">همگام‌سازی</button>
+        <button class="btn ghost cctab" data-cc="update">به‌روزرسانی</button>
+        <button class="btn ghost cctab" data-cc="devices">دستگاه‌ها</button>
+      </div>
+      <div class="cc-group-label">شخصی‌سازی و امنیت</div>
+      <div class="cc-group">
+        <button class="btn ghost cctab" data-cc="look">ظاهر</button>
+        <button class="btn ghost cctab" data-cc="privacy">حریم خصوصی</button>
+      </div>
+    </div>
+
+    <div id="ccEngines" class="ccpane">
+      <div class="tk-hint" style="margin-bottom:10px">کلید هر سرویس را اینجا بگذار. بلافاصله فعال می‌شود.</div>
+      <div id="ccKeyList"></div>
+      <div class="side-label" style="padding:0;margin:14px 0 6px">موتور پیش‌فرض</div>
+      <select class="input" id="ccDefault"></select>
+    </div>
+
+    <div id="ccUsers" class="ccpane" style="display:none">
+      <div class="tk-hint" style="margin-bottom:10px">سن و علایق هر نفر — رفتار ستایش با آن‌ها متناسب می‌شود.</div>
+      <div id="ccUserList"></div>
+    </div>
+
+    <div id="ccPrivacy" class="ccpane" style="display:none">
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:12px;cursor:pointer">
+        <input type="checkbox" id="ccPrivOn"> <span>سپر حریم خصوصی روشن باشد</span>
+      </label>
+      <div class="side-label" style="padding:0;margin-bottom:6px">عبارت‌های محافظت‌شده</div>
+      <div class="tk-hint" style="margin-bottom:8px">نام فامیل، نام مدرسه و هرچه نباید بیرون برود. نام حساب‌ها خودکار محافظت می‌شوند.</div>
+      <div class="tk-row" style="gap:8px;margin-bottom:8px">
+        <input class="input" id="ccPrivTerm" placeholder="مثلاً نام فامیل..." style="flex:1">
+        <button class="btn ghost" id="ccPrivAdd">افزودن</button>
+      </div>
+      <div id="ccPrivList" style="margin-bottom:12px"></div>
+      <div class="side-label" style="padding:0;margin-bottom:6px">آخرین جلوگیری‌ها</div>
+      <div id="ccPrivLog" style="max-height:180px;overflow-y:auto"></div>
+    </div>
+
+    <div id="ccPower" class="ccpane" style="display:none">
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:10px;cursor:pointer">
+        <input type="checkbox" id="ccPython"> <span>اجرای کد پایتون (فقط حساب تو)</span>
+      </label>
+      <div class="tk-hint" style="margin-bottom:14px">کد روی این کامپیوتر اجرا می‌شود. فقط اگر پایتون نصب است.</div>
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:10px;cursor:pointer">
+        <input type="checkbox" id="ccLocal"> <span>موتور محلی Ollama</span>
+      </label>
+      <div class="tk-hint">برای وقتی که می‌خواهی هیچ‌چیز از این کامپیوتر خارج نشود.</div>
+    </div>
+
+    <div id="ccDevices" class="ccpane" style="display:none">
+      <div class="tk-hint" style="margin-bottom:10px">دستگاه‌هایی که به ستایش وصل شده‌اند. اگر چیز ناآشنایی دیدی، حذفش کن و رمزها را عوض کن.</div>
+      <div id="ccDevList"></div>
+    </div>
+
+    <div id="ccSync" class="ccpane" style="display:none">
+      <div class="tk-hint" style="margin-bottom:12px">چند کامپیوتر خانه اطلاعاتشان را یکی می‌کنند. رمزگذاری‌شده، فقط بین کامپیوترهای خودت.</div>
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:12px;cursor:pointer">
+        <input type="checkbox" id="syEnabled"> <span>همگام‌سازی روشن باشد</span>
+      </label>
+      <div class="side-label" style="padding:0;margin-bottom:6px">نقش این کامپیوتر</div>
+      <div class="tk-row" style="gap:6px;margin-bottom:12px">
+        <button class="btn ghost syrole" data-role="hub" style="flex:1;padding:8px;font-size:12px">مرکز (مینی‌پی‌سی)</button>
+        <button class="btn ghost syrole" data-role="peer" style="flex:1;padding:8px;font-size:12px">فرعی (لپ‌تاپ)</button>
+      </div>
+      <div class="side-label" style="padding:0;margin-bottom:6px">کلید مشترک (روی همه‌ی کامپیوترها یکی)</div>
+      <input class="input" id="syKey" type="password" placeholder="یک رمز که فقط تو می‌دانی — حداقل ۸ حرف" style="margin-bottom:12px;font-size:13px">
+      <div id="syHubBox" style="display:none">
+        <div class="side-label" style="padding:0;margin-bottom:6px">آدرس این مرکز (به کامپیوترهای دیگر بده)</div>
+        <div id="syMyAddr" class="tk-card" style="padding:8px 10px;margin-bottom:12px;font-family:var(--mono);font-size:11.5px;color:var(--cyan)">—</div>
+      </div>
+      <div id="syPeerBox" style="display:none">
+        <div class="side-label" style="padding:0;margin-bottom:6px">آدرس مرکز</div>
+        <input class="input" id="syHubUrl" placeholder="http://minipc:3000" style="margin-bottom:12px;font-size:12px;direction:ltr;text-align:left">
+      </div>
+      <div class="side-label" style="padding:0;margin-bottom:6px">چه چیزی یکی شود</div>
+      <div style="margin-bottom:12px">
+        <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;margin-bottom:6px;cursor:pointer"><input type="checkbox" id="syBoard" checked> تابلوی خانواده</label>
+        <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;margin-bottom:6px;cursor:pointer"><input type="checkbox" id="syMemory" checked> حافظه و مهلت‌ها</label>
+        <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;margin-bottom:6px;cursor:pointer"><input type="checkbox" id="syDevices" checked> دستگاه‌ها</label>
+        <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;cursor:pointer"><input type="checkbox" id="syKnowledge" checked> دانش آموخته‌شده</label>
+      </div>
+      <div class="tk-row" style="gap:6px;margin-bottom:10px">
+        <button class="btn" id="sySave" style="flex:1">ذخیره</button>
+        <button class="btn ghost" id="syNow">همین حالا هماهنگ کن</button>
+      </div>
+      <div id="syStatus" style="font-size:12px;color:var(--muted)"></div>
+    </div>
+
+    <div id="ccActions" class="ccpane" style="display:none">
+      <div class="tk-hint" style="margin-bottom:12px">ستایش قبل از هر کاری که روی کامپیوتر اثر می‌گذارد، از تو اجازه می‌گیرد. اینجا تأیید یا رد کن.</div>
+      <div id="actList"></div>
+      <div class="side-label" style="padding:0;margin:16px 0 6px">اعلان به تو</div>
+      <div class="tk-hint" style="margin-bottom:8px">برای دریافت ایمیل، آدرس ایمیلت را در بخش موتورها/تنظیمات بگذار (NOTIFY_EMAIL).</div>
+      <div id="notifSetup" style="font-size:12px;color:var(--muted);margin-bottom:8px"></div>
+      <button class="btn ghost" id="notifTest" style="width:100%">فرستادن یک اعلان آزمایشی</button>
+    </div>
+
+    <div id="ccScripts" class="ccpane" style="display:none">
+      <div class="tk-card" style="padding:11px 13px;margin-bottom:12px;background:rgba(56,189,248,.07);border-color:rgba(56,189,248,.28)">
+        <div style="font-size:12.5px;font-weight:600;margin-bottom:5px">📥 پوشه‌ی ورودی — همه‌چیز یک‌جا</div>
+        <div style="font-size:11.5px;color:var(--muted);line-height:1.8;margin-bottom:6px">
+          هر فایلی در این پوشه بگذاری، خودش می‌فهمد چیست:<br>
+          فایل <b>.py</b> → کتابخانه‌ی اسکریپت &nbsp;·&nbsp; <b>ZIP</b> به‌روزرسانی → نصب &nbsp;·&nbsp; بقیه → نگه داشته می‌شود
+        </div>
+        <div id="ibFolder" style="font-size:11px;font-family:var(--mono);word-break:break-all;color:var(--cyan);margin-bottom:8px">—</div>
+        <div id="ibStatus" style="font-size:11.5px;color:var(--muted);margin-bottom:8px"></div>
+        <button class="btn ghost" id="ibScan" style="width:100%;padding:7px;font-size:12px">همین حالا بررسی کن</button>
+      </div>
+
+      <div class="side-label" style="padding:0;margin-bottom:6px">اجرای فایل با مسیر</div>
+      <div class="tk-row" style="gap:6px;margin-bottom:14px">
+        <input class="input" id="runPath" placeholder="C:\tools\report.py" style="flex:1;font-size:12px;font-family:var(--mono);direction:ltr;text-align:left">
+        <button class="btn ghost" id="runPathBtn" style="padding:9px 14px">▶</button>
+      </div>
+
+      <div class="tk-hint" style="margin-bottom:10px">فایل‌های پایتون خودت. آپلود کن، اجرا کن، حذف کن.</div>
+      <input type="file" id="scFile" accept=".py,text/x-python" hidden>
+      <div class="tk-row" style="gap:6px;margin-bottom:12px">
+        <button class="btn ghost" id="scUpload" style="flex:1">آپلود فایل .py</button>
+        <button class="btn ghost" id="scNew" style="flex:1">نوشتن اسکریپت جدید</button>
+      </div>
+      <div id="scWarn" class="tk-hint" style="display:none;color:#fbbf24;margin-bottom:10px">
+        اجرای پایتون خاموش است — می‌توانی فایل‌ها را نگه داری ولی اجرا نمی‌شوند.
+        مرکز کنترل ← قابلیت‌ها روشنش کن.
+      </div>
+      <div id="scList"></div>
+      <div id="scEditor" style="display:none;margin-top:12px">
+        <input class="input" id="scName" placeholder="نام فایل، مثلاً cleanup.py" style="margin-bottom:8px;font-size:13px">
+        <textarea class="input" id="scCode" rows="9" placeholder="# کد پایتون..." style="font-size:12px;font-family:var(--mono);direction:ltr;text-align:left;resize:vertical"></textarea>
+        <div class="tk-row" style="gap:6px;margin-top:8px">
+          <button class="btn" id="scSave" style="flex:1">ذخیره</button>
+          <button class="btn ghost" id="scCancel">انصراف</button>
+        </div>
+      </div>
+      <div id="scOutput" style="display:none;margin-top:12px"></div>
+    </div>
+
+    <div id="ccUpdate" class="ccpane" style="display:none">
+      <div class="tk-card" style="padding:12px 14px;margin-bottom:14px;background:rgba(56,189,248,.08);border-color:rgba(56,189,248,.3)">
+        <div style="font-size:13px;font-weight:600;margin-bottom:6px">📲 آپلود از گوشی</div>
+        <div style="font-size:11.5px;color:var(--muted);line-height:1.8;margin-bottom:10px">فایل به‌روزرسانی را همین‌جا از گوشی انتخاب کن — خودش بررسی، نصب و ری‌استارت می‌شود. نیازی به پوشه‌ی مشترک نیست.</div>
+        <input type="file" id="upFile" accept=".zip,.py" hidden>
+        <button class="btn" id="upBtn" style="width:100%">انتخاب فایل و نصب</button>
+        <div id="upStatus" style="font-size:12px;margin-top:10px;line-height:1.7"></div>
+      </div>
+
+      <div class="tk-hint" style="margin-bottom:12px">یا یک فایل ZIP در پوشه‌ی <code>updates</code> بگذار — خودش نصب می‌کند و ری‌استارت می‌شود.</div>
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:10px;cursor:pointer">
+        <input type="checkbox" id="auEnabled"> <span>نصب خودکار از پوشه‌ی updates</span>
+      </label>
+      <div class="tk-card" style="padding:10px 12px;margin-bottom:12px">
+        <div style="font-size:11px;color:var(--muted);margin-bottom:4px">مسیر پوشه</div>
+        <div id="auFolder" style="font-size:11.5px;font-family:var(--mono);word-break:break-all;color:var(--cyan)">—</div>
+      </div>
+      <div id="auStatus" style="font-size:12.5px;line-height:1.9;margin-bottom:12px"></div>
+      <button class="btn" id="auScan" style="width:100%;margin-bottom:10px">همین حالا بررسی و نصب کن</button>
+      <div class="side-label" style="padding:0;margin-bottom:6px">گزارش</div>
+      <div id="auLog" style="max-height:150px;overflow-y:auto;font-size:11.5px"></div>
+    </div>
+
+    <div id="ccLook" class="ccpane" style="display:none">
+      <div class="tk-hint" style="margin-bottom:12px">بدون دست‌زدن به کد. تغییر بده، ذخیره کن، صفحه را رفرش کن.</div>
+
+      <div class="side-label" style="padding:0;margin-bottom:6px">اسم برنامه</div>
+      <input class="input" id="thName" placeholder="Setayesh AI" style="margin-bottom:12px">
+
+      <div class="side-label" style="padding:0;margin-bottom:6px">پیام خوش‌آمد (خالی = پیش‌فرض)</div>
+      <input class="input" id="thGreet" placeholder="مثلاً: سلام، چه کمکی می‌خوای؟" style="margin-bottom:14px">
+
+      <div class="side-label" style="padding:0;margin-bottom:8px">رنگ‌ها</div>
+      <div class="tk-row" style="gap:14px;margin-bottom:14px">
+        <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;cursor:pointer">
+          <input type="color" id="thAccent" style="width:42px;height:32px;border:none;background:none;cursor:pointer;padding:0">
+          <span>رنگ اصلی</span>
+        </label>
+        <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;cursor:pointer">
+          <input type="color" id="thAccent2" style="width:42px;height:32px;border:none;background:none;cursor:pointer;padding:0">
+          <span>رنگ دوم</span>
+        </label>
+        <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;cursor:pointer">
+          <input type="color" id="thBg" style="width:42px;height:32px;border:none;background:none;cursor:pointer;padding:0">
+          <span>پس‌زمینه</span>
+        </label>
+      </div>
+
+      <div class="tk-row" style="gap:8px;margin-bottom:10px">
+        <span style="font-size:12.5px;color:var(--muted);min-width:104px">اندازه‌ی متن</span>
+        <input type="range" id="thFont" min="80" max="140" step="5" style="flex:1">
+        <span id="thFontVal" style="font-size:12px;color:var(--muted);min-width:44px;text-align:end">100%</span>
+      </div>
+      <div class="tk-row" style="gap:8px;margin-bottom:12px">
+        <span style="font-size:12.5px;color:var(--muted);min-width:104px">گردی گوشه‌ها</span>
+        <input type="range" id="thRadius" min="0" max="28" step="2" style="flex:1">
+        <span id="thRadiusVal" style="font-size:12px;color:var(--muted);min-width:44px;text-align:end">16</span>
+      </div>
+
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:14px;cursor:pointer">
+        <input type="checkbox" id="thEffects"> <span>افکت‌های پس‌زمینه (روی کامپیوتر)</span>
+      </label>
+
+      <div class="tk-row" style="gap:8px">
+        <button class="btn" id="thSave" style="flex:1">ذخیره‌ی ظاهر</button>
+        <button class="btn ghost" id="thReset">بازگشت به حالت اولیه</button>
+      </div>
+    </div>
+
+    <div class="note" id="ccNote"></div>
+    <div class="modal-actions">
+      <button class="btn ghost" id="ccRestart" style="display:none">🔄 ری‌استارت</button>
+      <button class="btn ghost" id="ccClose">بستن</button>
+      <button class="btn" id="ccSave">ذخیره</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Learning control (admin): background research + knowledge review ===== -->
+<div class="overlay" id="learnOverlay">
+  <div class="modal glass" style="max-width:560px">
+    <h3>🧠 یادگیری خودکار ستایش</h3>
+    <p class="msub">ستایش در پس‌زمینه تحقیق می‌کند. هیچ‌چیز تا وقتی شما تأیید نکنید در گفتگوها استفاده نمی‌شود.</p>
+
+    <div id="learnSuggest" style="margin:12px 0"></div>
+
+    <div id="learnLive" class="tk-card" style="padding:12px 14px;margin:12px 0 14px;background:rgba(123,92,255,.08);border-color:rgba(123,92,255,.3)">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+        <span id="learnPulse" style="width:9px;height:9px;border-radius:50%;background:#5d6478"></span>
+        <span style="font-size:13px;font-weight:600">ستایش الان چه می‌کند</span>
+      </div>
+      <div id="learnNow" style="font-size:12.5px;color:var(--muted);line-height:1.8">—</div>
+      <div id="learnNext" style="font-size:11px;color:var(--muted);opacity:.7;margin-top:6px"></div>
+    </div>
+
+    <div class="side-label" style="padding:0;margin-bottom:8px">شدت یادگیری</div>
+    <div class="tk-hint" style="margin-bottom:8px">یک انتخاب، همه‌ی تنظیمات را با هم عوض می‌کند.</div>
+    <div class="tk-row" style="gap:6px;margin-bottom:16px;flex-wrap:nowrap">
+      <button class="btn ghost lvl" data-lvl="off"    style="flex:1;padding:8px 4px;font-size:12px">خاموش</button>
+      <button class="btn ghost lvl" data-lvl="slow"   style="flex:1;padding:8px 4px;font-size:12px">آرام</button>
+      <button class="btn ghost lvl" data-lvl="normal" style="flex:1;padding:8px 4px;font-size:12px">معمولی</button>
+      <button class="btn ghost lvl" data-lvl="fast"   style="flex:1;padding:8px 4px;font-size:12px">پرشتاب</button>
+    </div>
+
+    <div class="side-label" style="padding:0;margin-bottom:8px">کارهای اخیر ستایش</div>
+    <div id="learnActLog" style="max-height:160px;overflow-y:auto;margin-bottom:14px;font-size:11.5px"></div>
+
+    <div class="side-label" style="padding:0;margin-bottom:8px">وضعیت</div>
+    <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:10px;cursor:pointer">
+      <input type="checkbox" id="learnEnabled"> <span>یادگیری خودکار روشن باشد</span>
+    </label>
+    <div class="tk-row" style="margin-bottom:8px;gap:8px">
+      <span style="font-size:12.5px;color:var(--muted);min-width:110px">هر چند دقیقه یک‌بار</span>
+      <input class="input" id="learnInterval" type="number" min="30" step="30" style="flex:1">
+    </div>
+    <div class="tk-row" style="margin-bottom:10px;gap:8px">
+      <span style="font-size:12.5px;color:var(--muted);min-width:110px">حداکثر در روز</span>
+      <input class="input" id="learnMax" type="number" min="1" max="24" style="flex:1">
+    </div>
+    <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:8px;cursor:pointer">
+      <input type="checkbox" id="learnWeb"> <span>از اینترنت بخواند (با ذکر منبع)</span>
+    </label>
+    <div class="tk-hint" style="margin-bottom:10px">صفحات واقعی را می‌خواند و لینکشان را کنار هر مطلب می‌گذارد تا خودت بررسی کنی.</div>
+    <div class="side-label" style="padding:0;margin-bottom:6px">فقط از این سایت‌ها (اختیاری)</div>
+    <div class="tk-hint" style="margin-bottom:8px">خالی = کل اینترنت. یک دامنه در هر خط، مثلاً developer.mozilla.org</div>
+    <textarea class="input" id="learnDomains" rows="3" placeholder="developer.mozilla.org&#10;docs.python.org" style="font-size:12px;margin-bottom:12px"></textarea>
+    <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--muted);margin-bottom:12px;cursor:pointer">
+      <input type="checkbox" id="learnAuto"> <span>تأیید خودکار (بدون بررسی من) — پیشنهاد نمی‌شود</span>
+    </label>
+    <div class="tk-row" style="margin-bottom:14px;gap:8px">
+      <button class="btn ghost" id="learnSave" style="flex:1">ذخیره تنظیمات</button>
+      <button class="btn" id="learnRunNow" style="flex:1">همین حالا یک تحقیق</button>
+    </div>
+
+    <div class="side-label" style="padding:0;margin:16px 0 8px">موضوعات در صف</div>
+    <div class="tk-row" style="margin-bottom:8px;gap:8px">
+      <input class="input" id="learnTopic" placeholder="موضوعی که می‌خواهید یاد بگیرد..." style="flex:1">
+      <button class="btn ghost" id="learnAddTopic">افزودن</button>
+    </div>
+    <div id="learnTopicList" style="margin-bottom:6px"></div>
+
+    <div class="side-label" style="padding:0;margin:16px 0 8px">
+      در انتظار تأیید شما <span id="learnPendingCount" style="color:var(--cyan)"></span>
+    </div>
+    <div id="learnPending" style="max-height:260px;overflow-y:auto"></div>
+
+    <div class="side-label" style="padding:0;margin:16px 0 8px">تأییدشده (در حال استفاده)</div>
+    <div id="learnApproved" style="max-height:180px;overflow-y:auto"></div>
+
+    <div class="note" id="learnNote"></div>
+    <div class="modal-actions">
+      <button class="btn ghost" id="learnClose">بستن</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="adminOverlay">
+  <div class="modal glass" style="max-width:460px">
+    <h3 data-i18n="adminTitle">مدیریت کاربران</h3>
+    <p class="msub" data-i18n="adminSub">ساخت، حذف، ری‌ست رمز و حالت امن</p>
+
+    <div class="side-label" style="padding:0;margin-bottom:8px" data-i18n="adminUsers">کاربران</div>
+    <div id="adminUserList"></div>
+
+    <div class="side-label" style="padding:0;margin:20px 0 8px" data-i18n="adminNew">کاربر جدید</div>
+    <div class="tk-row" style="margin-bottom:8px">
+      <input class="input" id="newUserName" data-i18n-placeholder="username" placeholder="نام کاربری" style="flex:1">
+    </div>
+    <div class="tk-row" style="margin-bottom:8px">
+      <input class="input" id="newUserPass" data-i18n-placeholder="password" placeholder="رمز عبور" style="flex:1">
+    </div>
+    <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--muted);margin-bottom:10px;cursor:pointer">
+      <input type="checkbox" id="newUserSafe"> <span data-i18n="safeMode">حالت امن (مناسب کودک)</span>
+    </label>
+    <div class="note" id="adminNote"></div>
+    <div class="modal-actions">
+      <button class="btn ghost" id="adminClose" data-i18n="close">بستن</button>
+      <button class="btn" id="adminAdd" data-i18n="adminAddBtn">افزودن کاربر</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ SETTINGS ============ -->
+<div class="overlay" id="settingsOverlay">
+  <div class="modal glass" style="position:relative">
+    <button type="button" id="settingsX" aria-label="بستن" style="position:absolute;top:14px;inset-inline-end:14px;width:34px;height:34px;border-radius:9px;border:1px solid var(--border);background:var(--panel2);color:var(--muted);cursor:pointer;font-size:18px;line-height:1;z-index:2">✕</button>
+    <h3 data-i18n="settings">تنظیمات</h3>
+    <p class="msub" id="modalUserLine"></p>
+
+    <div id="phoneAccessBox" style="display:none;margin:4px 0 20px">
+      <div class="side-label" style="padding:0;margin-bottom:8px">📱 باز کردن روی گوشی</div>
+      <p class="mfoot" style="margin:0 0 8px;text-align:start;line-height:1.7">روی گوشی «localhost» کار نمی‌کند (یعنی خودِ گوشی). یکی از این آدرس‌ها را در مرورگر گوشی بزن — کامپیوتر باید روشن و به Tailscale وصل باشد:</p>
+      <div id="phoneUrls"></div>
+    </div>
+
+    <div class="side-label" style="padding:0;margin-bottom:8px" data-i18n="guideTitle">راهنما و توانایی‌ها</div>
+    <div class="guidebox" id="guideBox" style="margin-bottom:20px"></div>
+
+    <div class="side-label" style="padding:0;margin-bottom:8px" data-i18n="textSize">اندازه‌ی متن</div>
+    <div class="segrow" id="textSizeRow" style="margin-bottom:20px">
+      <button type="button" class="seg" data-size="small" data-i18n="tsSmall">کوچک</button>
+      <button type="button" class="seg" data-size="medium" data-i18n="tsMedium">متوسط</button>
+      <button type="button" class="seg" data-size="large" data-i18n="tsLarge">بزرگ</button>
+    </div>
+
+    <div class="side-label" style="padding:0;margin-bottom:8px" data-i18n="theme">تم رنگی</div>
+    <div class="themes" id="themePicker" style="margin-bottom:20px"></div>
+
+    <div class="side-label" style="padding:0;margin-bottom:8px" data-i18n="changePassword">تغییر رمز عبور</div>
+    <div class="field">
+      <label data-i18n="currentPassword">رمز فعلی</label>
+      <input class="input" type="password" id="curPassField" autocomplete="current-password">
+    </div>
+    <div class="field">
+      <label data-i18n="newPassword">رمز جدید</label>
+      <input class="input" type="password" id="newPassField" autocomplete="new-password">
+    </div>
+    <div class="field">
+      <label data-i18n="confirmPassword">تکرار رمز جدید</label>
+      <input class="input" type="password" id="confirmPassField" autocomplete="new-password">
+    </div>
+    <div class="note" id="settingsNote"></div>
+    <div class="modal-actions">
+      <button class="btn ghost" id="settingsCancel" data-i18n="close">بستن</button>
+      <button class="btn" id="settingsSave" data-i18n="save">ذخیره</button>
+    </div>
+
+    <div id="codeLibBox" style="display:none">
+      <div class="side-label" style="padding:0;margin:22px 0 8px" data-i18n="codeLib">کتابخانه‌های کد</div>
+      <p class="mfoot" style="margin:0 0 8px" data-i18n="codeLibHint">چند کتابخانه‌ی جدا بساز (پایتون، C++، CSS، …). هنگام کدنویسی بگو «از کتابخانه‌ی پایتون استفاده کن» یا «از کل کتابخانه استفاده کن».</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+        <select class="input" id="codeLibSel" style="flex:1;min-width:140px;margin-top:0"></select>
+        <button type="button" class="btn ghost" id="codeLibNew" style="margin-top:0" data-i18n="newLib">جدید +</button>
+      </div>
+      <textarea class="input" id="codeLibText" rows="6" dir="ltr" style="width:100%;resize:vertical;font-family:var(--mono);font-size:12.5px"></textarea>
+      <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
+        <button type="button" class="btn" id="codeLibSave" style="margin-top:0" data-i18n="save">ذخیره</button>
+        <button type="button" class="btn ghost" id="codeLibDl" style="margin-top:0" data-i18n="download">دانلود</button>
+        <button type="button" class="btn ghost" id="codeLibUp" style="margin-top:0" data-i18n="uploadLib">بارگذاری فایل</button>
+        <button type="button" class="btn ghost" id="codeLibDel" style="margin-top:0;color:#ff9db0;border-color:rgba(251,113,133,.3)" data-i18n="delete">حذف</button>
+      </div>
+      <input type="file" id="codeLibFile" style="display:none" accept=".md,.txt,.py,.js,.ts,.jsx,.tsx,.c,.cpp,.h,.hpp,.cs,.java,.go,.rs,.rb,.php,.swift,.kt,.css,.html,.json,.sh,.sql">
+      <div class="note" id="codeLibNote"></div>
+    </div>
+
+    <div class="side-label" style="padding:0;margin:22px 0 8px" data-i18n="clearChats">گفتگوها</div>
+    <button type="button" class="btn ghost" id="clearChatsBtn" style="margin-top:0;color:#ff9db0;border-color:rgba(251,113,133,.3)" data-i18n="clearChatsBtn">پاک‌کردن همه‌ی گفتگوها</button>
+
+    <div class="side-label" style="padding:0;margin:22px 0 6px" data-i18n="engines">موتورهای متصل</div>
+    <div id="keyList"></div>
+    <p class="mfoot" data-i18n="keyHint">کلیدها در فایل <code>.setayesh-config</code> کنار برنامه نگهداری می‌شوند.</p>
+  </div>
+</div>
+
+<script src="/app-i18n.js?v=9.9.45"></script>
+<script src="/app.js?v=9.9.45"></script>
+<script src="/secure-store.js?v=9.9.45"></script>
+<script src="/draft-cache.js?v=9.9.45"></script>
+
+<!-- ============ DEEP-BLUE FLOWING PARTICLE BACKGROUND ============ -->
+<script src="/login-fx.js?v=9.9.45"></script>
+<!-- ===== SETAYESH BRAIN — a living 3D view of her real internal state ===== -->
+<div id="brainOverlay" style="position:fixed;inset:0;z-index:500;background:#03040a;display:none">
+  <canvas id="brainCanvas" style="position:absolute;inset:0;width:100%;height:100%;display:block"></canvas>
+
+  <!-- top bar -->
+  <div style="position:absolute;top:0;inset-inline:0;padding:14px 18px;display:flex;align-items:center;gap:12px;
+    background:linear-gradient(180deg,rgba(3,4,10,.9),transparent);pointer-events:none">
+    <div style="pointer-events:auto;display:flex;align-items:center;gap:10px">
+      <div style="width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,#7b5cff,#22d3ee);
+        display:flex;align-items:center;justify-content:center">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#fff" stroke-width="2"><path d="M12 2l2.4 6.2L21 10l-5.2 4 1.5 6.6L12 17l-5.3 3.6L8.2 14 3 10l6.6-1.8z"/></svg>
+      </div>
+      <div>
+        <div style="font-weight:700;font-size:15px;color:#fff">مغز ستایش</div>
+        <div id="brainStatus" style="font-size:11.5px;color:#7ee0ff">در حال بارگذاری…</div>
+      </div>
+    </div>
+    <div style="flex:1"></div>
+    <button id="brainClose" style="pointer-events:auto;width:40px;height:40px;border-radius:12px;
+      background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);color:#fff;font-size:20px;cursor:pointer">✕</button>
+  </div>
+
+  <!-- info card, shown on hover/tap of a region -->
+  <div id="brainInfo" style="position:absolute;inset-inline-end:16px;top:74px;width:min(320px,86vw);
+    background:rgba(8,11,24,.92);backdrop-filter:blur(12px);border:1px solid rgba(123,92,255,.4);
+    border-radius:16px;padding:16px;display:none;box-shadow:0 20px 60px rgba(0,0,0,.6)">
+    <div id="brainInfoTitle" style="font-weight:700;font-size:14px;color:#fff;margin-bottom:6px">—</div>
+    <div id="brainInfoBody" style="font-size:12.5px;color:#b9c4e0;line-height:1.9"></div>
+    <button id="brainInfoAction" style="display:none;margin-top:12px;width:100%;padding:9px;border-radius:10px;
+      background:linear-gradient(135deg,#7b5cff,#22d3ee);border:none;color:#fff;font-weight:600;font-size:12.5px;cursor:pointer"></button>
+  </div>
+
+  <!-- bottom hint -->
+  <div style="position:absolute;bottom:16px;inset-inline:0;text-align:center;pointer-events:none">
+    <span style="background:rgba(0,0,0,.6);color:#8ea0c8;font-size:11.5px;padding:7px 16px;border-radius:99px">
+      بچرخان · با دو انگشت یا اسکرول زوم کن · روی هر بخش بزن
+    </span>
+  </div>
+
+  <!-- the in-brain code editor -->
+  <div id="brainEditor" style="position:absolute;inset:0;background:rgba(3,4,10,.97);display:none;flex-direction:column;padding:16px">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+      <span id="brainEditName" style="font-family:monospace;font-size:14px;color:#22d3ee;flex:1;direction:ltr;text-align:left"></span>
+      <button id="brainEditSave" style="padding:8px 16px;border-radius:10px;background:linear-gradient(135deg,#34d399,#22d3ee);border:none;color:#04121e;font-weight:700;font-size:12.5px;cursor:pointer">ذخیره</button>
+      <button id="brainEditBack" style="padding:8px 14px;border-radius:10px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);color:#fff;font-size:12.5px;cursor:pointer">بازگشت</button>
+    </div>
+    <textarea id="brainEditText" spellcheck="false" style="flex:1;background:#080b18;border:1px solid rgba(255,255,255,.12);
+      border-radius:12px;color:#d8e0f0;font-family:monospace;font-size:12px;line-height:1.6;padding:14px;resize:none;
+      direction:ltr;text-align:left;white-space:pre;overflow:auto"></textarea>
+    <div id="brainEditNote" style="font-size:12px;color:#8ea0c8;margin-top:8px;min-height:18px"></div>
+  </div>
+</div>
+
+<!-- ===== Memory panel: short-term & long-term, for every account ===== -->
+<div id="memScrim" style="position:fixed;inset:0;z-index:600;display:none;background:rgba(4,6,14,.42);-webkit-backdrop-filter:blur(7px);backdrop-filter:blur(7px)"></div>
+<div id="memPanel" role="dialog" aria-label="حافظه‌ی من" style="position:fixed;z-index:601;inset-inline:0;bottom:0;top:auto;display:none;max-height:88vh;overflow:auto;
+     background:linear-gradient(180deg,rgba(46,54,92,.66),rgba(12,15,30,.80));-webkit-backdrop-filter:blur(28px) saturate(1.8);backdrop-filter:blur(28px) saturate(1.8);
+     border-top:1px solid rgba(255,255,255,.24);border-radius:24px 24px 0 0;
+     box-shadow:0 -24px 70px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.16),inset 0 0 40px rgba(123,92,255,.06);padding:18px 16px 26px;max-width:720px;margin-inline:auto">
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
+    <div style="width:34px;height:34px;border-radius:10px;display:flex;align-items:center;justify-content:center;
+         background:radial-gradient(circle at 40% 30%,#7b5cff55,#1a2350);border:1px solid rgba(167,139,250,.4);font-size:17px">🧠</div>
+    <div style="flex:1">
+      <div style="font-size:16px;font-weight:800">حافظه‌ی من</div>
+      <div style="font-size:11.5px;color:var(--muted,#8ea0c8)">آنچه ستایش درباره‌ی تو به‌خاطر سپرده</div>
+    </div>
+    <button id="memClose" style="width:34px;height:34px;border-radius:9px;border:1px solid rgba(255,255,255,.14);
+      background:rgba(255,255,255,.04);color:var(--text,#e8ecf7);cursor:pointer;font-size:17px">✕</button>
+  </div>
+
+  <div style="display:flex;gap:8px;margin:14px 0 12px">
+    <input id="memAddText" class="input" placeholder="چیزی که می‌خواهی به‌خاطر بسپارد..." style="flex:1;font-size:13px">
+    <select id="memAddKind" class="input" style="width:120px;font-size:12px">
+      <option value="fact">💡 دانسته</option>
+      <option value="preference">⭐ ترجیح</option>
+      <option value="project">📦 پروژه</option>
+      <option value="document">📄 سند</option>
+      <option value="deadline">⏰ مهلت</option>
+    </select>
+    <button id="memAddBtn" style="padding:0 16px;border-radius:11px;border:0;cursor:pointer;font-weight:700;
+      background:linear-gradient(135deg,#7b5cff,#4f46e5);color:#fff">+ افزودن</button>
+  </div>
+  <div id="memAddNote" style="font-size:11.5px;color:#fb7185;min-height:16px;margin-bottom:6px"></div>
+
+  <div style="margin-bottom:6px;display:flex;align-items:center;gap:8px">
+    <span style="font-size:13px;font-weight:800;color:#fbbf24">⏳ کوتاه‌مدت</span>
+    <span style="font-size:11px;color:var(--muted,#8ea0c8)">مهلت‌ها و موارد اخیر</span>
+    <span id="memShortCount" style="margin-inline-start:auto;font-size:11px;color:var(--muted,#8ea0c8)"></span>
+  </div>
+  <div id="memShort" style="display:grid;gap:8px;margin-bottom:18px"></div>
+
+  <div style="margin-bottom:6px;display:flex;align-items:center;gap:8px">
+    <span style="font-size:13px;font-weight:800;color:#34d399">📚 بلندمدت</span>
+    <span style="font-size:11px;color:var(--muted,#8ea0c8)">دانسته‌ها، ترجیح‌ها و پروژه‌ها</span>
+    <span id="memLongCount" style="margin-inline-start:auto;font-size:11px;color:var(--muted,#8ea0c8)"></span>
+  </div>
+  <div id="memLong" style="display:grid;gap:8px"></div>
+</div>
+<script src="/memory-panel.js?v=9.9.45"></script>
+<!-- ===== Connectors panel: Google (Gmail + Calendar), admin only ===== -->
+<div id="cxScrim" style="position:fixed;inset:0;z-index:600;display:none;background:rgba(4,6,14,.42);-webkit-backdrop-filter:blur(7px);backdrop-filter:blur(7px)"></div>
+<div id="cxPanel" role="dialog" aria-label="کانکتورها" style="position:fixed;z-index:601;inset-inline:0;bottom:0;top:auto;display:none;max-height:90vh;overflow:auto;
+     background:linear-gradient(180deg,rgba(46,54,92,.66),rgba(12,15,30,.80));-webkit-backdrop-filter:blur(28px) saturate(1.8);backdrop-filter:blur(28px) saturate(1.8);
+     border-top:1px solid rgba(255,255,255,.24);border-radius:24px 24px 0 0;
+     box-shadow:0 -24px 70px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.16),inset 0 0 40px rgba(123,92,255,.06);padding:18px 16px 26px;max-width:720px;margin-inline:auto">
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+    <div style="width:34px;height:34px;border-radius:10px;display:flex;align-items:center;justify-content:center;background:radial-gradient(circle at 40% 30%,#34d39955,#0d3a2a);border:1px solid rgba(52,211,153,.4);font-size:17px">🔌</div>
+    <div style="flex:1"><div style="font-size:16px;font-weight:800">کانکتورها</div><div style="font-size:11.5px;color:var(--muted,#8ea0c8)">اتصال ستایش به سرویس‌های بیرونی</div></div>
+    <button id="cxClose" style="width:34px;height:34px;border-radius:9px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:var(--text,#e8ecf7);cursor:pointer;font-size:17px">✕</button>
+  </div>
+
+  <div style="border:1px solid rgba(255,255,255,.10);border-radius:16px;padding:14px;background:rgba(255,255,255,.03)">
+    <div style="display:flex;align-items:center;gap:9px;margin-bottom:6px">
+      <span style="font-size:19px">📧</span>
+      <div style="flex:1"><div style="font-weight:800">Google · Gmail و تقویم</div>
+        <div id="cxGStatus" style="font-size:11.5px;color:var(--muted,#8ea0c8)">در حال بررسی…</div></div>
+      <span id="cxGDot" style="width:10px;height:10px;border-radius:50%;background:#6b7280"></span>
+    </div>
+
+    <!-- setup (not connected) -->
+    <div id="cxSetup" style="display:none;margin-top:10px">
+      <div style="font-size:11.5px;color:var(--muted,#8ea0c8);line-height:1.7;margin-bottom:8px">
+        در Google Cloud Console یک OAuth Client از نوع «Web application» بساز، و این آدرس بازگشت را در آن ثبت کن:
+      </div>
+      <div style="display:flex;gap:6px;margin-bottom:10px">
+        <input id="cxRedirect" class="input" readonly style="flex:1;font-size:11px;direction:ltr;text-align:left;font-family:var(--mono,monospace)">
+        <button id="cxCopyRedirect" style="padding:0 12px;border-radius:10px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.05);color:var(--text,#e8ecf7);cursor:pointer;font-size:12px">کپی</button>
+      </div>
+      <input id="cxClientId" class="input" placeholder="Google Client ID" style="margin-bottom:8px;font-size:12px;direction:ltr;text-align:left">
+      <input id="cxClientSecret" class="input" type="password" placeholder="Google Client Secret" style="margin-bottom:10px;font-size:12px;direction:ltr;text-align:left">
+      <div style="display:flex;gap:8px">
+        <button id="cxSaveCreds" style="flex:1;padding:9px;border-radius:11px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.05);color:var(--text,#e8ecf7);cursor:pointer;font-weight:700">ذخیره‌ی کلیدها</button>
+        <button id="cxConnect" style="flex:1;padding:9px;border-radius:11px;border:0;cursor:pointer;font-weight:800;background:linear-gradient(135deg,#34d399,#059669);color:#04121e">اتصال به گوگل</button>
+      </div>
+      <div id="cxSetupNote" style="font-size:11.5px;color:#fb7185;min-height:16px;margin-top:8px"></div>
+    </div>
+
+    <!-- connected -->
+    <div id="cxConnected" style="display:none;margin-top:12px">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+        <button id="cxReadMail" style="flex:1;min-width:120px;padding:9px;border-radius:11px;border:1px solid rgba(56,189,248,.35);background:rgba(56,189,248,.10);color:#7dd3fc;cursor:pointer;font-weight:700">📥 خواندن ایمیل‌ها</button>
+        <button id="cxListCal" style="flex:1;min-width:120px;padding:9px;border-radius:11px;border:1px solid rgba(167,139,250,.35);background:rgba(167,139,250,.10);color:#c4b5fd;cursor:pointer;font-weight:700">📅 قرارهای پیش‌رو</button>
+        <button id="cxDisconnect" style="padding:9px 12px;border-radius:11px;border:1px solid rgba(251,113,133,.35);background:rgba(251,113,133,.10);color:#fda4af;cursor:pointer;font-weight:700">قطع اتصال</button>
+      </div>
+
+      <div style="font-size:12px;font-weight:800;margin:6px 0 6px;color:#7dd3fc">✉️ ارسال ایمیل</div>
+      <input id="cxTo" class="input" placeholder="گیرنده (email)" style="margin-bottom:6px;font-size:12px;direction:ltr;text-align:left">
+      <input id="cxSubject" class="input" placeholder="موضوع" style="margin-bottom:6px;font-size:12px">
+      <textarea id="cxBody" class="input" rows="3" placeholder="متن ایمیل..." style="margin-bottom:6px;font-size:12px;resize:vertical"></textarea>
+      <button id="cxSendMail" style="width:100%;padding:9px;border-radius:11px;border:0;cursor:pointer;font-weight:800;background:linear-gradient(135deg,#38bdf8,#0ea5e9);color:#04121e;margin-bottom:14px">ارسال</button>
+
+      <div style="font-size:12px;font-weight:800;margin:6px 0 6px;color:#c4b5fd">🗓️ ثبت قرار در تقویم</div>
+      <input id="cxEvTitle" class="input" placeholder="عنوان قرار" style="margin-bottom:6px;font-size:12px">
+      <div style="display:flex;gap:6px;margin-bottom:6px">
+        <input id="cxEvStart" class="input" placeholder="شروع" type="datetime-local" style="flex:1;font-size:12px">
+        <input id="cxEvEnd" class="input" placeholder="پایان (اختیاری)" type="datetime-local" style="flex:1;font-size:12px">
+      </div>
+      <button id="cxAddEvent" style="width:100%;padding:9px;border-radius:11px;border:0;cursor:pointer;font-weight:800;background:linear-gradient(135deg,#a78bfa,#7c3aed);color:#fff">ثبت قرار</button>
+
+      <div style="font-size:12px;font-weight:800;margin:16px 0 6px;color:#34d399">🔐 بکاپ رمزنگاری‌شده → درایو</div>
+      <input id="cxBkPass" class="input" type="password" placeholder="رمز پشتیبان (حداقل ۸ حرف — همین را برای بازیابی لازم داری)" style="margin-bottom:6px;font-size:12px">
+      <button id="cxBackupDrive" style="width:100%;padding:9px;border-radius:11px;border:0;cursor:pointer;font-weight:800;background:linear-gradient(135deg,#34d399,#059669);color:#04121e">رمزنگاری و آپلود به Google Drive</button>
+      <div style="font-size:10.5px;color:var(--muted,#8ea0c8);margin-top:5px">داده با AES-256-GCM روی همین دستگاه رمزنگاری می‌شود؛ درایو فقط نسخهٔ غیرقابل‌خواندن را نگه می‌دارد.</div>
+
+      <div id="cxActionNote" style="font-size:11.5px;min-height:16px;margin-top:10px"></div>
+      <div id="cxResult" style="margin-top:10px;display:grid;gap:8px"></div>
+    </div>
+  </div>
+</div>
+<script src="/connectors-panel.js?v=9.9.45"></script>
+<script src="/three.min.js"></script>
+<script src="/brain3d.js?v=9.9.45"></script>
+</body>
+</html>
