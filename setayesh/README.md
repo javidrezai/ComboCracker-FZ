@@ -50,7 +50,12 @@ npm test
 مجموعهٔ تستِ مسیرهای حیاتی (ورود، پیکربندی، حافظه، کانکتورها، SPA) با تست‌ران داخلی Node — بدون وابستگی جدید. سرور روی پورت موقت با داده‌های موقت اجرا می‌شود و داده‌های واقعی را دست نمی‌زند. Critical-path smoke tests via Node's built-in runner; boots the server on a temp port with throwaway state.
 
 ## نسخه / Version
-9.9.41
+9.9.42
+
+### تغییرات ۹.۹.۴۲ / Changelog 9.9.42 — جستجوی خودکارِ مستقل از مدل
+- **جستجوی وب خودکار حالا بدون کلید هم کار می‌کند.** قبلاً «جستجوی خودکار» فقط وقتی روشن می‌شد که کلید **Gemini** موجود بود (چون از Google Search آن قرض می‌گرفت). حالا اگر پیام نیاز به اطلاعات روز داشته باشد ولی Gemini نباشد، برنامه خودش با جستجوی **بدون‌کلیدِ DuckDuckGo** نتیجه می‌گیرد و مستقیم به مغز می‌دهد — روی **هر موتوری، از جمله مدل‌های رایگان** که خودشان ابزار را صدا نمی‌زنند. بهترین‌تلاش: اگر جستجو کند/ناموفق بود، پاسخ بدون آن داده می‌شود. با `AUTO_SEARCH=0` قابل خاموش‌کردن.
+  Model-independent auto web search: previously auto-search only worked when a Gemini key was present (it borrowed Gemini's Google Search). Now, when a question needs fresh info but Gemini isn't available, the server fetches results with the keyless DuckDuckGo search and injects them into the prompt — so "search when needed" works on any engine, including the free models that never call the web_search tool themselves. Best-effort; set AUTO_SEARCH=0 to disable.
+
 
 ### تغییرات ۹.۹.۴۱ / Changelog 9.9.41 — نسخهٔ قابل‌حمل روی USB
 - **`Build-Portable.bat`:** یک‌بار روی کامپیوترِ خودت اجرا کن تا پوشهٔ **`Setayesh-Portable`** ساخته شود که **`node.exe` خودت + همهٔ وابستگی‌ها + برنامه** را در خود دارد. این پوشه را روی USB می‌بری و روی **هر** ویندوز با دوبار کلیکِ `Setayesh.bat` اجرا می‌کنی — **بدون نصبِ Node و بدون اینترنت**.
