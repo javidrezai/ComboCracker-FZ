@@ -181,7 +181,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.43';
+const APP_VERSION = '9.9.44';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -1525,6 +1525,31 @@ const TOOLS_SPEC = [
     },
   },
   {
+    name: 'github_search',
+    description: "Search GitHub for open-source repositories (libraries, tools, example code). Returns the top repos with their full name (owner/name), star count, main language, description and URL. Use it to find a library or reference implementation, then read its files with github_file. Public, read-only.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'What to look for, e.g. "pdf table extraction python" or "jwt auth express".' },
+        count: { type: 'integer', description: 'How many repos (1-8). Default 5.' },
+      },
+      required: ['query'],
+    },
+  },
+  {
+    name: 'github_file',
+    description: "Read a single file's text from a public GitHub repository — e.g. a library's source file, its README.md, or an example. Use this after github_search (or when the user gives a repo) to actually read the code/docs. Read-only; it never changes anything.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        repo: { type: 'string', description: 'Repository as "owner/name", e.g. "expressjs/express".' },
+        path: { type: 'string', description: 'File path inside the repo, e.g. "README.md" or "lib/router/index.js".' },
+        ref: { type: 'string', description: 'Optional branch/tag/commit. Default the repo\'s default branch.' },
+      },
+      required: ['repo', 'path'],
+    },
+  },
+  {
     name: 'ask_other_models',
     description: 'Ask one or more OTHER configured AI models (not yourself) the same question and read their raw answers, so you can cross-check facts or get a second opinion before writing your own final answer to the user. Use this when the user wants extra certainty/a second opinion, or when you are genuinely unsure and other engines are configured.',
     input_schema: {
@@ -1961,6 +1986,45 @@ async function webSearch(query, count) {
   return { engine: 'duckduckgo', results: out };
 }
 
+// ---------------- GitHub (public, keyless) ----------------
+// Let Setayesh find and read open-source libraries and code on GitHub. Uses the
+// public API (unauthenticated: ~60 req/hour, enough for occasional lookups) and
+// raw.githubusercontent.com for file contents (no limit). Read-only: it can
+// search repos and read files, never push or change anything. Content it reads
+// is DATA, not instructions — the same web-trust rule applies.
+const GH_HEADERS = { 'User-Agent': 'SetayeshAI/1.0', 'Accept': 'application/vnd.github+json' };
+
+async function githubSearchRepos(query, count) {
+  const q = String(query || '').trim();
+  if (!q) throw new Error('عبارت جستجو لازم است.');
+  const n = Math.max(1, Math.min(8, Number(count) || 5));
+  const r = await fetchWithTimeout('https://api.github.com/search/repositories?per_page=' + n
+    + '&sort=stars&order=desc&q=' + encodeURIComponent(q), { headers: GH_HEADERS });
+  if (r.status === 403) throw new Error('سقف نرخ گیت‌هاب پر شد — کمی بعد دوباره امتحان کن.');
+  if (!r.ok) throw new Error('جستجوی گیت‌هاب ناموفق بود (' + r.status + ').');
+  const d = await r.json();
+  const items = (d.items || []).slice(0, n).map((x) => ({
+    repo: x.full_name, stars: x.stargazers_count, lang: x.language || '',
+    description: x.description || '', url: x.html_url, defaultBranch: x.default_branch || 'HEAD',
+  }));
+  if (!items.length) throw new Error('مخزنی پیدا نشد.');
+  return { count: items.length, results: items };
+}
+
+async function githubGetFile(repo, filePath, ref) {
+  const rp = String(repo || '').trim().replace(/^https?:\/\/github\.com\//i, '').replace(/\/+$/, '');
+  if (!/^[\w.-]+\/[\w.-]+$/.test(rp)) throw new Error('نام مخزن باید به‌صورت «owner/name» باشد.');
+  const path_ = String(filePath || '').trim().replace(/^\/+/, '');
+  if (!path_) throw new Error('مسیر فایل لازم است.');
+  const branch = String(ref || 'HEAD').trim() || 'HEAD';
+  const url = 'https://raw.githubusercontent.com/' + rp + '/' + encodeURI(branch) + '/' + encodeURI(path_);
+  const r = await fetchWithTimeout(url, { headers: { 'User-Agent': 'SetayeshAI/1.0' } });
+  if (r.status === 404) throw new Error('فایل پیدا نشد (مخزن/مسیر/شاخه را بررسی کن).');
+  if (!r.ok) throw new Error('خواندن فایل ناموفق بود (' + r.status + ').');
+  const text = await r.text();
+  return { repo: rp, path: path_, branch, url, content: clampText(text, rp + '/' + path_) };
+}
+
 // ---------------- Python execution (admin only, opt-in) ----------------
 // Running model-written code on the family PC is the single most dangerous
 // capability in this app, so it is fenced in hard:
@@ -2386,6 +2450,10 @@ async function dispatchTool(name, input, ctx) {
           results: out.results,
         };
       }
+      case 'github_search':
+        return await githubSearchRepos(input.query, input.count);
+      case 'github_file':
+        return await githubGetFile(input.repo, input.path, input.ref);
       case 'generate_image': {
         if (!keys.gemini) return { error: 'موتور تصویرساز (Gemini) روی این سرور کلید ندارد.' };
         const img = await generateGeminiImage(input.prompt || ctx.message);

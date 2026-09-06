@@ -50,7 +50,12 @@ npm test
 مجموعهٔ تستِ مسیرهای حیاتی (ورود، پیکربندی، حافظه، کانکتورها، SPA) با تست‌ران داخلی Node — بدون وابستگی جدید. سرور روی پورت موقت با داده‌های موقت اجرا می‌شود و داده‌های واقعی را دست نمی‌زند. Critical-path smoke tests via Node's built-in runner; boots the server on a temp port with throwaway state.
 
 ## نسخه / Version
-9.9.43
+9.9.44
+
+### تغییرات ۹.۹.۴۴ / Changelog 9.9.44 — ابزار گیت‌هاب (کتابخانه‌های متن‌باز)
+- **دو ابزار جدید و بدون‌کلید برای مغز:** `github_search` (جستجوی مخازن/کتابخانه‌ها با ستاره و زبان و توضیح) و `github_file` (خواندنِ متنِ هر فایل از یک مخزنِ عمومی، مثل سورس یا README). فقط‌خواندنی — هیچ‌وقت چیزی را push یا تغییر نمی‌دهد. حالا ستایش می‌تواند کتابخانه پیدا کند و کدِ واقعی‌اش را بخواند به‌جای حدس. محتوا «داده» است نه دستور (همان قانونِ اعتمادِ وب).
+  GitHub tools (keyless, read-only): github_search finds open-source repositories/libraries; github_file reads any file from a public repo (source, README, examples). Lets the brain find a library and read its real code instead of guessing. Uses the public API + raw.githubusercontent.com; content is treated as data, never instructions.
+
 
 ### تغییرات ۹.۹.۴۳ / Changelog 9.9.43 — مدل‌های لوکالِ بیشتر (DeepSeek و…)
 - به فهرستِ موتورِ **محلی (Ollama/LM Studio)** مدل‌های محبوب اضافه شد: **DeepSeek R1**، **DeepSeek Coder V2**، Qwen2.5 / Qwen2.5 Coder، Llama 3.1 / 3.2، Gemma 2، Mistral. بعد از روشن‌کردنِ کلیدِ «موتور محلی (Ollama)» در تنظیمات و pull‌کردنِ مدل در Ollama، مستقیم قابل‌انتخاب‌اند. کاملاً آفلاین، بدون سقفِ توکن، بدون کلید.
