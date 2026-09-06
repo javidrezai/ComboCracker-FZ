@@ -50,7 +50,13 @@ npm test
 مجموعهٔ تستِ مسیرهای حیاتی (ورود، پیکربندی، حافظه، کانکتورها، SPA) با تست‌ران داخلی Node — بدون وابستگی جدید. سرور روی پورت موقت با داده‌های موقت اجرا می‌شود و داده‌های واقعی را دست نمی‌زند. Critical-path smoke tests via Node's built-in runner; boots the server on a temp port with throwaway state.
 
 ## نسخه / Version
-9.9.40
+9.9.41
+
+### تغییرات ۹.۹.۴۱ / Changelog 9.9.41 — نسخهٔ قابل‌حمل روی USB
+- **`Build-Portable.bat`:** یک‌بار روی کامپیوترِ خودت اجرا کن تا پوشهٔ **`Setayesh-Portable`** ساخته شود که **`node.exe` خودت + همهٔ وابستگی‌ها + برنامه** را در خود دارد. این پوشه را روی USB می‌بری و روی **هر** ویندوز با دوبار کلیکِ `Setayesh.bat` اجرا می‌کنی — **بدون نصبِ Node و بدون اینترنت**.
+- داده‌ها (`.setayesh-*`) کنارِ برنامه روی USB می‌مانند، پس هر کپی، حساب/کلید/حافظهٔ خودش را دارد؛ چیزی روی کامپیوترِ میزبان نوشته نمی‌شود.
+  Portable USB build: run Build-Portable.bat once to produce a self-contained Setayesh-Portable folder (bundles your own node.exe + node_modules + the app). Copy it to a USB stick and double-click Setayesh.bat on any Windows PC — no Node install, no internet. Data lives next to the app on the stick.
+
 
 ### تغییرات ۹.۹.۴۰ / Changelog 9.9.40 — بالا آمدن مطمئن با فایلِ گم‌شده
 - **اگر یک ماژولِ اختیاری (کانکتور گوگل `connectors.js` یا `telegram.js`) در پوشه نباشد، دیگر کلِ سرور نمی‌خوابد.** به‌جای کرشِ «Cannot find module»، یک استاب بار می‌شود: آن قابلیت «تنظیم‌نشده» گزارش می‌شود و بقیهٔ برنامه (لاگین، چت، …) کار می‌کند. با شبیه‌سازیِ نبودِ هر دو فایل تأیید شد که سرور سالم بالا می‌آید.
