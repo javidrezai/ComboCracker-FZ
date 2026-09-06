@@ -105,9 +105,17 @@ const PROVIDERS = {
     vision: false,
     keyUrl: '',
     noKeyNeeded: true,
+    // The id must match the model tag you pulled in Ollama (e.g. `ollama pull
+    // deepseek-r1`). Add your own by editing this list or setting a custom one.
     models: [
+      { id: 'deepseek-r1', label: 'DeepSeek R1 (local)', best: 'code' },
+      { id: 'deepseek-coder-v2', label: 'DeepSeek Coder V2 (local)', best: 'code' },
       { id: 'qwen2.5-coder', label: 'Qwen2.5 Coder (local)', best: 'code' },
+      { id: 'qwen2.5', label: 'Qwen2.5 (local)' },
       { id: 'llama3.1', label: 'Llama 3.1 (local)' },
+      { id: 'llama3.2', label: 'Llama 3.2 (local)' },
+      { id: 'gemma2', label: 'Gemma 2 (local)' },
+      { id: 'mistral', label: 'Mistral (local)' },
     ],
   },
 };

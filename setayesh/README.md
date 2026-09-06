@@ -50,7 +50,12 @@ npm test
 مجموعهٔ تستِ مسیرهای حیاتی (ورود، پیکربندی، حافظه، کانکتورها، SPA) با تست‌ران داخلی Node — بدون وابستگی جدید. سرور روی پورت موقت با داده‌های موقت اجرا می‌شود و داده‌های واقعی را دست نمی‌زند. Critical-path smoke tests via Node's built-in runner; boots the server on a temp port with throwaway state.
 
 ## نسخه / Version
-9.9.42
+9.9.43
+
+### تغییرات ۹.۹.۴۳ / Changelog 9.9.43 — مدل‌های لوکالِ بیشتر (DeepSeek و…)
+- به فهرستِ موتورِ **محلی (Ollama/LM Studio)** مدل‌های محبوب اضافه شد: **DeepSeek R1**، **DeepSeek Coder V2**، Qwen2.5 / Qwen2.5 Coder، Llama 3.1 / 3.2، Gemma 2، Mistral. بعد از روشن‌کردنِ کلیدِ «موتور محلی (Ollama)» در تنظیمات و pull‌کردنِ مدل در Ollama، مستقیم قابل‌انتخاب‌اند. کاملاً آفلاین، بدون سقفِ توکن، بدون کلید.
+  More local models for the built-in Ollama/LM Studio engine: DeepSeek R1, DeepSeek Coder V2, Qwen2.5(-Coder), Llama 3.1/3.2, Gemma 2, Mistral. Enable the "Local engine (Ollama)" toggle in settings, `ollama pull` the model, and pick it — fully offline, no token cap, no key.
+
 
 ### تغییرات ۹.۹.۴۲ / Changelog 9.9.42 — جستجوی خودکارِ مستقل از مدل
 - **جستجوی وب خودکار حالا بدون کلید هم کار می‌کند.** قبلاً «جستجوی خودکار» فقط وقتی روشن می‌شد که کلید **Gemini** موجود بود (چون از Google Search آن قرض می‌گرفت). حالا اگر پیام نیاز به اطلاعات روز داشته باشد ولی Gemini نباشد، برنامه خودش با جستجوی **بدون‌کلیدِ DuckDuckGo** نتیجه می‌گیرد و مستقیم به مغز می‌دهد — روی **هر موتوری، از جمله مدل‌های رایگان** که خودشان ابزار را صدا نمی‌زنند. بهترین‌تلاش: اگر جستجو کند/ناموفق بود، پاسخ بدون آن داده می‌شود. با `AUTO_SEARCH=0` قابل خاموش‌کردن.
