@@ -57,6 +57,19 @@ bash setayesh/scripts/setup-vault-repo.sh git@github.com:USER/setayesh-vault.git
 
 ## راه‌اندازی سریع
 
+**تک‌دستوری:**
+```bash
+bash setayesh/run.sh "سلام، خودت را معرفی کن"     # یک پرسش
+bash setayesh/run.sh                               # حالت تعاملی
+bash setayesh/run.sh --serve                       # وبهوک + داشبورد وب (http://localhost:8787)
+```
+`run.sh` خودش Ollama را بررسی می‌کند، مدل را آماده می‌کند و مغز را اجرا می‌کند.
+
+**با Makefile:** `cd setayesh && make help` (اهداف: `run`, `serve`, `dashboard`, `test`, `docker`).
+
+**تست:** `cd setayesh/brain/server && python3 -m unittest tests.test_brain`  (۱۲ تست، بدون نیاز به Ollama).
+
+
 ### روش ۱ — محلی (بدون Docker)
 ```bash
 # ۱. Ollama را نصب و مدل را بکشید

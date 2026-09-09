@@ -47,6 +47,19 @@ class Vault:
                 settings[key] = val
         return settings
 
+    def set_setting(self, key, value):
+        """یک کلید را در config/brain-settings.md می‌نویسد/به‌روزرسانی می‌کند."""
+        import re as _re
+        f = self.config / "brain-settings.md"
+        text = f.read_text(encoding="utf-8") if f.exists() else "# ⚙️ تنظیمات مغز ستایش\n\n"
+        pat = _re.compile(rf"^(\s*{_re.escape(key)}\s*:\s*).*$", _re.MULTILINE)
+        if pat.search(text):
+            text = pat.sub(rf"\g<1>{value}", text, count=1)
+        else:
+            text = text.rstrip() + f"\n{key}: {value}\n"
+        f.write_text(text, encoding="utf-8")
+        return value
+
     # ---------- ایندکس و بازیابی گراف دانش ----------
     def _all_notes(self):
         notes = []

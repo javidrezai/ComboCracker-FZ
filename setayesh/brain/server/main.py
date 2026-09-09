@@ -82,6 +82,24 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(json.dumps(obj, ensure_ascii=False).encode("utf-8"))
 
+    def do_GET(self):
+        vault, llm, loop, bridge = self.brain
+        dash.build(vault, llm, vault.read_settings(), bridge)
+        md = (vault.dashboard / "DASHBOARD.md").read_text(encoding="utf-8")
+        html = ("<!doctype html><html lang=fa dir=rtl><meta charset=utf-8>"
+                "<meta http-equiv=refresh content=10>"
+                "<title>داشبورد مغز ستایش</title>"
+                "<style>body{font-family:system-ui,Tahoma;max-width:760px;margin:2rem auto;"
+                "padding:0 1rem;background:#0f1420;color:#e6e9ef;line-height:1.8}"
+                "code{background:#1c2333;padding:2px 6px;border-radius:4px}"
+                "table{border-collapse:collapse;width:100%}td,th{border:1px solid #2a3550;padding:6px}"
+                "a{color:#6ea8fe}</style><pre style='white-space:pre-wrap'>" +
+                md.replace("&", "&amp;").replace("<", "&lt;") + "</pre></html>")
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.end_headers()
+        self.wfile.write(html.encode("utf-8"))
+
     def do_POST(self):
         length = int(self.headers.get("Content-Length", 0))
         try:
@@ -103,7 +121,7 @@ class Handler(BaseHTTPRequestHandler):
 
 def serve(brain, port=8787):
     Handler.brain = brain
-    print(f"🌐 وبهوک مغز روی http://localhost:{port}  (POST با {{\"input\": \"...\"}})")
+    print(f"🌐 وبهوک مغز روی http://localhost:{port}  (POST با {{\"input\": \"...\"}} · داشبورد وب: GET /)")
     HTTPServer(("0.0.0.0", port), Handler).serve_forever()
 
 
@@ -120,7 +138,12 @@ def main():
     if args and args[0] == "--transparency":
         return cmd_transparency(vault)
     if args and args[0] == "--model":
-        print("برای تغییر مدل، فایل vault/config/brain-settings.md را ویرایش کنید (خط model:).")
+        if len(args) < 2:
+            print(f"مدل فعلی: {vault.read_settings().get('model', llm.model)}")
+            print("استفاده: python main.py --model qwen2.5:7b")
+        else:
+            vault.set_setting("model", args[1])
+            print(f"✅ مدل به «{args[1]}» تغییر کرد (در vault/config/brain-settings.md).")
         return
     if args and args[0] in ("--help", "-h"):
         print(__doc__)
