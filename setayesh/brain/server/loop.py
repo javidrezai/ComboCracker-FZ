@@ -35,16 +35,20 @@ SYSTEM_PROMPT = """تو «ستایش» هستی، یک مغز دستیارِ م�
 
 
 class AgentLoop:
-    def __init__(self, llm, vault, max_steps=6):
+    def __init__(self, llm, vault, max_steps=6, bridge=None):
         self.llm = llm
         self.vault = vault
         self.max_steps = max_steps
+        self.bridge = bridge
         self.last_trace = []
 
     def run(self, user_input):
         """یک ورودی کاربر را تا رسیدن به پاسخ نهایی پردازش می‌کند."""
         session_id = uuid.uuid4().hex[:8]
         registry = build_registry(self.vault)
+        # اتصال: آخرین ویرایش‌های کاربر در Obsidian را بکش
+        if self.bridge:
+            self.bridge.pull()
         settings = self.vault.read_settings()
         max_steps = int(settings.get("max_steps", self.max_steps))
         temperature = float(settings.get("temperature", self.llm.temperature))
@@ -120,6 +124,9 @@ class AgentLoop:
         trace.append(f"\n**پاسخ نهایی:** {final_answer}")
         self.vault.append_log(session_id, trace)
         self.last_trace = trace
+        # اتصال: نوشته‌های مغز را به مکان والت برگردان
+        if self.bridge:
+            self.bridge.push(f"brain: session {session_id}")
 
         return {"session_id": session_id, "answer": final_answer,
                 "lessons": learned, "trace": trace, "model": model}

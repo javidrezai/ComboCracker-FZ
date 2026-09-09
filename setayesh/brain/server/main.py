@@ -18,6 +18,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from llm import OllamaClient
 from memory import Vault
 from loop import AgentLoop
+from bridge import VaultBridge
 import dashboard as dash
 
 VAULT_PATH = os.environ.get(
@@ -34,12 +35,17 @@ def make_brain():
         model=s.get("model", "qwen2.5:7b"),
         temperature=float(s.get("temperature", 0.4)),
     )
-    loop = AgentLoop(llm, vault, max_steps=int(s.get("max_steps", 6)))
-    return vault, llm, loop
+    bridge = VaultBridge(
+        VAULT_PATH,
+        remote=os.environ.get("SETAYESH_VAULT_REMOTE", s.get("vault_remote")),
+        auto_sync=s.get("auto_sync", "true"),
+    )
+    loop = AgentLoop(llm, vault, max_steps=int(s.get("max_steps", 6)), bridge=bridge)
+    return vault, llm, loop, bridge
 
 
-def cmd_dashboard(vault, llm):
-    dash.build(vault, llm, vault.read_settings())
+def cmd_dashboard(vault, llm, bridge=None):
+    dash.build(vault, llm, vault.read_settings(), bridge)
     print("✅ داشبورد به‌روزرسانی شد: vault/dashboard/DASHBOARD.md")
 
 
@@ -56,19 +62,19 @@ def cmd_transparency(vault):
     print(logs[-1].read_text(encoding="utf-8"))
 
 
-def ask(loop, vault, llm, text):
+def ask(loop, vault, llm, text, bridge=None):
     res = loop.run(text)
     print("\n" + "=" * 50)
     print("🧠 پاسخ ستایش:\n" + res["answer"])
     if res["lessons"]:
         print("\n📚 درس‌های تازه: " + " | ".join(res["lessons"]))
     print(f"\n(اجرا {res['session_id']} · مدل {res['model']} · شفافیت: --transparency)")
-    dash.build(vault, llm, vault.read_settings())
+    dash.build(vault, llm, vault.read_settings(), bridge)
     return res
 
 
 class Handler(BaseHTTPRequestHandler):
-    brain = None  # (vault, llm, loop)
+    brain = None  # (vault, llm, loop, bridge)
 
     def _send(self, code, obj):
         self.send_response(code)
@@ -85,9 +91,9 @@ class Handler(BaseHTTPRequestHandler):
         text = data.get("input", "").strip()
         if not text:
             return self._send(400, {"error": "فیلد input لازم است"})
-        vault, llm, loop = self.brain
+        vault, llm, loop, bridge = self.brain
         res = loop.run(text)
-        dash.build(vault, llm, vault.read_settings())
+        dash.build(vault, llm, vault.read_settings(), bridge)
         self._send(200, {"answer": res["answer"], "session_id": res["session_id"],
                          "lessons": res["lessons"]})
 
@@ -103,12 +109,12 @@ def serve(brain, port=8787):
 
 def main():
     args = sys.argv[1:]
-    vault, llm, loop = make_brain()
+    vault, llm, loop, bridge = make_brain()
 
     if args and args[0] == "--serve":
-        return serve((vault, llm, loop))
+        return serve((vault, llm, loop, bridge))
     if args and args[0] == "--dashboard":
-        return cmd_dashboard(vault, llm)
+        return cmd_dashboard(vault, llm, bridge)
     if args and args[0] == "--files":
         return cmd_files(vault)
     if args and args[0] == "--transparency":
@@ -125,7 +131,7 @@ def main():
         print("    راه‌اندازی: `ollama serve` و `ollama pull qwen2.5:7b`")
 
     if args:
-        return ask(loop, vault, llm, " ".join(args)) and None
+        return ask(loop, vault, llm, " ".join(args), bridge) and None
 
     # حالت تعاملی
     print("🧠 مغز ستایش — حالت تعاملی (برای خروج: exit)")
@@ -141,12 +147,12 @@ def main():
             continue
         if text.startswith("--"):
             cmd = text.split()[0]
-            {"--dashboard": lambda: cmd_dashboard(vault, llm),
+            {"--dashboard": lambda: cmd_dashboard(vault, llm, bridge),
              "--files": lambda: cmd_files(vault),
              "--transparency": lambda: cmd_transparency(vault)}.get(
                 cmd, lambda: print("دستور ناشناخته."))()
             continue
-        ask(loop, vault, llm, text)
+        ask(loop, vault, llm, text, bridge)
 
 
 if __name__ == "__main__":

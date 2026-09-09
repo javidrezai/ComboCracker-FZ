@@ -2,12 +2,13 @@
 import datetime
 
 
-def build(vault, llm, settings):
+def build(vault, llm, settings, bridge=None):
     files = vault.list_files()
     knowledge = [f for f in files if f.startswith("knowledge/")]
     lessons = [f for f in files if f.startswith("lessons/")]
     logs = [f for f in files if f.startswith("logs/")]
     online = "🟢 آنلاین" if llm.is_available() else "🔴 آفلاین (Ollama در دسترس نیست)"
+    link = bridge.state() if bridge else "—"
 
     md = f"""# 🧠 داشبورد زندهٔ مغز ستایش
 
@@ -17,6 +18,7 @@ def build(vault, llm, settings):
 - **مدل محلی:** `{settings.get('model', llm.model)}` — {online}
 - **دما:** {settings.get('temperature', llm.temperature)}
 - **سقف گام:** {settings.get('max_steps', 6)}
+- **اتصال به والت ابسیدین:** {link}
 
 ## نقشهٔ حافظهٔ دائمی
 | بخش | تعداد فایل |
