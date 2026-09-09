@@ -9,6 +9,7 @@
   python main.py --files            # لیست فایل‌های والت
   python main.py --transparency     # نمایش استدلال آخرین اجرا
   python main.py --doctor           # بررسی سلامت اتصال‌ها (اولاما/والت)
+  python main.py --daemon           # فقط زمان‌بند پس‌زمینه (بدون وبهوک)
 """
 import os
 import sys
@@ -21,6 +22,7 @@ from memory import Vault
 from loop import AgentLoop
 from bridge import VaultBridge
 from ollama_setup import ensure_ollama, connection_summary
+from scheduler import BrainScheduler
 import dashboard as dash
 
 VAULT_PATH = os.environ.get(
@@ -158,6 +160,7 @@ def main():
 
     if args and args[0] == "--serve":
         auto_connect(vault, llm)
+        BrainScheduler(vault, llm, bridge).start()
         return serve((vault, llm, loop, bridge))
     if args and args[0] == "--dashboard":
         return cmd_dashboard(vault, llm, bridge)
@@ -167,6 +170,16 @@ def main():
         return cmd_transparency(vault)
     if args and args[0] == "--doctor":
         return cmd_doctor(vault, llm, bridge)
+    if args and args[0] == "--daemon":
+        auto_connect(vault, llm)
+        BrainScheduler(vault, llm, bridge).start()
+        print("🧠 مغز در حالت پس‌زمینه (daemon) — Ctrl+C برای خروج")
+        try:
+            while True:
+                __import__("time").sleep(3600)
+        except KeyboardInterrupt:
+            print("\nخداحافظ 👋")
+        return
     if args and args[0] == "--model":
         if len(args) < 2:
             print(f"مدل فعلی: {vault.read_settings().get('model', llm.model)}")

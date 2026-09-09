@@ -5,7 +5,11 @@
 """
 import datetime
 import ast
+import re
+import html
 import operator as op
+import urllib.parse
+import urllib.request
 
 
 # --- ماشین‌حساب امن (بدون eval) ---
@@ -37,6 +41,26 @@ def tool_now(_=""):
     return datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
+def tool_web_search(query):
+    """جست‌وجوی وب رایگان (DuckDuckGo، بدون کلید API). ورودی: عبارت جست‌وجو."""
+    q = urllib.parse.quote(query.strip())
+    url = f"https://html.duckduckgo.com/html/?q={q}"
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (Setayesh)"})
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        page = resp.read().decode("utf-8", "replace")
+    # استخراج عنوان + خلاصهٔ نتایج
+    results = []
+    for m in re.finditer(r'result__a"[^>]*>(.*?)</a>', page, re.DOTALL):
+        title = html.unescape(re.sub(r"<[^>]+>", "", m.group(1))).strip()
+        if title:
+            results.append(title)
+        if len(results) >= 5:
+            break
+    if not results:
+        return "نتیجه‌ای پیدا نشد."
+    return "\n".join(f"- {r}" for r in results)
+
+
 def build_registry(vault):
     """ابزارها را با دسترسی به والت می‌سازد."""
     def tool_list_files(_=""):
@@ -61,6 +85,7 @@ def build_registry(vault):
         "list_files": tool_list_files,
         "read_note": tool_read_note,
         "search": tool_search,
+        "web_search": tool_web_search,
     }
 
 
@@ -71,6 +96,7 @@ def tool_help(registry):
         "now": "زمان فعلی، now()",
         "list_files": "لیست فایل‌های والت، list_files()",
         "read_note": "خواندن نوت، read_note(نام)",
-        "search": "جست‌وجوی دانش، search(کلیدواژه)",
+        "search": "جست‌وجوی دانش والت، search(کلیدواژه)",
+        "web_search": "جست‌وجوی وب، web_search(عبارت)",
     }
     return "\n".join(f"- {name}: {docs.get(name, '')}" for name in registry)

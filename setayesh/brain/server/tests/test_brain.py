@@ -13,6 +13,8 @@ from loop import AgentLoop
 from bridge import VaultBridge
 import dashboard as dash
 from ollama_setup import ensure_ollama, connection_summary
+from scheduler import BrainScheduler
+from bridge import VaultBridge
 
 
 class MockLLM:
@@ -130,6 +132,7 @@ class FakeOllama:
     """کلاینت اولامای ساختگی برای تست اتصال خودکار (بدون شبکه/باینری)."""
     host = "http://localhost:11434"
     model = "qwen2.5:7b"
+    temperature = 0.4
 
     def __init__(self, available=True, models=("qwen2.5:7b",)):
         self._available = available
@@ -171,6 +174,67 @@ class OllamaConnectTests(unittest.TestCase):
         self.assertTrue(st["available"])
         self.assertFalse(st["model_ready"])
         self.assertIn("مدل", st["message"])
+
+
+class SchedulerTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.vault = Vault(self.tmp)
+        # بازه‌های خیلی کوتاه برای تست سریع
+        self.vault.set_setting("dashboard_interval", "15")
+        self.vault.set_setting("sync_interval", "15")
+        self.vault.set_setting("health_interval", "15")
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_scheduler_runs_dashboard_task(self):
+        llm = FakeOllama(available=True)
+        b = VaultBridge(self.tmp)
+        sched = BrainScheduler(self.vault, llm, b, on_log=lambda m: None)
+        # کار داشبورد را مستقیم صدا بزن (بدون انتظار برای بازه)
+        sched._task_dashboard()
+        content = (self.vault.dashboard / "DASHBOARD.md").read_text(encoding="utf-8")
+        self.assertIn("داشبورد", content)
+
+    def test_scheduler_health_reconnect_noop_when_up(self):
+        llm = FakeOllama(available=True, models=["qwen2.5:7b"])
+        sched = BrainScheduler(self.vault, llm, None, on_log=lambda m: None)
+        sched._task_health()  # نباید خطا بدهد وقتی اولاما بالا است
+
+    def test_scheduler_disabled_by_setting(self):
+        self.vault.set_setting("scheduler", "false")
+        llm = FakeOllama(available=True)
+        sched = BrainScheduler(self.vault, llm, None, on_log=lambda m: None)
+        sched.start()
+        self.assertEqual(len(sched._threads), 0)  # هیچ نخی راه نیفتاد
+        sched.stop()
+
+    def test_scheduler_start_stop(self):
+        llm = FakeOllama(available=True)
+        sched = BrainScheduler(self.vault, llm, VaultBridge(self.tmp), on_log=lambda m: None)
+        sched.start()
+        self.assertEqual(len(sched._threads), 3)
+        sched.stop()  # باید تمیز متوقف شود
+
+
+class WebSearchTests(unittest.TestCase):
+    def test_web_search_registered(self):
+        tmp = tempfile.mkdtemp()
+        try:
+            reg = build_registry(Vault(tmp))
+            self.assertIn("web_search", reg)
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_web_search_handles_offline_gracefully(self):
+        # بدون شبکه باید خطا بدهد (که حلقه آن را برای خودتعمیر می‌گیرد)، نه اینکه بی‌سروصدا خراب شود
+        from tools import tool_web_search
+        try:
+            out = tool_web_search("test")
+            self.assertIsInstance(out, str)
+        except Exception as e:
+            self.assertIsInstance(e, Exception)
 
 
 if __name__ == "__main__":

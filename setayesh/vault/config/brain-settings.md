@@ -11,6 +11,12 @@ ollama_host: http://localhost:11434
 auto_start_ollama: true
 auto_pull_model: true
 
+## زمان‌بندِ داخلی (کارهای خودکار پس‌زمینه)
+scheduler: true
+dashboard_interval: 60
+sync_interval: 120
+health_interval: 300
+
 ## اتصال دو مغز (همگام‌سازی با مکان والت)
 auto_sync: true
 vault_remote: 
@@ -25,3 +31,5 @@ vault_remote:
 - `auto_pull_model` — اگر `true` باشد، ستایش خودش مدل نبود را دانلود می‌کند.
 - `auto_sync` — اگر `true` باشد، مغز سرور قبل هر اجرا از والت `pull` و بعد از آن `push` می‌کند.
 - `vault_remote` — آدرس مخزن گیت والت (اختیاری).
+- `scheduler` — روشن/خاموش کردن زمان‌بند داخلی.
+- `dashboard_interval` / `sync_interval` / `health_interval` — بازهٔ کارهای خودکار (ثانیه).
