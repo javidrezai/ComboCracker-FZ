@@ -6,6 +6,11 @@ model: qwen2.5:7b
 temperature: 0.4
 max_steps: 6
 
+## اتصال خودکار اولاما (Ollama)
+ollama_host: http://localhost:11434
+auto_start_ollama: true
+auto_pull_model: true
+
 ## اتصال دو مغز (همگام‌سازی با مکان والت)
 auto_sync: true
 vault_remote: 
@@ -15,5 +20,8 @@ vault_remote:
 - `model` — نام مدل روی Ollama (مثلاً `qwen2.5:7b`، `llama3.1:8b`).
 - `temperature` — عددی بین ۰ (دقیق) تا ۱ (خلاق).
 - `max_steps` — بیشترین تعداد گام حلقهٔ عامل در هر پاسخ.
+- `ollama_host` — آدرس سرویس اولاما.
+- `auto_start_ollama` — اگر `true` باشد، ستایش خودش `ollama serve` را بالا می‌آورد.
+- `auto_pull_model` — اگر `true` باشد، ستایش خودش مدل نبود را دانلود می‌کند.
 - `auto_sync` — اگر `true` باشد، مغز سرور قبل هر اجرا از والت `pull` و بعد از آن `push` می‌کند.
-- `vault_remote` — آدرس مخزن گیت والت (اختیاری؛ اگر خالی باشد از remote موجودِ همان پوشه استفاده می‌شود).
+- `vault_remote` — آدرس مخزن گیت والت (اختیاری).

@@ -8,6 +8,7 @@
   python main.py --dashboard        # ساخت داشبورد
   python main.py --files            # لیست فایل‌های والت
   python main.py --transparency     # نمایش استدلال آخرین اجرا
+  python main.py --doctor           # بررسی سلامت اتصال‌ها (اولاما/والت)
 """
 import os
 import sys
@@ -19,6 +20,7 @@ from llm import OllamaClient
 from memory import Vault
 from loop import AgentLoop
 from bridge import VaultBridge
+from ollama_setup import ensure_ollama, connection_summary
 import dashboard as dash
 
 VAULT_PATH = os.environ.get(
@@ -31,7 +33,7 @@ def make_brain():
     vault = Vault(VAULT_PATH)
     s = vault.read_settings()
     llm = OllamaClient(
-        host=os.environ.get("OLLAMA_HOST", "http://localhost:11434"),
+        host=os.environ.get("OLLAMA_HOST", s.get("ollama_host", "http://localhost:11434")),
         model=s.get("model", "qwen2.5:7b"),
         temperature=float(s.get("temperature", 0.4)),
     )
@@ -42,6 +44,31 @@ def make_brain():
     )
     loop = AgentLoop(llm, vault, max_steps=int(s.get("max_steps", 6)), bridge=bridge)
     return vault, llm, loop, bridge
+
+
+def auto_connect(vault, llm, quiet=False):
+    """اتصال خودکار اولاما به ستایش بر اساس تنظیمات والت."""
+    s = vault.read_settings()
+    return ensure_ollama(
+        llm,
+        model=s.get("model", llm.model),
+        auto_start=str(s.get("auto_start_ollama", "true")).lower() not in ("false", "0", "no"),
+        auto_pull=str(s.get("auto_pull_model", "true")).lower() not in ("false", "0", "no"),
+        quiet=quiet,
+    )
+
+
+def cmd_doctor(vault, llm, bridge):
+    """بررسی سلامت کامل اتصال‌ها."""
+    print("🩺 بررسی سلامت مغز ستایش\n" + "=" * 40)
+    st = auto_connect(vault, llm)
+    print(f"اولاما: {connection_summary(st)}")
+    print(f"میزبان اولاما: {llm.host}")
+    print(f"مدل: {vault.read_settings().get('model', llm.model)}")
+    print(f"مدل‌های نصب‌شده: {', '.join(llm.list_models()) or '(هیچ)'}")
+    print(f"والت: {vault.root}")
+    print(f"اتصال والت: {bridge.state() if bridge else '—'}")
+    print(f"فایل‌های والت: {len(vault.list_files())}")
 
 
 def cmd_dashboard(vault, llm, bridge=None):
@@ -130,6 +157,7 @@ def main():
     vault, llm, loop, bridge = make_brain()
 
     if args and args[0] == "--serve":
+        auto_connect(vault, llm)
         return serve((vault, llm, loop, bridge))
     if args and args[0] == "--dashboard":
         return cmd_dashboard(vault, llm, bridge)
@@ -137,6 +165,8 @@ def main():
         return cmd_files(vault)
     if args and args[0] == "--transparency":
         return cmd_transparency(vault)
+    if args and args[0] == "--doctor":
+        return cmd_doctor(vault, llm, bridge)
     if args and args[0] == "--model":
         if len(args) < 2:
             print(f"مدل فعلی: {vault.read_settings().get('model', llm.model)}")
@@ -149,9 +179,8 @@ def main():
         print(__doc__)
         return
 
-    if not llm.is_available():
-        print("⚠️  Ollama در دسترس نیست. مغز اجرا می‌شود ولی پاسخ مدل نمی‌آید.")
-        print("    راه‌اندازی: `ollama serve` و `ollama pull qwen2.5:7b`")
+    # اتصال خودکار اولاما به ستایش (بدون دخالت دستی)
+    auto_connect(vault, llm)
 
     if args:
         return ask(loop, vault, llm, " ".join(args), bridge) and None

@@ -37,6 +37,32 @@ class OllamaClient:
                 f"مطمئن شوید Ollama در حال اجراست و مدل «{model or self.model}» نصب است. جزئیات: {e}"
             )
 
+    def list_models(self):
+        """لیست مدل‌های نصب‌شده روی Ollama را برمی‌گرداند (نام‌ها)."""
+        try:
+            with urllib.request.urlopen(f"{self.host}/api/tags", timeout=5) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+            return [m.get("name", "") for m in data.get("models", [])]
+        except Exception:
+            return []
+
+    def has_model(self, model=None):
+        """آیا مدل موردنظر نصب است؟ (تطبیق دقیق یا با/بی تگ :latest)."""
+        target = model or self.model
+        names = self.list_models()
+        if target in names:
+            return True
+        base = target.split(":")[0]
+        return any(n == target or n.split(":")[0] == base for n in names)
+
+    def warmup(self, model=None):
+        """مدل را با یک درخواست کوچک در حافظه بارگذاری می‌کند (اولین پاسخ سریع‌تر)."""
+        try:
+            self.chat([{"role": "user", "content": "hi"}], model=model)
+            return True
+        except Exception:
+            return False
+
     def is_available(self):
         """بررسی می‌کند که Ollama در دسترس است یا نه."""
         try:

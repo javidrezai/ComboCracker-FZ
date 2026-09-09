@@ -12,6 +12,7 @@ from tools import build_registry, tool_calc, tool_now
 from loop import AgentLoop
 from bridge import VaultBridge
 import dashboard as dash
+from ollama_setup import ensure_ollama, connection_summary
 
 
 class MockLLM:
@@ -123,6 +124,53 @@ class BrainTests(unittest.TestCase):
         content = (self.vault.dashboard / "DASHBOARD.md").read_text(encoding="utf-8")
         self.assertIn("داشبورد", content)
         self.assertIn("اتصال به والت", content)
+
+
+class FakeOllama:
+    """کلاینت اولامای ساختگی برای تست اتصال خودکار (بدون شبکه/باینری)."""
+    host = "http://localhost:11434"
+    model = "qwen2.5:7b"
+
+    def __init__(self, available=True, models=("qwen2.5:7b",)):
+        self._available = available
+        self._models = list(models)
+        self.warmed = False
+
+    def is_available(self):
+        return self._available
+
+    def list_models(self):
+        return list(self._models)
+
+    def has_model(self, model=None):
+        t = model or self.model
+        return t in self._models or any(n.split(":")[0] == t.split(":")[0] for n in self._models)
+
+    def warmup(self, model=None):
+        self.warmed = True
+        return True
+
+
+class OllamaConnectTests(unittest.TestCase):
+    def test_connected_when_available_and_model_present(self):
+        c = FakeOllama(available=True, models=["qwen2.5:7b"])
+        st = ensure_ollama(c, model="qwen2.5:7b", auto_start=False, auto_pull=False, quiet=True)
+        self.assertTrue(st["available"])
+        self.assertTrue(st["model_ready"])
+        self.assertEqual(connection_summary(st), "🟢 متصل و آماده")
+
+    def test_reports_down_when_unavailable_and_no_autostart(self):
+        c = FakeOllama(available=False)
+        st = ensure_ollama(c, auto_start=False, auto_pull=False, quiet=True)
+        self.assertFalse(st["available"])
+        self.assertEqual(connection_summary(st), "🔴 اولاما در دسترس نیست")
+
+    def test_model_not_ready_without_autopull(self):
+        c = FakeOllama(available=True, models=["llama3.1:8b"])
+        st = ensure_ollama(c, model="qwen2.5:7b", auto_start=False, auto_pull=False, quiet=True)
+        self.assertTrue(st["available"])
+        self.assertFalse(st["model_ready"])
+        self.assertIn("مدل", st["message"])
 
 
 if __name__ == "__main__":
