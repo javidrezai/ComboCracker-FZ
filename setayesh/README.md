@@ -31,15 +31,29 @@ setayesh/
 مغز سرور **قبل از هر اجرا `pull`** می‌کند (تا ویرایش‌های شما در Obsidian را بخواند)
 و **بعد از هر اجرا `push`** می‌کند (تا لاگ/درس/داشبورد به والت برگردد).
 
-### راه‌اندازی مکان دوم (والت مستقل)
+### راه‌اندازی مکان دوم = فقط Obsidian (بدون GitHub) ✅
+مغز دوم به هیچ سرویس ابری یا مخزن GitHub **نیاز ندارد**. کافی است:
+
+۱. Obsidian را باز کنید → *Open folder as vault* → پوشهٔ `setayesh/vault/` را انتخاب کنید.
+۲. مغز سرور را به همان پوشه وصل کنید:
 ```bash
-# ۱. یک مخزن خصوصی خالی روی GitHub بسازید (مثلاً setayesh-vault)
-# ۲. والت را به آن مخزن وصل و push کنید:
-bash setayesh/scripts/setup-vault-repo.sh git@github.com:javidrezai/setayesh-vault.git
-# ۳. در setayesh/vault/config/brain-settings.md مقدار vault_remote را بگذارید
-#    و متغیر SETAYESH_VAULT را به مسیر والت مستقل اشاره دهید.
+export SETAYESH_VAULT=/مسیر/کامل/به/setayesh/vault
+python setayesh/brain/server/main.py "سلام"
 ```
-اگر این مرحله را انجام ندهید، مغز همچنان کار می‌کند و والت را **محلی** می‌خواند/می‌نویسد (بدون همگام‌سازی).
+همین! هر دو مغز به **یک پوشهٔ مشترک** نگاه می‌کنند: هرچه در Obsidian بنویسید مغز می‌خواند،
+و هرچه مغز بنویسد (لاگ/درس/داشبورد) بلافاصله در Obsidian ظاهر می‌شود.
+
+**چند دستگاه؟** از **Obsidian Sync** (یا iCloud/Dropbox روی همان پوشه) استفاده کنید —
+Obsidian خودش والت را همگام نگه می‌دارد. مغز سرور فقط پوشهٔ محلی را می‌خواند.
+
+### (اختیاری) اتصال با git برای دو ماشین جدا
+اگر مغز سرور روی یک ماشین و Obsidian روی ماشین دیگری است و می‌خواهید از git برای
+همگام‌سازی استفاده کنید، اسکریپت زیر والت را به یک مخزن git وصل می‌کند:
+```bash
+bash setayesh/scripts/setup-vault-repo.sh git@github.com:USER/setayesh-vault.git
+```
+سپس `vault_remote` را در `vault/config/brain-settings.md` بگذارید. این کاملاً اختیاری است؛
+بدون آن هم مغز با پوشهٔ محلیِ Obsidian کار می‌کند.
 
 ## راه‌اندازی سریع
 
