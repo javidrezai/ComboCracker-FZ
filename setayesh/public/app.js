@@ -2124,23 +2124,37 @@ function loadCC(){
     var L=d.live;
     $('ccLive').innerHTML='نسخه '+d.version+' · موتورهای فعال: '+(L.engines.join('، ')||'هیچ')+
       ' · '+L.accounts.length+' کاربر'+(L.pendingKnowledge?(' · '+L.pendingKnowledge+' مورد منتظر تأیید'):'');
-    // engine keys
+    // engine keys — with add/remove (hide) controls
+    CC.hidden=d.providers.filter(function(p){return p.hidden;}).map(function(p){return p.id;});
     var box=$('ccKeyList'); box.innerHTML='';
     d.providers.filter(function(p){return p.id!=='local';}).forEach(function(p){
       var key='KEY_'+p.id.toUpperCase();
-      var st=d.settings[key]; if(!st)return;
+      var st=d.settings[key];
       var row=el('div','tk-card'); row.style.cssText='margin-bottom:8px;padding:10px 12px';
+      if(p.hidden)row.style.opacity='0.55';
       var top=el('div'); top.style.cssText='display:flex;align-items:center;gap:8px;margin-bottom:6px';
       var nm=el('span'); nm.style.cssText='flex:1;font-size:13px;font-weight:600';
-      nm.textContent=p.label+(p.free?' · رایگان':'');
-      var dot=el('span'); dot.textContent=st.set?'●':'○';
-      dot.style.color=st.set?'#34d399':'var(--muted)';
-      top.appendChild(nm); top.appendChild(dot);
-      var inp=el('input','input');
-      inp.placeholder=st.set?st.value:'کلید را اینجا بگذار...';
-      inp.style.fontSize='12px';
-      inp.addEventListener('input',function(){ CC.dirty[key]=inp.value.trim(); });
-      row.appendChild(top); row.appendChild(inp);
+      nm.textContent=p.label+(p.free?' · رایگان':'')+(p.custom?' · دلخواه':'')+(p.hidden?' · پنهان':'');
+      top.appendChild(nm);
+      if(st){ var dot=el('span'); dot.textContent=st.set?'●':'○'; dot.style.color=st.set?'#34d399':'var(--muted)'; top.appendChild(dot); }
+      // hide/show toggle for built-in engines; delete for custom ones
+      if(p.custom){
+        var del=el('button','btn ghost'); del.textContent='حذف'; del.style.cssText='font-size:11px;padding:2px 8px';
+        del.addEventListener('click',function(){ removeCustomEngine(p.id,p.label); });
+        top.appendChild(del);
+      } else if(p.lockable){
+        var tg=el('button','btn ghost'); tg.textContent=p.hidden?'نمایش بده':'پنهان کن'; tg.style.cssText='font-size:11px;padding:2px 8px';
+        tg.addEventListener('click',function(){ toggleEngineHidden(p.id,!p.hidden); });
+        top.appendChild(tg);
+      }
+      row.appendChild(top);
+      if(st){
+        var inp=el('input','input');
+        inp.placeholder=st.set?st.value:'کلید را اینجا بگذار...';
+        inp.style.fontSize='12px';
+        inp.addEventListener('input',function(){ CC.dirty[key]=inp.value.trim(); });
+        row.appendChild(inp);
+      }
       if(p.keyUrl){
         var a=el('a'); a.href=p.keyUrl; a.target='_blank'; a.rel='noopener';
         a.style.cssText='font-size:11px;color:var(--cyan);text-decoration:none;display:inline-block;margin-top:6px';
@@ -2150,8 +2164,8 @@ function loadCC(){
     });
     // default engine
     var sel=$('ccDefault'); sel.innerHTML='';
-    d.providers.forEach(function(p){
-      var o=el('option'); o.value=p.id; o.textContent=p.label; 
+    d.providers.filter(function(p){return !p.hidden;}).forEach(function(p){
+      var o=el('option'); o.value=p.id; o.textContent=p.label;
       if(p.id===d.live.defaultProvider)o.selected=true;
       sel.appendChild(o);
     });
@@ -2162,6 +2176,46 @@ function loadCC(){
     $('ccLocal').onchange=function(){ CC.dirty.ENABLE_LOCAL=$('ccLocal').checked?'1':''; };
   }).catch(function(e){ ccNote(e.message,true); });
 }
+/* Re-fetch /api/config and rebuild the chat engine/model pickers so that
+   hiding, showing or adding an engine shows up immediately without a reload. */
+function refreshConfig(){
+  return fetch('/api/config',{headers:authHeaders()}).then(function(r){return r.ok?r.json():null;}).then(function(c){
+    if(!c)return;
+    CFG=c;
+    if(!CFG.providers.some(function(p){return p.id===provider;})){ provider=CFG.defaultProvider; model=CFG.defaultModel; }
+    try{ buildModelPicker(); buildCompareChips(); }catch(e){}
+  }).catch(function(){});
+}
+/* Hide/show a built-in engine, then delete/add a custom one. Persists at once. */
+function toggleEngineHidden(id,hide){
+  var set=(CC.hidden||[]).filter(function(x){return x!==id;});
+  if(hide)set.push(id);
+  adminFetch('/api/admin/hidden-engines',{method:'POST',body:JSON.stringify({hidden:set})})
+    .then(function(){ ccNote(hide?'موتور پنهان شد.':'موتور نمایش داده شد.'); loadCC(); refreshConfig(); })
+    .catch(function(e){ ccNote(e.message,true); });
+}
+function removeCustomEngine(id,label){
+  if(!confirm('موتور «'+(label||id)+'» حذف شود؟'))return;
+  adminFetch('/api/admin/providers/custom/'+encodeURIComponent(id),{method:'DELETE'})
+    .then(function(){ ccNote('موتور حذف شد.'); loadCC(); refreshConfig(); })
+    .catch(function(e){ ccNote(e.message,true); });
+}
+function addCustomEngine(){
+  var b={
+    id:($('ccNewEngId').value||'').trim(),
+    label:($('ccNewEngLabel').value||'').trim(),
+    baseUrl:($('ccNewEngUrl').value||'').trim(),
+    models:($('ccNewEngModels').value||'').trim(),
+    key:($('ccNewEngKey').value||'').trim(),
+  };
+  if(!b.id||!b.label||!b.baseUrl||!b.models){ ccNote('شناسه، نام، آدرس و مدل لازم است.',true); return; }
+  var btn=$('ccNewEngAdd'); if(btn)btn.disabled=true;
+  adminFetch('/api/admin/providers/custom',{method:'POST',body:JSON.stringify(b)})
+    .then(function(r){ ccNote(r.note||'موتور اضافه شد.'); ['ccNewEngId','ccNewEngLabel','ccNewEngUrl','ccNewEngModels','ccNewEngKey'].forEach(function(x){var e=$(x);if(e)e.value='';}); loadCC(); refreshConfig(); })
+    .catch(function(e){ ccNote(e.message,true); })
+    .then(function(){ if(btn)btn.disabled=false; });
+}
+(function(){ var b=$('ccNewEngAdd'); if(b)b.addEventListener('click',addCustomEngine); })();
 /* Python brain + its library store: show whether python/brain are present and
    what's installed, and download the important libraries into pybrain/libs. */
 var _libPollTimer=null;

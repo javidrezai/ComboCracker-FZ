@@ -181,7 +181,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.68';
+const APP_VERSION = '9.9.69';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -888,16 +888,19 @@ app.get('/api/health', (req, res) => {
 
 // What the client needs to render its provider/model/mode pickers.
 app.get('/api/config', requireAuth, (req, res) => {
-  const providers = Object.entries(PROVIDERS).map(([id, p]) => ({
-    id,
-    label: p.label,
-    free: p.free,
-    vision: p.vision,
-    nativePdf: p.nativePdf,
-    keyUrl: p.keyUrl,
-    configured: isConfigured(id),
-    models: p.models,
-  }));
+  const hidden = new Set(hiddenEngines());
+  const providers = Object.entries(PROVIDERS)
+    .filter(([id]) => !hidden.has(id))
+    .map(([id, p]) => ({
+      id,
+      label: p.label,
+      free: p.free,
+      vision: p.vision,
+      nativePdf: p.nativePdf,
+      keyUrl: p.keyUrl,
+      configured: isConfigured(id),
+      models: p.models,
+    }));
   const modes = Object.entries(MODES).map(([id, m]) => ({ id, label: m.label, icon: m.icon }));
 
   let defProvider = isConfigured(DEFAULT_PROVIDER)
@@ -4746,6 +4749,18 @@ app.post('/api/admin/local-models', requireAuth, requireAdmin, (req, res) => {
   res.json({ ok: true, active: (PROVIDERS.local.models || []).map((m) => m.id) });
 });
 
+// ---- Hide built-in AI engines you don't use (add/remove from the picker) ----
+const HIDDEN_ENGINES_FILE = process.env.SETAYESH_HIDDEN_ENGINES_FILE || path.join(DATA_DIR, '.setayesh-hidden-engines.json');
+function hiddenEngines() { const d = loadJsonFile(HIDDEN_ENGINES_FILE, { ids: [] }); return Array.isArray(d.ids) ? d.ids : []; }
+app.get('/api/admin/hidden-engines', requireAuth, requireAdmin, (req, res) => res.json({ hidden: hiddenEngines() }));
+app.post('/api/admin/hidden-engines', requireAuth, requireAdmin, (req, res) => {
+  const ids = Array.isArray((req.body || {}).hidden)
+    ? req.body.hidden.map(String).filter((id) => PROVIDERS[id] && id !== 'brain' && id !== 'local')
+    : [];
+  saveJsonFile(HIDDEN_ENGINES_FILE, { ids: [...new Set(ids)] });
+  res.json({ ok: true, hidden: hiddenEngines() });
+});
+
 // ---- Editable search-engine list (add / remove / key) ----
 function searchEnginesPublic() {
   return searchEngines.map((e) => ({ id: e.id, label: e.label || SEARCH_LABELS[e.id] || e.id, enabled: !!e.enabled, keyless: e.id === 'duckduckgo', hasKey: !!searchKeyFor(e.id) }));
@@ -5814,12 +5829,27 @@ app.get('/api/admin/brain/map', requireAuth, requireAdmin, (req, res) => {
 });
 
 // Only these may be replaced — a dropped zip can never write anywhere else.
-const UPDATABLE = new Set([
-  'index.js', 'providers.js', 'toolkit.js', 'extensions.js', 'package.json',
-  'public/index.html', 'public/sw.js', 'public/manifest.webmanifest',
-  'public/icon-192.png', 'public/icon-512.png', 'public/three.min.js',
-  'public/brain3d.js',
-]);
+// A dropped update ZIP may replace ANY of the app's own files (so app.js, the
+// brain map, every module and the Python brain all actually update) — but
+// never anything dangerous: no path traversal or absolute paths, no
+// node_modules/.git, no runtime state (.setayesh-*), and no per-machine data
+// (downloaded Python libs, vault logs, the private memory mirror). Every .js in
+// the package is still syntax-checked before anything is written, and the write
+// step also confirms the resolved path stays inside the app folder.
+function isUpdatablePath(rel) {
+  if (!rel) return false;
+  const parts = rel.split('/');
+  if (parts.some((p) => p === '..' || p === '')) return false;
+  if (/^([a-zA-Z]:|\/|\\)/.test(rel)) return false;
+  if (parts[0] === 'node_modules' || parts.includes('node_modules')) return false;
+  if (parts[0] === '.git' || parts.includes('.git')) return false;
+  const base = parts[parts.length - 1];
+  if (base.startsWith('.setayesh')) return false;
+  if (rel.startsWith('pybrain/libs/') && base !== '.gitkeep' && base.toUpperCase() !== 'README.MD') return false;
+  if (rel.startsWith('pybrain/vault/logs/') && base.toUpperCase() !== 'README.MD') return false;
+  if (rel === 'pybrain/vault/knowledge/app-memory.md') return false;
+  return true;
+}
 
 function checkJsSyntax(code, label) {
   return new Promise((resolve) => {
@@ -5851,7 +5881,7 @@ async function inspectUpdateZip(zipPath) {
   const files = {};
   for (const [n, data] of Object.entries(raw)) {
     const rel = n.slice(prefix.length).replace(/\\/g, '/');
-    if (UPDATABLE.has(rel)) files[rel] = data;
+    if (isUpdatablePath(rel)) files[rel] = data;
   }
 
   if (!files['index.js']) throw new Error('این بسته‌ی ستایش نیست (index.js ندارد).');
@@ -6484,9 +6514,13 @@ app.get('/api/admin/settings', requireAuth, requireAdmin, (req, res) => {
       researchOn: research.enabled,
       pendingKnowledge: knowledge.filter((k) => k.status === 'pending').length,
     },
-    providers: Object.entries(PROVIDERS).map(([id, p]) => ({
-      id, label: p.label, free: !!p.free, keyUrl: p.keyUrl || '', configured: isConfigured(id),
-    })),
+    providers: (() => {
+      const hidden = new Set(hiddenEngines());
+      return Object.entries(PROVIDERS).map(([id, p]) => ({
+        id, label: p.label, free: !!p.free, keyUrl: p.keyUrl || '', configured: isConfigured(id),
+        hidden: hidden.has(id), custom: !!p.custom, lockable: id !== 'brain' && id !== 'local',
+      }));
+    })(),
     needsRestart: false,
   });
 });
