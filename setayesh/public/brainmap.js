@@ -1,4 +1,4 @@
-/* SETAYESH_BUILD 9.9.72 */
+/* SETAYESH_BUILD 9.9.73 */
 /* Brain map — a living picture of Setayesh's whole self: a central hexagon
    core with every file as a node around it, colour-coded by area, green when
    healthy / red when missing. Click a node to see what it does and edit it.
@@ -89,12 +89,38 @@
   // ---- Inside: BOTH brains side by side. Left = brain one (the Node app body:
   // its files by area). Right = brain two (the self-learning Python brain with
   // its vault knowledge). A glowing bridge shows they stay in sync. ----
-  function coreHex(g,cx,cy,r,title,sub,onClick){
-    var core=svg('path',{d:hexPath(cx,cy,r),fill:'url(#bmCore)',stroke:'#7dd3fc','stroke-width':2,filter:'url(#bmGlow)'});
-    core.style.cursor='pointer'; core.addEventListener('click',onClick); g.appendChild(core);
-    var t=svg('text',{x:cx,y:cy-2,'text-anchor':'middle',fill:'#eaf2ff','font-size':'15','font-weight':'800'}); t.textContent=title;
-    var v=svg('text',{x:cx,y:cy+16,'text-anchor':'middle',fill:'#bcd3ff','font-size':'10'}); v.textContent=sub;
-    g.appendChild(t); g.appendChild(v);
+  // A realistic two-hemisphere brain (top view): left half orange with a
+  // circuit pattern (the digital side), right half blue with organic folds —
+  // the picture the owner asked both brains to look like. Original artwork,
+  // drawn in SVG. Centred at (cx,cy), scaled by s, clickable.
+  function brainIcon(cx,cy,s,name,onClick){
+    var g=svg('g',{style:'cursor:pointer'});
+    g.setAttribute('transform','translate('+cx+' '+cy+') scale('+s+')');
+    g.innerHTML=''+
+      '<ellipse cx="0" cy="118" rx="96" ry="20" fill="#0a1020" opacity=".7"/>'+
+      // hemispheres
+      '<path d="M-4,-118 C-46,-124 -92,-96 -100,-46 C-107,6 -90,58 -58,94 C-42,112 -16,116 -6,102 C-4,60 -4,-40 -4,-118 Z" fill="url(#brL)" stroke="#ff8a1f" stroke-width="1.5" filter="url(#brGlow)"/>'+
+      '<path d="M4,-118 C46,-124 92,-96 100,-46 C107,6 90,58 58,94 C42,112 16,116 6,102 C4,60 4,-40 4,-118 Z" fill="url(#brR)" stroke="#5cc0ff" stroke-width="1.5"/>'+
+      // central fissure
+      '<path d="M0,-116 C-3,-40 -3,50 0,104 C3,50 3,-40 0,-116 Z" fill="#05070f" opacity=".85"/>'+
+      // organic folds (right/blue)
+      '<g fill="none" stroke="#d3ecff" stroke-width="2.2" opacity=".55" stroke-linecap="round">'+
+      '<path d="M18,-92 C42,-84 46,-60 28,-52"/><path d="M52,-78 C74,-62 68,-38 48,-34"/><path d="M22,-40 C48,-34 54,-8 34,4"/>'+
+      '<path d="M60,-22 C82,-8 74,22 52,28"/><path d="M26,26 C50,38 46,66 26,70"/><path d="M58,44 C78,60 66,86 46,86"/><path d="M78,-30 C92,-14 86,14 70,20"/>'+
+      '</g>'+
+      // circuit lines (left/orange)
+      '<g fill="none" stroke="#ffce8a" stroke-width="1.8" opacity=".95" filter="url(#brGlow)">'+
+      '<path d="M-18,-92 L-42,-92 L-42,-66"/><path d="M-56,-76 L-82,-76 L-82,-46"/><path d="M-30,-44 L-58,-44 L-58,-14"/>'+
+      '<path d="M-74,-22 L-74,8 L-48,8"/><path d="M-34,12 L-62,12 L-62,42"/><path d="M-46,50 L-46,76 L-22,76"/><path d="M-92,-8 L-66,-8"/>'+
+      '</g>'+
+      '<g fill="#ffe4b0" filter="url(#brGlow)">'+
+      '<circle cx="-42" cy="-66" r="2.6"/><circle cx="-82" cy="-46" r="2.6"/><circle cx="-58" cy="-14" r="2.6"/><circle cx="-48" cy="8" r="2.6"/><circle cx="-62" cy="42" r="2.6"/><circle cx="-22" cy="76" r="2.6"/><circle cx="-66" cy="-8" r="2.4"/>'+
+      '</g>'+
+      // sparkle dots along edges
+      '<g fill="#ffd9a0" filter="url(#brGlow)"><circle cx="-96" cy="-30" r="2"/><circle cx="-90" cy="30" r="2"/><circle cx="-66" cy="80" r="2"/><circle cx="-36" cy="-104" r="1.8"/></g>'+
+      '<g fill="#bfe4ff" filter="url(#brGlow)"><circle cx="96" cy="-30" r="2"/><circle cx="90" cy="30" r="2"/><circle cx="66" cy="80" r="2"/><circle cx="36" cy="-104" r="1.8"/><circle cx="70" cy="-70" r="1.8"/></g>';
+    g.addEventListener('click',onClick);
+    return g;
   }
   function build(){
     var view=el('brainMapView'); if(!view)return; view.innerHTML='';
@@ -107,7 +133,10 @@
     var defs=svg('defs'); defs.innerHTML=
       '<radialGradient id="bmCore" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#7dd3fc"/><stop offset=".55" stop-color="#3b82f6"/><stop offset="1" stop-color="#1e1b4b"/></radialGradient>'+
       '<radialGradient id="bmCore2" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#f9a8d4"/><stop offset=".55" stop-color="#db2777"/><stop offset="1" stop-color="#3b0d2b"/></radialGradient>'+
-      '<filter id="bmGlow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="6" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>';
+      '<radialGradient id="brL" cx="42%" cy="40%" r="70%"><stop offset="0" stop-color="#ffd7a0"/><stop offset=".45" stop-color="#ff8a1f"/><stop offset="1" stop-color="#7a2a00"/></radialGradient>'+
+      '<radialGradient id="brR" cx="58%" cy="40%" r="70%"><stop offset="0" stop-color="#cfe8ff"/><stop offset=".45" stop-color="#3fa0e6"/><stop offset="1" stop-color="#0b2f5e"/></radialGradient>'+
+      '<filter id="bmGlow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="6" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>'+
+      '<filter id="brGlow" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>';
     s.appendChild(defs);
     var linesG=svg('g'), nodesG=svg('g'); s.appendChild(linesG); s.appendChild(nodesG);
 
@@ -152,16 +181,16 @@
       var gk=svg('g'); gk.appendChild(svg('circle',{cx:x2,cy:y2,r:7,fill:'rgba(20,10,20,.9)',stroke:'#f472b6','stroke-width':2,filter:'url(#bmGlow)'}));
       gk.appendChild(svg('circle',{cx:x2,cy:y2,r:2.6,fill:'#f9a8d4'})); nodesG.appendChild(gk);
     }
-    coreHex(nodesG,cxA,cy,72,'مغز اول','بدنه · نود',function(){selectCore();});
-    // core B (Python brain) drawn in its own pink tint
-    var b2=svg('path',{d:hexPath(cxB,cy,56),fill:'url(#bmCore2)',stroke:'#f9a8d4','stroke-width':2,filter:'url(#bmGlow)',style:'cursor:pointer'});
-    b2.addEventListener('click',function(){selectPybrain();}); nodesG.appendChild(b2);
-    var t2=svg('text',{x:cxB,y:cy-2,'text-anchor':'middle',fill:'#fff','font-size':'14','font-weight':'800'}); t2.textContent='مغز دوم';
-    var s2=svg('text',{x:cxB,y:cy+16,'text-anchor':'middle',fill:'#ffe1f0','font-size':'10'}); s2.textContent='پایتون';
-    nodesG.appendChild(t2); nodesG.appendChild(s2);
+    // both cores are the same realistic two-hemisphere brain (orange circuit
+    // half + blue organic half), as the owner asked
+    nodesG.appendChild(brainIcon(cxA,cy,0.62,'مغز اول',function(){selectCore();}));
+    nodesG.appendChild(brainIcon(cxB,cy,0.5,'مغز دوم',function(){selectPybrain();}));
+    var nA=svg('text',{x:cxA,y:cy-96,'text-anchor':'middle',fill:'#eaf2ff','font-size':'14','font-weight':'800'}); nA.textContent='مغز اول';
+    var nB=svg('text',{x:cxB,y:cy-80,'text-anchor':'middle',fill:'#eaf2ff','font-size':'13','font-weight':'800'}); nB.textContent='مغز دوم';
+    nodesG.appendChild(nA); nodesG.appendChild(nB);
     // captions under each brain
     var capA=svg('text',{x:cxA,y:cy+330,'text-anchor':'middle',fill:'#9db4e0','font-size':'12','font-weight':'700'}); capA.textContent='🧠 مغز اول: بدنهٔ ستایش (نود)';
-    var capB=svg('text',{x:cxB,y:cy+210,'text-anchor':'middle',fill:'#f0a9cf','font-size':'12','font-weight':'700'});
+    var capB=svg('text',{x:cxB,y:cy+200,'text-anchor':'middle',fill:'#f0a9cf','font-size':'12','font-weight':'700'});
     capB.textContent='🧠 مغز دوم: خودآموز '+(pb.python?'✅':'🔴')+' · '+(pb.knowledgeFiles||0)+' نوت';
     nodesG.appendChild(capA); nodesG.appendChild(capB);
 
