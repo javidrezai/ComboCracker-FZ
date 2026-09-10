@@ -1110,6 +1110,9 @@ async function enterApp(){
       // matching the exact breakpoint the CSS itself switches on. Removing
       // features for children is a separate, content decision and stays
       // scoped to family accounts only.
+      // Calm the sidebar for everyone, desktop included — the owner asked for
+      // the collapsible menus and hidden expert controls on his own screen too.
+      collapseSidebarModes();
       if(window.innerWidth<=860) tidySidebar();
       if(!CFG.isAdmin) simplifyForFamily();
       showVersion();
@@ -3311,11 +3314,10 @@ function showVersion(){
 /* Tools were spread across the sidebar, the top bar and the composer — the
    same panels reachable three ways. They now live in one drawer, grouped, so
    there is one place to look. */
-function tidySidebar(){
-  // These all have drawer entries; remove the duplicates.
-  ['toolkitBtn','devicesBtn','adminBtn','boardBtn','ccBtn','learnBtn','settingsBtn','langBtn']
-    .forEach(function(id){ var e=$(id); if(e)e.style.display='none'; });
-
+/* Collapse the sidebar's expert controls without removing the footer nav.
+   Safe on any width, for every account — so the owner's desktop is calm too,
+   which is exactly what was asked for. */
+function collapseSidebarModes(){
   // The mode list was six entries with keyboard numbers next to them — it
   // looked like an aircraft cockpit for something most people never change.
   // It collapses to a single line that only opens when you want it.
@@ -3346,6 +3348,14 @@ function tidySidebar(){
   // not in everyone's line of sight.
   var eng=document.getElementById('modelPicker');
   if(eng&&eng.parentNode)eng.parentNode.style.display='none';
+}
+
+function tidySidebar(){
+  // These all have drawer entries; remove the duplicates.
+  ['toolkitBtn','devicesBtn','adminBtn','boardBtn','ccBtn','learnBtn','settingsBtn','langBtn']
+    .forEach(function(id){ var e=$(id); if(e)e.style.display='none'; });
+
+  collapseSidebarModes();
   // Composer: keep writing, attaching and sending. Voice and speech stay
   // because they are used mid-sentence; the rest moved to the drawer.
   ['cmpBtn','searchBtn','settingsBtnComposer'].forEach(function(id){
