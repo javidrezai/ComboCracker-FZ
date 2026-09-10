@@ -181,7 +181,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.53';
+const APP_VERSION = '9.9.54';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -3749,13 +3749,20 @@ app.get('/api/admin/brain', requireAuth, requireAdmin, (req, res) => {
 });
 
 // Read one source file for the in-brain editor (admin only).
+// The brain editor can now reach every file the self-map lists (plus
+// package.json), not just five — so "see and repair all of itself" is real.
+// Computed lazily because READABLE_SOURCES/SELF_MAP are defined later in the
+// file; at request time they always exist.
+function brainEditable() { return READABLE_SOURCES.concat(['package.json']); }
+// Files that apply the moment the browser reloads — no server restart needed.
+function appliesOnReload(name) { return name.indexOf('public/') === 0; }
+
 app.get('/api/admin/brain/file', requireAuth, requireAdmin, (req, res) => {
   const name = String(req.query.name || '');
-  const allowed = ['index.js', 'providers.js', 'toolkit.js', 'extensions.js', 'public/index.html', 'package.json'];
-  if (!allowed.includes(name)) return res.status(400).json({ error: 'این فایل قابل ویرایش نیست.' });
+  if (!brainEditable().includes(name)) return res.status(400).json({ error: 'این فایل قابل ویرایش نیست.' });
   try {
     const full = path.join(DATA_DIR, name);
-    res.json({ name, content: fs.readFileSync(full, 'utf8') });
+    res.json({ name, content: fs.readFileSync(full, 'utf8'), map: SELF_MAP[name] || '', files: brainEditable() });
   } catch (e) { res.status(404).json({ error: 'خوانده نشد: ' + e.message }); }
 });
 
@@ -3766,8 +3773,7 @@ app.get('/api/admin/brain/file', requireAuth, requireAdmin, (req, res) => {
 app.post('/api/admin/brain/file', requireAuth, requireAdmin, async (req, res) => {
   const name = String((req.body || {}).name || '');
   const content = String((req.body || {}).content || '');
-  const allowed = ['index.js', 'providers.js', 'toolkit.js', 'extensions.js', 'public/index.html', 'package.json'];
-  if (!allowed.includes(name)) return res.status(400).json({ error: 'این فایل قابل ویرایش نیست.' });
+  if (!brainEditable().includes(name)) return res.status(400).json({ error: 'این فایل قابل ویرایش نیست.' });
   if (!content.trim()) return res.status(400).json({ error: 'محتوا خالی است.' });
 
   // Validate before writing.
@@ -3785,8 +3791,15 @@ app.post('/api/admin/brain/file', requireAuth, requireAdmin, async (req, res) =>
     fs.writeFileSync(path.join(DATA_DIR, name), content, 'utf8');
   } catch (e) { return res.status(500).json({ error: 'ذخیره نشد: ' + e.message }); }
 
-  res.json({ ok: true, name,
-    note: RESTART_SUPPORTED ? 'ذخیره شد — برای فعال شدن، ری‌استارت لازم است.' : 'ذخیره شد — برنامه را دستی ری‌استارت کن.',
+  // UI files under public/ take effect on a browser reload; only server code
+  // needs a restart. Telling the truth per file is what makes "it worked"
+  // obvious instead of leaving the owner waiting for a restart that a CSS or
+  // HTML edit never needed.
+  const reloadOnly = appliesOnReload(name);
+  res.json({ ok: true, name, reloadOnly,
+    note: reloadOnly
+      ? 'ذخیره شد — فقط صفحه را در مرورگر تازه کن (Ctrl+Shift+R).'
+      : (RESTART_SUPPORTED ? 'ذخیره شد — برای فعال شدن، ری‌استارت لازم است.' : 'ذخیره شد — برنامه را دستی ری‌استارت کن.'),
     restartSupported: RESTART_SUPPORTED });
 });
 

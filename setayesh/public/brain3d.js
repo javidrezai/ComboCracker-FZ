@@ -679,7 +679,7 @@
           if (d && d.error) { note.style.color = '#fb7185'; note.textContent = d.error; }
           else {
             note.style.color = '#34d399';
-            note.textContent = 'ذخیره شد' + (d && d.restartSupported ? ' — نیاز به ری‌استارت' : '');
+            note.textContent = (d && d.note) || 'ذخیره شد';
           }
         }).catch(function (e) {
           note.style.color = '#fb7185'; note.textContent = 'خطا: ' + e.message;
