@@ -673,3 +673,52 @@ html[data-device="touch-desktop"] .cbtn{min-height:44px}
   .topbar{padding-inline:10px}
   .topbar h1{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:42vw}
 }
+
+/* ===== Home-device remotes — styled like a real handset ===== */
+.rmt-wrap{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px}
+.rmt-card{background:linear-gradient(170deg,#1a2033,#10131f);border:1px solid rgba(255,255,255,.09);
+  border-radius:22px;padding:16px 14px 18px;box-shadow:0 14px 34px rgba(0,0,0,.45),inset 0 1px 0 rgba(255,255,255,.06)}
+.rmt-head{display:flex;align-items:center;gap:6px;margin-bottom:2px}
+.rmt-name{flex:1;font-weight:800;font-size:14px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rmt-tag{font-size:10px;color:#3fb27f;border:1px solid rgba(63,178,127,.4);border-radius:20px;padding:1px 7px}
+.rmt-admin{display:flex;gap:2px}
+.rmt-admin .ibtn{width:26px;height:26px;font-size:12px}
+.rmt-sub{font-size:11px;color:var(--muted);margin-bottom:14px;direction:ltr;text-align:center;opacity:.8}
+.rmt{display:flex;flex-direction:column;align-items:center;gap:14px}
+
+/* power */
+.rmt-pow{display:flex;gap:16px;justify-content:center}
+.rmt-power{width:48px;height:48px;border-radius:50%;border:none;cursor:pointer;font-size:20px;color:#fff;
+  box-shadow:0 6px 16px rgba(0,0,0,.4),inset 0 1px 0 rgba(255,255,255,.25);transition:transform .08s,filter .15s}
+.rmt-power.on{background:radial-gradient(circle at 38% 30%,#4ade80,#15803d)}
+.rmt-power.off{background:radial-gradient(circle at 38% 30%,#fb7185,#b91c1c)}
+.rmt-power:active{transform:scale(.92)}
+.rmt-power:hover{filter:brightness(1.12)}
+
+/* d-pad */
+.rmt-dpad{display:flex;flex-direction:column;align-items:center;gap:6px;background:rgba(255,255,255,.03);
+  border-radius:20px;padding:10px}
+.rmt-drow{display:flex;align-items:center;gap:6px}
+.rmt-d{width:46px;height:42px;border:none;border-radius:12px;cursor:pointer;font-size:15px;
+  background:linear-gradient(180deg,#2b3350,#1b2133);color:#cbd5f5;
+  box-shadow:0 3px 8px rgba(0,0,0,.4),inset 0 1px 0 rgba(255,255,255,.1)}
+.rmt-d:active{transform:translateY(1px);filter:brightness(1.15)}
+.rmt-dc{width:46px;height:42px;display:inline-block}
+
+/* volume rocker */
+.rmt-vol{display:flex;align-items:center;gap:12px;flex-wrap:wrap;justify-content:center}
+.rmt-rocker{display:flex;flex-direction:column;align-items:center;background:linear-gradient(180deg,#2b3350,#161c2c);
+  border-radius:26px;padding:4px;box-shadow:inset 0 1px 0 rgba(255,255,255,.1),0 3px 8px rgba(0,0,0,.4)}
+.rmt-rocker button{width:52px;height:38px;border:none;background:transparent;color:#cbd5f5;font-size:20px;cursor:pointer;border-radius:22px}
+.rmt-rocker button:active{background:rgba(255,255,255,.08)}
+.rmt-rocker span{font-size:10px;color:var(--muted);padding:2px 0}
+
+/* key grids + generic keys */
+.rmt-grid{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;width:100%}
+.rmt-key{border:none;cursor:pointer;border-radius:12px;padding:9px 14px;font-size:12.5px;font-weight:600;
+  background:linear-gradient(180deg,#2b3350,#1b2133);color:#dbe2f5;
+  box-shadow:0 3px 8px rgba(0,0,0,.4),inset 0 1px 0 rgba(255,255,255,.1)}
+.rmt-key:active{transform:translateY(1px);filter:brightness(1.15)}
+.rmt-key.soft{background:linear-gradient(180deg,#242b42,#171d2c);color:#aeb8d6}
+.rmt-key.wide{min-width:120px}
+.rmt-key.cook{background:linear-gradient(180deg,#f59e0b,#b45309);color:#1a1205}

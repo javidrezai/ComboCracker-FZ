@@ -4387,6 +4387,97 @@ function devRender(){
   if(DEV.tab === 'perms') return devRenderPerms(b);
 }
 
+/* A command button that keeps the same data-* the delegated handler reads,
+   so only the LOOK changes, never the behaviour. */
+function rmtCmd(id,cmd,label,cls){
+  return '<button class="rmt-key '+(cls||'')+'" data-devact="cmd" data-id="'+id+'" data-cmd="'+cmd+'">'+label+'</button>';
+}
+/* Lay a device's capabilities out like a real handset: power at the top, a
+   D-pad for cameras, a volume rocker for TVs, then labelled keys. */
+function devRemoteHtml(d){
+  var id=d.id, caps=d.capabilities||[], used={};
+  function has(c){ return caps.indexOf(c)>=0; }
+  function mark(){ for(var i=0;i<arguments.length;i++) used[arguments[i]]=1; }
+  var s='<div class="rmt">';
+
+  // Power — a round key, green for on, red for off.
+  if(has('on')||has('off')){
+    s+='<div class="rmt-pow">';
+    if(has('on')){ s+='<button class="rmt-power on" data-devact="cmd" data-id="'+id+'" data-cmd="on" title="روشن">⏻</button>'; mark('on'); }
+    if(has('off')){ s+='<button class="rmt-power off" data-devact="cmd" data-id="'+id+'" data-cmd="off" title="خاموش">⏻</button>'; mark('off'); }
+    s+='</div>';
+  }
+
+  // D-pad for pan/tilt cameras.
+  if(has('tilt_up')||has('tilt_down')||has('pan_left')||has('pan_right')){
+    s+='<div class="rmt-dpad">'+
+       (has('tilt_up')?'<button class="rmt-d u" data-devact="cmd" data-id="'+id+'" data-cmd="tilt_up">▲</button>':'<span></span>')+
+       '<div class="rmt-drow">'+
+         (has('pan_left')?'<button class="rmt-d l" data-devact="cmd" data-id="'+id+'" data-cmd="pan_left">◀</button>':'<span></span>')+
+         '<span class="rmt-dc"></span>'+
+         (has('pan_right')?'<button class="rmt-d r" data-devact="cmd" data-id="'+id+'" data-cmd="pan_right">▶</button>':'<span></span>')+
+       '</div>'+
+       (has('tilt_down')?'<button class="rmt-d dn" data-devact="cmd" data-id="'+id+'" data-cmd="tilt_down">▼</button>':'<span></span>')+
+       '</div>';
+    mark('tilt_up','tilt_down','pan_left','pan_right');
+  }
+
+  // Volume rocker + mute.
+  if(has('volume_up')||has('volume_down')||has('mute')){
+    s+='<div class="rmt-vol">';
+    if(has('volume_up')||has('volume_down')){
+      s+='<div class="rmt-rocker">'+
+         (has('volume_up')?'<button data-devact="cmd" data-id="'+id+'" data-cmd="volume_up">＋</button>':'')+
+         '<span>صدا</span>'+
+         (has('volume_down')?'<button data-devact="cmd" data-id="'+id+'" data-cmd="volume_down">－</button>':'')+
+         '</div>';
+      mark('volume_up','volume_down');
+    }
+    if(has('mute')){ s+=rmtCmd(id,'mute','🔇 بی‌صدا','wide'); mark('mute'); }
+    s+='</div>';
+  }
+
+  // Media transport.
+  if(has('pause')||has('resume')){
+    s+='<div class="rmt-grid">'+
+       (has('pause')?rmtCmd(id,'pause','⏸ مکث'):'')+
+       (has('resume')?rmtCmd(id,'resume','▶ ادامه'):'')+'</div>';
+    mark('pause','resume');
+  }
+
+  // Navigation keys.
+  var nav=['home','source','info','status'].filter(has);
+  if(nav.length){
+    s+='<div class="rmt-grid">';
+    nav.forEach(function(c){ s+=rmtCmd(id,c,DEV_CMD[c]||c); mark(c); });
+    s+='</div>';
+  }
+
+  // Safety / privacy toggles (cameras, sirens).
+  var tog=['privacy_on','privacy_off','motion_on','motion_off','siren_off'].filter(has);
+  if(tog.length){
+    s+='<div class="rmt-grid">';
+    tog.forEach(function(c){ s+=rmtCmd(id,c,DEV_CMD[c]||c,'soft'); mark(c); });
+    s+='</div>';
+  }
+
+  // Air-fryer style cook.
+  if(has('cook')){ s+='<button class="rmt-key cook wide" data-devact="cook" data-id="'+id+'">🍟 شروع پخت…</button>'; mark('cook'); }
+
+  // Anything left over (never drop a capability just because it is unusual).
+  var rest=caps.filter(function(c){ return !used[c] && c!=='print'; });
+  if(rest.length){
+    s+='<div class="rmt-grid">';
+    rest.forEach(function(c){ s+=rmtCmd(id,c,DEV_CMD[c]||c,'soft'); });
+    s+='</div>';
+  }
+
+  if(caps.filter(function(c){return c!=='print';}).length===0)
+    s+='<div class="tk-hint" style="text-align:center">این دستگاه فرمانی ندارد.</div>';
+  s+='</div>';
+  return s;
+}
+
 function devRenderList(b){
   if(!DEV.list.length){
     b.innerHTML = '<div class="tk-hint">'+(DEV.admin
@@ -4394,26 +4485,22 @@ function devRenderList(b){
       : 'هنوز دسترسی به دستگاهی ندارید.')+'</div>';
     return;
   }
-  var h = '';
+  var h = '<div class="rmt-wrap">';
   for(var i=0;i<DEV.list.length;i++){
     var d = DEV.list[i];
-    h += '<div class="tk-card"><div class="tk-card-h" style="display:flex;align-items:center;gap:8px">'+
-         '<b style="flex:1">'+esc(d.name)+'</b>'+
-         (d.paired?'<span class="tk-hint" style="padding:0">جفت‌شده</span>':'')+
-         (DEV.admin?'<button class="btn ghost" data-devact="rename" data-id="'+d.id+'">نام</button>'+
-                    '<button class="btn ghost" data-devact="cfg" data-id="'+d.id+'">تنظیم</button>'+
-                    '<button class="btn ghost" data-devact="del" data-id="'+d.id+'">حذف</button>':'')+
-         '</div><div class="tk-card-b">'+
-         '<div class="tk-hint" style="padding:0 0 8px">'+esc(d.driverLabel)+' · '+esc(d.ip)+'</div>'+
-         '<div class="tk-row" style="flex-wrap:wrap;gap:6px">';
-    for(var j=0;j<d.capabilities.length;j++){
-      var c = d.capabilities[j];
-      if(c==='print') continue;
-      if(c==='cook'){ h += '<button class="btn" data-devact="cook" data-id="'+d.id+'">شروع پخت…</button>'; continue; }
-      h += '<button class="btn ghost" data-devact="cmd" data-id="'+d.id+'" data-cmd="'+c+'">'+(DEV_CMD[c]||c)+'</button>';
-    }
-    h += '</div></div></div>';
+    h += '<div class="rmt-card"><div class="rmt-head">'+
+         '<span class="rmt-name">'+esc(d.name)+'</span>'+
+         (d.paired?'<span class="rmt-tag">جفت‌شده</span>':'')+
+         (DEV.admin?'<span class="rmt-admin">'+
+                    '<button class="ibtn" title="نام" data-devact="rename" data-id="'+d.id+'">✎</button>'+
+                    '<button class="ibtn" title="تنظیم" data-devact="cfg" data-id="'+d.id+'">⚙</button>'+
+                    '<button class="ibtn" title="حذف" data-devact="del" data-id="'+d.id+'">🗑</button></span>':'')+
+         '</div>'+
+         '<div class="rmt-sub">'+esc(d.driverLabel)+' · '+esc(d.ip)+'</div>'+
+         devRemoteHtml(d)+
+         '</div>';
   }
+  h += '</div>';
   b.innerHTML = h;
 }
 
