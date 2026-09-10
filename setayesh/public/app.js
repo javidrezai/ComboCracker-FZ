@@ -1947,6 +1947,24 @@ $('auEnabled').addEventListener('change',function(){
     .then(function(){ ccNote($('auEnabled').checked?'روشن شد — هر ZIP در پوشه‌ی updates خودکار نصب می‌شود.':'خاموش شد.'); loadCCUpdate(); })
     .catch(function(e){ ccNote(e.message,true); });
 });
+(function(){
+  var bp=$('ccBuildPkg'); if(!bp)return;
+  bp.addEventListener('click',function(){
+    var note=$('ccBuildNote'); note.style.color='var(--muted)'; note.textContent='در حال بستن نسخه...';
+    bp.disabled=true;
+    fetch('/api/admin/build-update',{headers:authHeaders()}).then(function(r){
+      if(!r.ok)return r.json().then(function(d){throw new Error((d&&d.error)||'خطا');});
+      return r.blob();
+    }).then(function(blob){
+      var url=URL.createObjectURL(blob);
+      var a=document.createElement('a'); a.href=url; a.download='SETAYESH'+(RUNNING_VERSION||'')+'.zip';
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(function(){URL.revokeObjectURL(url);},4000);
+      note.style.color='#34d399'; note.textContent='ساخته شد و دانلود شروع شد ('+Math.round(blob.size/1024)+' کیلوبایت).';
+      bp.disabled=false;
+    }).catch(function(e){ note.style.color='#fb7185'; note.textContent='خطا: '+e.message; bp.disabled=false; });
+  });
+})();
 $('auScan').addEventListener('click',function(){
   ccNote('در حال بررسی بسته...');
   adminFetch('/api/admin/auto-update/scan',{method:'POST'})
