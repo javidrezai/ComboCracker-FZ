@@ -181,7 +181,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.55';
+const APP_VERSION = '9.9.56';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -3808,6 +3808,34 @@ app.post('/api/admin/brain/file', requireAuth, requireAdmin, async (req, res) =>
       ? 'ذخیره شد — فقط صفحه را در مرورگر تازه کن (Ctrl+Shift+R).'
       : (RESTART_SUPPORTED ? 'ذخیره شد — برای فعال شدن، ری‌استارت لازم است.' : 'ذخیره شد — برنامه را دستی ری‌استارت کن.'),
     restartSupported: RESTART_SUPPORTED });
+});
+
+// ---------------- Cross-device chat sync ----------------
+// Conversations live per-browser (localStorage), but a family opens the SAME
+// account from phone, tablet and PC. Keep a per-user copy on the server so
+// every device signed into this account sees the same conversations. It is
+// last-write-wins by timestamp — simple, and enough for one household. Never
+// required: if the server copy is missing or unreachable, the device just uses
+// its own local copy.
+const CHATS_DIR = process.env.SETAYESH_CHATS_DIR || path.join(DATA_DIR, '.setayesh-chats');
+function chatsFileFor(user) { return path.join(CHATS_DIR, encodeURIComponent(String(user || 'default')) + '.json'); }
+app.get('/api/chats', requireAuth, (req, res) => {
+  try {
+    const f = chatsFileFor(req.username);
+    if (!fs.existsSync(f)) return res.json({ t: 0, chats: [] });
+    const raw = JSON.parse(fs.readFileSync(f, 'utf8'));
+    res.json({ t: raw.t || 0, chats: Array.isArray(raw.chats) ? raw.chats : [] });
+  } catch (e) { res.json({ t: 0, chats: [] }); }
+});
+app.put('/api/chats', requireAuth, (req, res) => {
+  try {
+    const body = req.body || {};
+    const chats = Array.isArray(body.chats) ? body.chats.slice(0, 40) : [];
+    const t = Number(body.t) || Date.now();
+    fs.mkdirSync(CHATS_DIR, { recursive: true });
+    fs.writeFileSync(chatsFileFor(req.username), JSON.stringify({ t, chats }), { mode: 0o600 });
+    res.json({ ok: true, t });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.get('/api/admin/activity', requireAuth, requireAdmin, (req, res) => {

@@ -457,24 +457,61 @@ function renderChatList(){
 
 /* ===== chat memory: keep each user's conversations (per browser, ~30 days) ===== */
 function chatsKey(){return 'setayesh.chats.'+(currentUsername||'default');}
+var _lastChatsT=0;
+function slimChats(){
+  return chats.slice(0,25).map(function(c){
+    return {id:c.id,title:c.title,mode:c.mode,history:(c.history||[]).slice(-24),
+      messages:(c.messages||[]).slice(-60).map(function(m){
+        return {role:m.role,text:m.text,error:m.error,model:m.model,elapsedMs:m.elapsedMs,files:m.files,compare:m.compare,
+          image:(m.image&&m.image.indexOf('data:')!==0)?m.image:''};
+      })};
+  });
+}
 function saveChats(){
   try{
-    var slim=chats.slice(0,25).map(function(c){
-      return {id:c.id,title:c.title,mode:c.mode,history:(c.history||[]).slice(-24),
-        messages:(c.messages||[]).slice(-60).map(function(m){
-          return {role:m.role,text:m.text,error:m.error,model:m.model,elapsedMs:m.elapsedMs,files:m.files,compare:m.compare,
-            image:(m.image&&m.image.indexOf('data:')!==0)?m.image:''};
-        })};
-    });
-    localStorage.setItem(chatsKey(),JSON.stringify({t:Date.now(),chats:slim}));
+    var slim=slimChats();
+    _lastChatsT=Date.now();
+    localStorage.setItem(chatsKey(),JSON.stringify({t:_lastChatsT,chats:slim}));
+    pushChatsToServer(slim,_lastChatsT);
   }catch(e){}
 }
 function loadChats(){
   try{
     var raw=JSON.parse(localStorage.getItem(chatsKey())||'null');
-    if(raw&&raw.chats&&(Date.now()-(raw.t||0))<30*864e5){chats=raw.chats;}else{chats=[];}
-  }catch(e){chats=[];}
+    if(raw&&raw.chats&&(Date.now()-(raw.t||0))<30*864e5){chats=raw.chats;_lastChatsT=raw.t||0;}else{chats=[];_lastChatsT=0;}
+  }catch(e){chats=[];_lastChatsT=0;}
   activeChat=chats[0]||null;
+}
+/* Cross-device sync: push our copy (debounced) so the phone/tablet/PC on this
+   same account converge. Last write wins by timestamp — plenty for a family. */
+var _pushTimer=null,_pushPending=null;
+function pushChatsToServer(slim,t){
+  if(!token)return;
+  _pushPending={t:t,chats:slim};
+  if(_pushTimer)clearTimeout(_pushTimer);
+  _pushTimer=setTimeout(function(){
+    var body=_pushPending; _pushPending=null; if(!body)return;
+    fetch('/api/chats',{method:'PUT',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify(body)}).catch(function(){});
+  },1200);
+}
+function syncChatsFromServer(done){
+  if(!token){ if(done)done(); return; }
+  fetch('/api/chats',{headers:authHeaders()}).then(function(r){return r.json();}).then(function(d){
+    if(d&&Array.isArray(d.chats)){
+      var serverT=d.t||0;
+      if(serverT>_lastChatsT&&d.chats.length){
+        // Another device saved something newer — adopt it here.
+        chats=d.chats; _lastChatsT=serverT;
+        try{localStorage.setItem(chatsKey(),JSON.stringify({t:serverT,chats:chats}));}catch(e){}
+        activeChat=chats[0]||null;
+        renderChatList(); renderThread();
+      } else if(_lastChatsT>serverT&&chats.length){
+        // Our copy is newer — push so the other devices catch up.
+        pushChatsToServer(slimChats(),_lastChatsT);
+      }
+    }
+    if(done)done();
+  }).catch(function(){ if(done)done(); });
 }
 
 /* time-based greeting with the member's name */
@@ -1127,8 +1164,15 @@ async function enterApp(){
     }
   }catch(e){}
   loadChats();renderChatList();
-  if(!chats.length)newChat();else renderThread();
+  if(chats.length)renderThread();
   $('msgBox').focus();
+  // Pull this account's conversations from the server FIRST, so a new device
+  // (or the phone after the PC) shows the same history — and only create an
+  // empty new chat if neither the server nor this device had anything, so the
+  // placeholder can never overwrite the shared history.
+  syncChatsFromServer(function(){
+    if(!chats.length){ newChat(); } else { renderChatList(); renderThread(); }
+  });
 }
 
 /* ================= events ================= */
@@ -1568,7 +1612,7 @@ $('shSearch').addEventListener('click',function(){ closeSheet(); setTimeout(func
 // Check for new notices every couple of minutes, and whenever the app is
 // brought back to the foreground.
 setInterval(refreshBoardBadge, 120000);
-document.addEventListener('visibilitychange',function(){ if(!document.hidden)refreshBoardBadge(); });
+document.addEventListener('visibilitychange',function(){ if(!document.hidden){refreshBoardBadge(); if(token)syncChatsFromServer();} });
 
 /* ===== Control centre (admin): engines, users, privacy, capabilities ===== */
 var CC = { settings:null, dirty:{} };
