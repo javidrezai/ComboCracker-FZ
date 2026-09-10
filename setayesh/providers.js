@@ -96,6 +96,19 @@ const PROVIDERS = {
       { id: 'gpt-4o-mini', label: 'GPT-4o mini' },
     ],
   },
+  // The standalone Python brain (setayesh/pybrain) — a self-learning, local,
+  // transparent agent with its own Obsidian-vault memory. The Node app talks to
+  // it as an engine: it hands the question to the brain and shows the answer.
+  brain: {
+    label: 'مغز محلی ستایش (پایتون)',
+    kind: 'brain',
+    free: true,
+    nativePdf: false,
+    vision: false,
+    keyUrl: '',
+    noKeyNeeded: true,
+    models: [ { id: 'setayesh-brain', label: 'مغز ستایش ۰.۶' } ],
+  },
   local: {
     label: 'Local server (Ollama / LM Studio)',
     kind: 'openai',

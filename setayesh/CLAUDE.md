@@ -39,6 +39,11 @@ via the app's own self-editing feature.
 - `public/` — UI: `index.html` (shell) + `app.css`, `app.js`, `brain3d.js`
   (after `three.min.js`), `login-fx.js`, `memory-panel.js`, `connectors-panel.js`.
 - `test/smoke.test.js` — critical-path tests. `Start-Setayesh.bat` / `start.sh` — launchers.
+- `pybrain/` — the standalone Python "Setayesh Brain" (agent loop + Obsidian
+  vault memory, stdlib-only). The Node app exposes it as the keyless engine
+  `brain` (provider kind `brain`): the chat hands the question to
+  `pybrain/brain/server/main.py` and shows the answer. Detected at boot when
+  python is on PATH; disable with `ENABLE_BRAIN=0`.
 
 ## Open roadmap
 Local HTTPS for LAN/Tailscale (2.2); split server `index.js` (3.4);

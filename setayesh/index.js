@@ -181,7 +181,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.58';
+const APP_VERSION = '9.9.59';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -239,13 +239,35 @@ if (process.env.SETAYESH_ENABLE_LOCAL === '1' || cfg.ENABLE_LOCAL === '1') {
   keys.local = keys.local || 'local';
 }
 
+// The standalone Python brain engine (setayesh/pybrain). Available when python
+// is on PATH and the brain's entry file sits next to the app. On by default;
+// disable with ENABLE_BRAIN=0.
+const BRAIN_MAIN = path.join(DATA_DIR, 'pybrain', 'brain', 'server', 'main.py');
+const BRAIN_DIR = path.join(DATA_DIR, 'pybrain');
+let PYTHON_BIN = null;
+(function detectBrain() {
+  const off = String(cfg.ENABLE_BRAIN != null ? cfg.ENABLE_BRAIN
+    : (process.env.SETAYESH_ENABLE_BRAIN != null ? process.env.SETAYESH_ENABLE_BRAIN : '')).trim().toLowerCase();
+  if (off === '0' || off === 'false' || off === 'off') return;
+  if (!fs.existsSync(BRAIN_MAIN)) return;
+  const { spawnSync } = require('child_process');
+  for (const bin of ['python3', 'python']) {
+    try {
+      const r = spawnSync(bin, ['--version'], { timeout: 4000, windowsHide: true });
+      if (r && !r.error && (r.status === 0 || r.stdout || r.stderr)) { PYTHON_BIN = bin; break; }
+    } catch (e) { /* try next */ }
+  }
+  if (PYTHON_BIN) keys.brain = 'brain';
+})();
+
 // Re-read keys from cfg after the control centre edits settings, so a newly
 // pasted API key works on the next message instead of after a restart.
 function reloadKeys() {
   for (const id of Object.keys(PROVIDERS)) {
     const up = id.toUpperCase();
     const key = process.env[`SETAYESH_KEY_${up}`] || cfg[`KEY_${up}`] || '';
-    if (key) keys[id] = key; else if (id !== 'local') delete keys[id];
+    // local and brain are keyless subprocess/local engines — never wiped here.
+    if (key) keys[id] = key; else if (id !== 'local' && id !== 'brain') delete keys[id];
   }
   if (process.env.SETAYESH_ENABLE_LOCAL === '1' || cfg.ENABLE_LOCAL === '1') keys.local = keys.local || 'local';
   else delete keys.local;
@@ -345,6 +367,9 @@ function baseUrlFor(id) {
 }
 
 function isConfigured(id) {
+  // The Python brain has no HTTP base URL — it is a local subprocess. It counts
+  // as configured when it was detected at boot (keys.brain set).
+  if (id === 'brain') return Boolean(keys.brain);
   return Boolean(keys[id]) && Boolean(baseUrlFor(id));
 }
 
@@ -1319,8 +1344,48 @@ async function callOpenAiCompatible(providerId, model, systemPrompt, messages, _
   return content || '';
 }
 
+// Ask the standalone Python brain (a subprocess). It does its own reasoning,
+// retrieval and tools, so the Node side just hands over the question and shows
+// the answer — no Node tool loop.
+function askPythonBrain(messages) {
+  return new Promise((resolve, reject) => {
+    if (!PYTHON_BIN) return reject(Object.assign(new Error('مغز پایتون در دسترس نیست (پایتون نصب نیست).'), { userFacing: true }));
+    let q = '';
+    for (let i = (messages || []).length - 1; i >= 0; i--) {
+      const m = messages[i];
+      if (m && m.role === 'user') {
+        q = typeof m.content === 'string' ? m.content
+          : (Array.isArray(m.content) ? m.content.map((c) => (c && c.text) || '').join(' ') : '');
+        break;
+      }
+    }
+    q = String(q || '').trim();
+    if (!q) return resolve('چه بپرسم؟');
+    const { spawn } = require('child_process');
+    const child = spawn(PYTHON_BIN, [BRAIN_MAIN, q], {
+      cwd: BRAIN_DIR, windowsHide: true,
+      env: Object.assign({}, process.env, { PYTHONIOENCODING: 'utf-8' }),
+    });
+    let out = '', err = '';
+    const timer = setTimeout(() => { try { child.kill('SIGKILL'); } catch (e) {} reject(Object.assign(new Error('مغز پایتون دیر پاسخ داد.'), { userFacing: true })); }, 90000);
+    child.stdout.on('data', (d) => { out += d.toString('utf8'); });
+    child.stderr.on('data', (d) => { err += d.toString('utf8'); });
+    child.on('error', (e) => { clearTimeout(timer); reject(e); });
+    child.on('close', () => {
+      clearTimeout(timer);
+      // Banner … "🧠 پاسخ ستایش:" … answer … "(اجرا …)" footer. Keep the answer.
+      let text = out;
+      const marker = text.indexOf('پاسخ ستایش:');
+      if (marker !== -1) text = text.slice(marker + 'پاسخ ستایش:'.length);
+      text = text.replace(/^=+$/gm, '').replace(/\n\(اجرا[\s\S]*$/, '').trim();
+      resolve(text || (err.trim() ? ('مغز پیام داد: ' + err.trim().slice(0, 300)) : 'پاسخی نیامد.'));
+    });
+  });
+}
+
 function callProvider(providerId, model, systemPrompt, messages, opts) {
   const provider = PROVIDERS[providerId];
+  if (provider.kind === 'brain') return askPythonBrain(messages);
   return provider.kind === 'anthropic'
     ? callAnthropic(providerId, model, systemPrompt, messages, opts)
     : callOpenAiCompatible(providerId, model, systemPrompt, messages, false, opts);
@@ -2639,6 +2704,8 @@ async function callOpenAiWithTools(providerId, model, systemPrompt, messages, ct
 
 // One entry point for a tool-enabled call, whichever engine family answers.
 function callWithTools(providerId, model, systemPrompt, messages, ctx, opts) {
+  // The Python brain runs its own agent loop; hand it the question directly.
+  if (PROVIDERS[providerId].kind === 'brain') return askPythonBrain(messages);
   return PROVIDERS[providerId].kind === 'anthropic'
     ? callAnthropicWithTools(providerId, model, systemPrompt, messages, ctx)
     : callOpenAiWithTools(providerId, model, systemPrompt, messages, ctx, opts);

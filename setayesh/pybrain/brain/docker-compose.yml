@@ -1,0 +1,40 @@
+# مغز سرور ستایش — Ollama (مدل محلی) + موتور مغز
+# اجرا:  docker compose up -d  سپس:  docker compose exec brain python main.py --dashboard
+services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: setayesh-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-models:/root/.ollama
+    restart: unless-stopped
+    # برای GPU انویدیا، بخش زیر را فعال کنید:
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+
+  brain:
+    image: python:3.12-slim
+    container_name: setayesh-brain
+    working_dir: /app/server
+    depends_on:
+      - ollama
+    environment:
+      OLLAMA_HOST: "http://ollama:11434"
+      SETAYESH_VAULT: "/app/vault"
+    volumes:
+      - ./server:/app/server
+      - ../vault:/app/vault
+    ports:
+      - "8787:8787"
+    # فقط با کتابخانهٔ استاندارد کار می‌کند؛ بدون نصب وابستگی
+    command: ["python", "main.py", "--serve"]
+    restart: unless-stopped
+
+volumes:
+  ollama-models:
