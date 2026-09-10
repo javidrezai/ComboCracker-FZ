@@ -89,6 +89,22 @@ class BrainTests(unittest.TestCase):
         self.vault.set_setting("model", "qwen2.5:7b")
         self.assertEqual(self.vault.read_settings().get("model"), "qwen2.5:7b")
 
+    def test_save_note_writes_to_notes_area(self):
+        rel = self.vault.save_note("یادداشت من", "متن آزمایشی")
+        self.assertTrue(rel.startswith("notes/"))
+        self.assertIn("یادداشت", (self.vault.notes / "یادداشت من.md").read_text(encoding="utf-8"))
+
+    def test_save_note_blocks_path_traversal(self):
+        rel = self.vault.save_note("../knowledge/hack", "بد")
+        self.assertTrue(rel.startswith("notes/"))  # هرگز خارج از notes/
+        self.assertFalse((self.vault.knowledge / "hack.md").exists())
+
+    def test_save_note_tool_registered(self):
+        reg = build_registry(self.vault)
+        self.assertIn("save_note", reg)
+        out = reg["save_note"]("عنوان :: بدنه")
+        self.assertIn("notes/", out)
+
     def test_knowledge_readonly_for_brain(self):
         # مغز فقط در lessons/dashboard/logs می‌نویسد، نه در knowledge
         before = self.vault.list_files()
@@ -275,6 +291,10 @@ class LocalFallbackTests(unittest.TestCase):
         out = self.llm.chat([{"role": "user", "content": "OBSERVATION: نتیجه ۴۲ است"}])
         self.assertTrue(out.startswith("FINAL:"))
         self.assertIn("۴۲", out)
+
+    def test_note_intent_routes_to_save_note(self):
+        out = self.llm.chat([{"role": "user", "content": "درخواست کاربر:\nیادداشت کن که فردا تعطیل است"}])
+        self.assertIn("TOOL: save_note(", out)
 
     def test_default_intro_when_no_signal(self):
         out = self.llm.chat([{"role": "user", "content": "درخواست کاربر:\nسلام"}])

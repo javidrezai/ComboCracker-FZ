@@ -30,7 +30,8 @@ class Vault:
         self.config = self.root / "config"
         self.dashboard = self.root / "dashboard"
         self.logs = self.root / "logs"
-        for d in (self.knowledge, self.lessons, self.config, self.dashboard, self.logs):
+        self.notes = self.root / "notes"
+        for d in (self.knowledge, self.lessons, self.config, self.dashboard, self.logs, self.notes):
             d.mkdir(parents=True, exist_ok=True)
 
     # ---------- خواندن تنظیمات (بدون ری‌استارت، هر گام تازه خوانده می‌شود) ----------
@@ -185,6 +186,23 @@ class Vault:
             fh.write(f"\n## اجرا `{session_id}` — {_now()}\n\n")
             for ln in lines:
                 fh.write(ln + "\n")
+
+    def save_note(self, name, content):
+        """یک نوت را در ناحیهٔ نوشتنیِ مجاز (notes/) ذخیره می‌کند.
+
+        قانون ایمنی: مغز هرگز در knowledge/ (دانش پایهٔ کاربر) نمی‌نویسد.
+        """
+        safe = re.sub(r"[\\/:*?\"<>|]", "-", (name or "").strip()) or "note"
+        safe = safe.replace("..", "-")[:80]
+        path = (self.notes / f"{safe}.md").resolve()
+        # اطمینان از ماندن داخل notes/
+        if self.notes.resolve() not in path.parents:
+            raise ValueError("مسیر نوت نامعتبر است.")
+        body = content if content is not None else ""
+        if not body.lstrip().startswith("#"):
+            body = f"# {safe}\n\n{body}"
+        path.write_text(body.rstrip() + "\n", encoding="utf-8")
+        return str(path.relative_to(self.root))
 
     def write_dashboard(self, content):
         """داشبورد زندهٔ نقشهٔ مغز را می‌نویسد."""

@@ -19,6 +19,7 @@ _OP_WORDS = [
 _TIME_HINTS = ("ساعت", "زمان", "تاریخ", "چند شد", "الان چند", "time", "date", "clock")
 _WEB_HINTS = ("جست‌وجو وب", "جستجو وب", "سرچ وب", "توی وب", "در وب", "اینترنت", "web", "search online", "google")
 _KB_HINTS = ("چیست", "کیست", "یعنی چه", "توضیح", "درباره", "معرفی", "چطور", "چگونه", "what is", "who is", "explain")
+_NOTE_HINTS = ("یادداشت کن", "ذخیره کن", "نوت کن", "بنویس که", "ثبت کن", "save note", "note this", "remember that")
 
 
 class LocalFallbackLLM:
@@ -87,6 +88,12 @@ class LocalFallbackLLM:
 
         q = self._extract_question(last)
         ql = q.lower()
+
+        # ۰) ذخیرهٔ نوت (فرمان صریح، بالاترین اولویت)
+        for h in _NOTE_HINTS:
+            if h in ql:
+                content = q[ql.find(h) + len(h):].strip(" :،.") or q
+                return f"TOOL: save_note({content[:40]} :: {content})"
 
         # ۱) ریاضی
         expr = self._math_expr(q)

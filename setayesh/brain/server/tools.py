@@ -87,6 +87,17 @@ def build_registry(vault):
         txt = vault.read_note(name.strip())
         return txt if txt is not None else f"نوتی به نام «{name}» پیدا نشد."
 
+    def tool_save_note(arg):
+        """ذخیرهٔ نوت در ناحیهٔ مجاز. ورودی: «عنوان :: محتوا»."""
+        if "::" in arg:
+            title, content = arg.split("::", 1)
+        elif "|" in arg:
+            title, content = arg.split("|", 1)
+        else:
+            title, content = arg.strip()[:40], arg.strip()
+        rel = vault.save_note(title.strip(), content.strip())
+        return f"نوت ذخیره شد: {rel}"
+
     def tool_search(query):
         """جست‌وجوی گراف دانش. ورودی: کلیدواژه."""
         hits = vault.retrieve(query, k=3)
@@ -101,6 +112,7 @@ def build_registry(vault):
         "read_note": tool_read_note,
         "search": tool_search,
         "web_search": tool_web_search,
+        "save_note": tool_save_note,
     }
 
 
@@ -113,5 +125,6 @@ def tool_help(registry):
         "read_note": "خواندن نوت، read_note(نام)",
         "search": "جست‌وجوی دانش والت، search(کلیدواژه)",
         "web_search": "جست‌وجوی وب، web_search(عبارت)",
+        "save_note": "ذخیرهٔ نوت، save_note(عنوان :: محتوا)",
     }
     return "\n".join(f"- {name}: {docs.get(name, '')}" for name in registry)
