@@ -1575,7 +1575,7 @@ function ccNote(m,bad){ var n=$('ccNote'); n.textContent=m||''; n.className='not
 function openCC(){ ccNote(''); CC.dirty={}; $('ccOverlay').classList.add('on'); ccTab('engines'); loadCC(); checkRestartSupport(); }
 function closeCC(){ $('ccOverlay').classList.remove('on'); }
 function ccTab(which){
-  ['engines','comms','users','privacy','power','devices','look','update','scripts','actions','sync'].forEach(function(t){
+  ['engines','users','privacy','power','devices','look','update','scripts','actions','sync'].forEach(function(t){
     var pane=$('cc'+t.charAt(0).toUpperCase()+t.slice(1));
     if(pane)pane.style.display=(t===which)?'':'none';
   });
@@ -1583,7 +1583,6 @@ function ccTab(which){
     b.className='btn '+(b.getAttribute('data-cc')===which?'':'ghost');
     b.style.padding='7px 14px'; b.style.fontSize='12.5px';
   });
-  if(which==='comms')loadCCComms();
   if(which==='users')loadCCUsers();
   if(which==='privacy')loadCCPrivacy();
   if(which==='devices')loadCCDevices();
@@ -2045,74 +2044,6 @@ function loadCC(){
     $('ccLocal').onchange=function(){ CC.dirty.ENABLE_LOCAL=$('ccLocal').checked?'1':''; };
   }).catch(function(e){ ccNote(e.message,true); });
 }
-/* ===== Email & Telegram: a tidy, findable home for comms settings =====
-   These keys were in the config API but had no visible UI, so the user could
-   not find them. One clear tab, grouped and explained; saved via ccSave. */
-function ccCommsField(box,key,opts){
-  opts=opts||{};
-  var st=(CC.settings&&CC.settings.settings)?CC.settings.settings[key]:null;
-  if(!st)return;
-  var row=el('div','tk-card'); row.style.cssText='margin-bottom:8px;padding:10px 12px';
-  var top=el('div'); top.style.cssText='display:flex;align-items:center;gap:8px;margin-bottom:6px';
-  var nm=el('span'); nm.style.cssText='flex:1;font-size:12.5px;font-weight:600'; nm.textContent=opts.label||st.label;
-  var dot=el('span'); dot.textContent=st.set?'●':'○'; dot.style.color=st.set?'#34d399':'var(--muted)';
-  top.appendChild(nm); top.appendChild(dot);
-  var inp=el('input','input');
-  if(st.secret)inp.type='password';
-  inp.placeholder=st.set?st.value:(opts.placeholder||'اینجا بنویس...');
-  inp.style.fontSize='12px';
-  if(opts.ltr){inp.style.direction='ltr';inp.style.textAlign='left';}
-  inp.addEventListener('input',function(){ CC.dirty[key]=inp.value.trim(); });
-  row.appendChild(top); row.appendChild(inp);
-  box.appendChild(row);
-}
-function loadCCComms(){
-  function render(){
-    var n=$('ccCommsNotify'); if(n){n.innerHTML=''; ccCommsField(n,'NOTIFY_EMAIL',{placeholder:'you@example.com',ltr:true});}
-    var m=$('ccCommsMail'); if(m){m.innerHTML='';
-      ccCommsField(m,'MAIL_PROVIDER',{placeholder:'gmail / outlook / yahoo',ltr:true});
-      ccCommsField(m,'MAIL_USER',{placeholder:'you@gmail.com',ltr:true});
-      ccCommsField(m,'MAIL_PASS',{placeholder:'App Password ۱۶ حرفی'});
-    }
-    var tg=$('ccCommsTelegram'); if(tg){tg.innerHTML='';
-      ccCommsField(tg,'TELEGRAM_BOT_TOKEN',{placeholder:'123456:ABC... (از BotFather)',ltr:true});
-      ccCommsField(tg,'TELEGRAM_CHAT_ID',{placeholder:'مثلاً 123456789',ltr:true});
-    }
-  }
-  if(CC.settings&&CC.settings.settings)render();
-  else adminFetch('/api/admin/settings').then(function(d){CC.settings=d;render();}).catch(function(e){ccNote(e.message,true);});
-  // Live status: is email / telegram actually connected right now?
-  ccCommsRefreshStatus();
-}
-function ccCommsRefreshStatus(){
-  adminFetch('/api/admin/notify-status').then(function(d){
-    var s=$('ccMailStatus'); if(!s)return;
-    if(d.emailConfigured)s.innerHTML='<span style="color:#34d399">● آماده</span> · '+(d.address||'');
-    else s.innerHTML='<span style="color:var(--muted)">○ هنوز تنظیم نشده</span> — ایمیل و App Password را بگذار و «ذخیره و تست» را بزن.';
-  }).catch(function(){});
-  adminFetch('/api/admin/telegram').then(function(d){
-    var s=$('ccTgStatus'); if(!s)return;
-    if(d&&d.configured)s.innerHTML='<span style="color:#34d399">● توکن ثبت شده</span>'+(d.chatSet?' · Chat ID دارد':' — هنوز Chat ID نداری؛ یک پیام به ربات بفرست.');
-    else s.innerHTML='<span style="color:var(--muted)">○ هنوز تنظیم نشده</span> — توکن ربات را بگذار و «ذخیره و تست» را بزن.';
-  }).catch(function(){});
-}
-/* Save whatever is pending, then run the matching test — so one button both
-   stores the value and proves it works, which is what "does it work?" needs. */
-function ccSaveThenTest(statusId,testUrl){
-  var s=$(statusId); if(s){s.innerHTML='<span class="spin"></span> در حال ذخیره و تست...';}
-  var body=JSON.stringify({updates:CC.dirty||{}});
-  adminFetch('/api/admin/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:body})
-    .then(function(){ CC.dirty={}; return adminFetch(testUrl,{method:'POST'}); })
-    .then(function(r){ return r; })
-    .catch(function(e){ if(s)s.innerHTML='<span style="color:#fb7185">خطا: '+(e.message||'')+'</span>'; throw e; })
-    .then(function(d){
-      if(!d)return;
-      if(d.ok&&d.emailed!==undefined){ s.innerHTML=d.emailed?'<span style="color:#34d399">✓ ایمیل آزمایشی فرستاده شد — صندوق ورودی‌ات را ببین.</span>':('<span style="color:#fbbf24">در برنامه ثبت شد ولی ایمیل نرفت'+(d.emailError?': '+d.emailError:' (ایمیل کامل تنظیم نشده)')+'</span>'); }
-      else if(d.ok){ s.innerHTML='<span style="color:#34d399">✓ پیام آزمایشی در تلگرام فرستاده شد.</span>'; }
-      else if(d.error){ s.innerHTML='<span style="color:#fb7185">'+d.error+'</span>'; }
-      ccCommsRefreshStatus();
-    }).catch(function(){});
-}
 function loadCCUsers(){
   var box=$('ccUserList'); box.innerHTML='<div class="tk-hint"><span class="spin"></span></div>';
   // Who is online right now — the one thing you see about the others at a glance.
@@ -2199,10 +2130,6 @@ $('ccPrivAdd').addEventListener('click',function(){
     body:JSON.stringify({term:v})}).then(function(){$('ccPrivTerm').value='';loadCCPrivacy();ccNote('اضافه شد.');})
     .catch(function(e){ccNote(e.message,true);});
 });
-(function(){
-  var mt=$('ccMailTest'); if(mt)mt.addEventListener('click',function(){ ccSaveThenTest('ccMailStatus','/api/admin/notify-test'); });
-  var tt=$('ccTgTest'); if(tt)tt.addEventListener('click',function(){ ccSaveThenTest('ccTgStatus','/api/admin/telegram/test'); });
-})();
 $('ccSave').addEventListener('click',function(){
   var keys=Object.keys(CC.dirty);
   if(!keys.length){ccNote('چیزی تغییر نکرده.');return;}
@@ -3593,6 +3520,7 @@ var TK={
     {id:'learn',i18n:'tk_learn',icon:'<path d="M22 10L12 5 2 10l10 5 10-5z"/><path d="M6 12v5c0 1 2.7 3 6 3s6-2 6-3v-5"/>'},
     {id:'mobile',i18n:'tk_mobile',icon:'<rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/>'},
     {id:'hw',i18n:'tk_hw',icon:'<path d="M9 3v4M15 3v4M9 17v4M15 17v4M3 9h4M3 15h4M17 9h4M17 15h4"/><rect x="7" y="7" width="10" height="10" rx="1.5"/>'},
+    {id:'comms',i18n:'tk_comms',adminOnly:true,icon:'<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/>'},
     {id:'ext',i18n:'tk_ext',icon:'<path d="M12 2l2 5 5-1-3 4 3 4-5-1-2 5-2-5-5 1 3-4-3-4 5 1z"/>'}
   ],
   active:'web'
@@ -3650,7 +3578,8 @@ Object.assign(LANG.fa,{
  tk_sslHint:'گواهی SSL سایت خودت را بررسی می‌کند: معتبر بودن، صادرکننده، و چند روز تا انقضا. فقط یک اتصال امن برای خواندن گواهی — هیچ حمله‌ای نیست.',
  tk_domain:'دامنه سایت',tk_valid:'معتبر',tk_invalid:'نامعتبر / هشدار',tk_issuer:'صادرکننده',tk_expires:'انقضا',tk_daysLeft:'روز تا انقضا',tk_expired:'منقضی شده!',
  tk_guardHint:'چند نکته‌ی ساده و مهم برای محافظت از خونه، ماشین و کامپیوترِ خودت.',
- tk_learn:'آموزش امنیت'
+ tk_learn:'آموزش امنیت',
+ tk_comms:'ایمیل و تلگرام'
 });
 Object.assign(LANG.en,{
  tk_vault:'Passwords',tk_ssl:'SSL cert',tk_guard:'Protection',
@@ -3661,7 +3590,8 @@ Object.assign(LANG.en,{
  tk_sslHint:'Checks your own site’s SSL certificate: validity, issuer, and days until expiry. A read-only secure handshake — no attack.',
  tk_domain:'Site domain',tk_valid:'Valid',tk_invalid:'Invalid / warning',tk_issuer:'Issuer',tk_expires:'Expires',tk_daysLeft:'days left',tk_expired:'Expired!',
  tk_guardHint:'A few simple, important tips to protect your own home, car and computer.',
- tk_learn:'Security learning'
+ tk_learn:'Security learning',
+ tk_comms:'Email & Telegram'
 });
 Object.assign(LANG.fa,{
  tk_pw:'رمزساز',tk_pwHint:'رمز عبور قوی و تصادفی بساز — کاملاً روی دستگاه خودت، هیچ‌جا فرستاده نمی‌شود.',
@@ -3686,6 +3616,7 @@ function closeToolkit(){$('toolkitOverlay').classList.remove('on');}
 function buildTkTabs(){
   var box=$('tkTabs');box.innerHTML='';
   TK.tabs.forEach(function(tab){
+    if(tab.adminOnly&&!(CFG&&CFG.isAdmin))return; // email/telegram settings are admin-only
     var b=el('button','tk-tab'+(tab.id===TK.active?' on':''));b.type='button';
     b.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'+tab.icon+'</svg><span>'+esc(t(tab.i18n))+'</span>';
     b.addEventListener('click',function(){showTkTab(tab.id);});
@@ -3707,6 +3638,7 @@ function showTkTab(id){
   else if(id==='learn')body.appendChild(tkLearnPanel());
   else if(id==='mobile')body.appendChild(tkMobilePanel());
   else if(id==='hw')body.appendChild(tkHwPanel());
+  else if(id==='comms')body.appendChild(tkCommsPanel());
   else if(id==='ext')body.appendChild(tkExtPanel());
 }
 
@@ -4239,6 +4171,76 @@ function tkHwPanel(){
     c3.innerHTML='<div class="tk-card-h">RFID / NFC<span class="sim-tag">'+t('tk_sim')+'</span></div><div class="tk-card-b">'+tags+'</div>';
     box.appendChild(c3);
   }).catch(function(e){box.innerHTML='<div class="errbox">'+esc(e.message)+'</div>';});
+  return p;
+}
+
+/* ---- Email & Telegram (admin) ----
+   Moved here from the control centre at the owner's request. Self-contained:
+   builds its own fields, saves via /api/admin/settings, and verifies with the
+   existing test endpoints so one button both stores and proves the setting. */
+function tkCommsPanel(){
+  var p=el('div','tk-panel');
+  p.appendChild(hintNode('ایمیل و تلگرام ستایش را اینجا تنظیم و تست کن. هر دکمه هم ذخیره می‌کند هم وصل‌بودن را امتحان می‌کند.'));
+  var dirty={};
+  function field(label,key,opts){
+    opts=opts||{};
+    var wrap=el('div');wrap.style.marginBottom='8px';
+    var lb=el('div');lb.style.cssText='font-size:12px;color:var(--muted);margin-bottom:4px';lb.textContent=label;
+    var inp=el('input','tk-input');
+    if(opts.secret)inp.type='password';
+    inp.placeholder=opts.placeholder||'';
+    if(opts.ltr){inp.dir='ltr';inp.style.textAlign='left';}
+    inp.addEventListener('input',function(){dirty[key]=inp.value.trim();});
+    wrap.appendChild(lb);wrap.appendChild(inp);
+    return {wrap:wrap,input:inp};
+  }
+  var emailHead=el('div');emailHead.style.cssText='font-weight:700;font-size:13px;margin:6px 0 8px;color:#7dd3fc';emailHead.textContent='📧 ایمیل';
+  p.appendChild(emailHead);
+  p.appendChild(hintNode('برای Gmail از App Password استفاده کن (حساب گوگل → امنیت → App Passwords).'));
+  var fNotify=field('ایمیل تو برای دریافت اعلان','NOTIFY_EMAIL',{ltr:true,placeholder:'you@example.com'});
+  var fMailUser=field('آدرس ایمیل فرستنده','MAIL_USER',{ltr:true,placeholder:'you@gmail.com'});
+  var fMailPass=field('App Password','MAIL_PASS',{secret:true,placeholder:'۱۶ حرفی'});
+  p.appendChild(fNotify.wrap);p.appendChild(fMailUser.wrap);p.appendChild(fMailPass.wrap);
+  var mailBtn=el('button','tk-btn','ذخیره و تست ایمیل');mailBtn.style.cssText='width:100%;margin-top:4px';
+  var mailStat=el('div');mailStat.style.cssText='font-size:12px;margin:6px 0 16px;line-height:1.7';
+  p.appendChild(mailBtn);p.appendChild(mailStat);
+  var tgHead=el('div');tgHead.style.cssText='font-weight:700;font-size:13px;margin:6px 0 8px;color:#c4b5fd';tgHead.textContent='💬 تلگرام';
+  p.appendChild(tgHead);
+  p.appendChild(hintNode('یک ربات از @BotFather بساز؛ توکنش را بگذار. Chat ID را از @userinfobot بگیر.'));
+  var fTgTok=field('توکن ربات تلگرام','TELEGRAM_BOT_TOKEN',{secret:true,ltr:true,placeholder:'123456:ABC...'});
+  var fTgChat=field('Chat ID مجاز','TELEGRAM_CHAT_ID',{ltr:true,placeholder:'مثلاً 123456789'});
+  p.appendChild(fTgTok.wrap);p.appendChild(fTgChat.wrap);
+  var tgBtn=el('button','tk-btn','ذخیره و تست تلگرام');tgBtn.style.cssText='width:100%;margin-top:4px';
+  var tgStat=el('div');tgStat.style.cssText='font-size:12px;margin-top:6px;line-height:1.7';
+  p.appendChild(tgBtn);p.appendChild(tgStat);
+  function refreshStatus(){
+    tkFetch('/api/admin/notify-status').then(function(d){
+      mailStat.innerHTML=d.emailConfigured?('<span style="color:#34d399">● آماده</span> · '+esc(d.address||'')):'<span style="color:var(--muted)">○ هنوز تنظیم نشده</span>';
+    }).catch(function(){});
+    tkFetch('/api/admin/telegram').then(function(d){
+      tgStat.innerHTML=(d&&d.configured)?('<span style="color:#34d399">● توکن ثبت شده</span>'+(d.chatSet?' · Chat ID دارد':' — هنوز Chat ID نداری')):'<span style="color:var(--muted)">○ هنوز تنظیم نشده</span>';
+    }).catch(function(){});
+  }
+  tkFetch('/api/admin/settings').then(function(d){
+    var s=d.settings||{};
+    [['NOTIFY_EMAIL',fNotify],['MAIL_USER',fMailUser],['MAIL_PASS',fMailPass],['TELEGRAM_BOT_TOKEN',fTgTok],['TELEGRAM_CHAT_ID',fTgChat]].forEach(function(pair){
+      var st=s[pair[0]]; if(st&&st.set)pair[1].input.placeholder=st.value||'••••';
+    });
+  }).catch(function(){});
+  function saveThenTest(statNode,testUrl){
+    statNode.innerHTML='<span class="spin"></span> در حال ذخیره و تست...';
+    tkFetch('/api/admin/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({updates:dirty})})
+      .then(function(){dirty={};return tkFetch(testUrl,{method:'POST'});})
+      .then(function(d){
+        if(d&&d.ok&&d.emailed!==undefined)statNode.innerHTML=d.emailed?'<span style="color:#34d399">✓ ایمیل آزمایشی فرستاده شد — صندوق ورودی را ببین.</span>':('<span style="color:#fbbf24">در برنامه ثبت شد ولی ایمیل نرفت'+(d.emailError?': '+esc(d.emailError):'')+'</span>');
+        else if(d&&d.ok)statNode.innerHTML='<span style="color:#34d399">✓ پیام آزمایشی در تلگرام فرستاده شد.</span>';
+        setTimeout(refreshStatus,400);
+      })
+      .catch(function(e){statNode.innerHTML='<span style="color:#fb7185">'+esc(e.message||'خطا')+'</span>';});
+  }
+  mailBtn.addEventListener('click',function(){saveThenTest(mailStat,'/api/admin/notify-test');});
+  tgBtn.addEventListener('click',function(){saveThenTest(tgStat,'/api/admin/telegram/test');});
+  refreshStatus();
   return p;
 }
 
