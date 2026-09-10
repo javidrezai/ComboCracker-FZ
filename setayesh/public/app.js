@@ -2204,6 +2204,7 @@ function loadSuggestions(){
 function pollActivity(){
   if(!token||!document.getElementById('learnOverlay').classList.contains('on'))return;
   adminFetch('/api/admin/activity').then(function(d){
+    renderLearnEngineBanner(d);
     var now=$('learnNow'), pulse=$('learnPulse'), next=$('learnNext');
     if(d.current){
       now.textContent=d.current;
@@ -2226,6 +2227,36 @@ function pollActivity(){
       if(!(d.log||[]).length)lg.innerHTML='<div class="tk-hint">هنوز کاری انجام نشده. یادگیری را روشن کن یا «همین حالا یک تحقیق» را بزن.</div>';
     }
   }).catch(function(){});
+}
+/* The one real reason the learning buttons "did nothing": no usable engine.
+   Instead of a terse error after the click, show it up front with a one-tap
+   fix — either open the engine keys, or turn on the local (Ollama) engine. */
+function renderLearnEngineBanner(d){
+  var host=$('learnSuggest'); if(!host)return;
+  var ex=document.getElementById('learnEngineBanner');
+  var hasEngine=d&&d.engines&&d.engines.length;
+  if(hasEngine){ if(ex)ex.remove(); return; }
+  if(ex)return; // already shown
+  var b=el('div'); b.id='learnEngineBanner';
+  b.className='tk-card';
+  b.style.cssText='padding:12px 14px;margin-bottom:10px;border-color:rgba(251,191,36,.4);background:rgba(251,191,36,.08)';
+  var h=el('div'); h.style.cssText='font-weight:700;font-size:13px;margin-bottom:4px;color:#fbbf24';
+  h.textContent='⚠️ هیچ موتوری برای تحقیق آماده نیست';
+  var p=el('div'); p.style.cssText='font-size:12px;color:var(--muted);line-height:1.8;margin-bottom:10px';
+  p.textContent='برای اینکه ستایش بتواند تحقیق کند، یا یک کلید موتور (مثلاً Gemini رایگان) بگذار، یا موتور محلی Ollama را روی این کامپیوتر روشن کن.';
+  var row=el('div'); row.style.cssText='display:flex;gap:6px;flex-wrap:wrap';
+  var k=el('button','btn'); k.textContent='افزودن کلید موتور'; k.style.cssText='flex:1;padding:7px;font-size:12px';
+  k.addEventListener('click',function(){ closeLearn(); openCC(); setTimeout(function(){ccTab('engines');},200); });
+  var l=el('button','btn ghost'); l.textContent='روشن‌کردن موتور محلی'; l.style.cssText='flex:1;padding:7px;font-size:12px';
+  l.addEventListener('click',function(){
+    adminFetch('/api/admin/settings',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({updates:{ENABLE_LOCAL:'1'}})})
+      .then(function(){ learnNote('موتور محلی روشن شد — اگر Ollama نصب و در حال اجراست، حالا «همین حالا یک تحقیق» را بزن.'); pollActivity(); })
+      .catch(function(e){ learnNote(e.message,true); });
+  });
+  row.appendChild(k); row.appendChild(l);
+  b.appendChild(h); b.appendChild(p); b.appendChild(row);
+  host.parentNode.insertBefore(b,host);
 }
 var _actTimer=null;
 function openLearn(){
@@ -2400,7 +2431,7 @@ $('learnRunNow').addEventListener('click',function(){
   adminFetch('/api/admin/research/run-now',{method:'POST'}).then(function(d){
     if(d.entry)learnNote('یاد گرفت: «'+d.entry.topic+'» — پایین بررسی و تأیید کنید.');
     else if(d.skipped==='privacy-blocked')learnNote('موضوع حاوی اطلاعات خانوادگی بود و ارسال نشد.',true);
-    else if(d.skipped==='no-provider')learnNote('هیچ موتور هوش مصنوعی کلید ندارد.',true);
+    else if(d.skipped==='no-provider'){learnNote('هیچ موتوری آماده نیست — از کادر بالا یک کلید بگذار یا موتور محلی را روشن کن.',true);pollActivity();}
     else if(d.error)learnNote(d.error,true);
     else learnNote('انجام نشد: '+(d.skipped||'نامشخص'),true);
     loadLearnKnowledge(); loadLearnSettings();
