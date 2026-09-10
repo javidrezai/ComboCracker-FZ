@@ -14,6 +14,7 @@ from bridge import VaultBridge
 import dashboard as dash
 from ollama_setup import ensure_ollama, connection_summary
 from scheduler import BrainScheduler
+from local_llm import LocalFallbackLLM
 from bridge import VaultBridge
 
 
@@ -235,6 +236,44 @@ class WebSearchTests(unittest.TestCase):
             self.assertIsInstance(out, str)
         except Exception as e:
             self.assertIsInstance(e, Exception)
+
+
+class LocalFallbackTests(unittest.TestCase):
+    def setUp(self):
+        self.llm = LocalFallbackLLM()
+
+    def test_math_persian_digits_and_words(self):
+        out = self.llm.chat([{"role": "user", "content": "درخواست کاربر:\n۱۲۵ ضربدر ۸ چند می‌شود؟"}])
+        self.assertIn("TOOL: calc(", out)
+        self.assertIn("125*8", out.replace(" ", ""))
+
+    def test_time_intent(self):
+        out = self.llm.chat([{"role": "user", "content": "درخواست کاربر:\nساعت الان چند است؟"}])
+        self.assertIn("now()", out)
+
+    def test_knowledge_intent_routes_to_search(self):
+        out = self.llm.chat([{"role": "user", "content": "درخواست کاربر:\nستایش چیست؟"}])
+        self.assertIn("TOOL: search(", out)
+
+    def test_observation_becomes_final(self):
+        out = self.llm.chat([{"role": "user", "content": "OBSERVATION: نتیجه ۴۲ است"}])
+        self.assertTrue(out.startswith("FINAL:"))
+        self.assertIn("۴۲", out)
+
+    def test_default_intro_when_no_signal(self):
+        out = self.llm.chat([{"role": "user", "content": "درخواست کاربر:\nسلام"}])
+        self.assertTrue(out.startswith("FINAL:"))
+
+    def test_loop_uses_fallback_when_ollama_down(self):
+        tmp = tempfile.mkdtemp()
+        try:
+            vault = Vault(tmp)
+            down = FakeOllama(available=False)
+            loop = AgentLoop(down, vault, max_steps=4, fallback=LocalFallbackLLM())
+            res = loop.run("۶ ضربدر ۷")
+            self.assertEqual(res["answer"].strip(), "42")
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
 
 
 if __name__ == "__main__":

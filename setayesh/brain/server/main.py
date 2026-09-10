@@ -18,6 +18,7 @@ from pathlib import Path
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 from llm import OllamaClient
+from local_llm import LocalFallbackLLM
 from memory import Vault
 from loop import AgentLoop
 from bridge import VaultBridge
@@ -44,7 +45,8 @@ def make_brain():
         remote=os.environ.get("SETAYESH_VAULT_REMOTE", s.get("vault_remote")),
         auto_sync=s.get("auto_sync", "true"),
     )
-    loop = AgentLoop(llm, vault, max_steps=int(s.get("max_steps", 6)), bridge=bridge)
+    fallback = LocalFallbackLLM()
+    loop = AgentLoop(llm, vault, max_steps=int(s.get("max_steps", 6)), bridge=bridge, fallback=fallback)
     return vault, llm, loop, bridge
 
 
@@ -84,11 +86,13 @@ def cmd_files(vault):
 
 
 def cmd_transparency(vault):
-    logs = sorted(vault.logs.glob("*.md"))
+    # جدیدترین فایل لاگِ اجرا (README راهنما را نادیده بگیر)
+    logs = [p for p in vault.logs.glob("*.md") if p.name != "README.md"]
     if not logs:
         print("هنوز لاگی ثبت نشده.")
         return
-    print(logs[-1].read_text(encoding="utf-8"))
+    latest = max(logs, key=lambda p: p.stat().st_mtime)
+    print(latest.read_text(encoding="utf-8"))
 
 
 def ask(loop, vault, llm, text, bridge=None):

@@ -9,6 +9,7 @@ def build(vault, llm, settings, bridge=None):
     logs = [f for f in files if f.startswith("logs/")]
     online = "🟢 آنلاین" if llm.is_available() else "🔴 آفلاین (Ollama در دسترس نیست)"
     link = bridge.state() if bridge else "—"
+    engine = f"`{settings.get('model', llm.model)}`" if llm.is_available() else "مدل محلیِ جایگزین (اولاما آفلاین)"
 
     md = f"""# 🧠 داشبورد زندهٔ مغز ستایش
 
@@ -16,6 +17,7 @@ def build(vault, llm, settings, bridge=None):
 
 ## وضعیت مغز سرور
 - **مدل محلی:** `{settings.get('model', llm.model)}` — {online}
+- **موتور فعال:** {engine}
 - **دما:** {settings.get('temperature', llm.temperature)}
 - **سقف گام:** {settings.get('max_steps', 6)}
 - **اتصال به والت ابسیدین:** {link}

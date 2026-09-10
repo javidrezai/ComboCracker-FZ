@@ -35,11 +35,12 @@ SYSTEM_PROMPT = """تو «ستایش» هستی، یک مغز دستیارِ م�
 
 
 class AgentLoop:
-    def __init__(self, llm, vault, max_steps=6, bridge=None):
+    def __init__(self, llm, vault, max_steps=6, bridge=None, fallback=None):
         self.llm = llm
         self.vault = vault
         self.max_steps = max_steps
         self.bridge = bridge
+        self.fallback = fallback
         self.last_trace = []
 
     def run(self, user_input):
@@ -72,14 +73,16 @@ class AgentLoop:
             {"role": "user", "content": (context + "\n---\n" if context else "") + f"درخواست کاربر:\n{user_input}"},
         ]
 
-        trace = [f"**ورودی:** {user_input}", f"**مدل:** {model} · دما {temperature} · سقف گام {max_steps}"]
+        engine = self.llm if self.llm.is_available() else (self.fallback or self.llm)
+        engine_name = model if engine is self.llm else "مدل محلیِ جایگزین"
+        trace = [f"**ورودی:** {user_input}", f"**موتور:** {engine_name} · دما {temperature} · سقف گام {max_steps}"]
         if knowledge:
             trace.append(f"**بازیابی:** {', '.join(n for n, _ in knowledge)}")
 
         final_answer = None
         learned = []
         for step in range(1, max_steps + 1):
-            reply = self.llm.chat(messages, temperature=temperature, model=model)
+            reply = engine.chat(messages, temperature=temperature, model=model)
             trace.append(f"\n**گام {step} — استدلال:**\n```\n{reply.strip()}\n```")
             messages.append({"role": "assistant", "content": reply})
 
