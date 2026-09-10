@@ -1172,6 +1172,7 @@ async function enterApp(){
       buildModes();setMode(mode);buildModelPicker();buildCompareChips();renderKeyList();
       $('adminBtn').style.display=CFG.isAdmin?'grid':'none';
       { var _cb=$('commsBtn'); if(_cb)_cb.style.display=CFG.isAdmin?'flex':'none'; }
+      { var _bm=$('brainMapBtn'); if(_bm)_bm.style.display=CFG.isAdmin?'flex':'none'; }
       $('learnBtn').style.display=CFG.isAdmin?'grid':'none';
       $('ccBtn').style.display=CFG.isAdmin?'grid':'none';
       // The admin keeps the full interface — every tool where it was. Only
@@ -3540,7 +3541,7 @@ function collapseSidebarModes(){
 
 function tidySidebar(){
   // These all have drawer entries; remove the duplicates.
-  ['toolkitBtn','devicesBtn','commsBtn','adminBtn','boardBtn','ccBtn','learnBtn','settingsBtn','langBtn']
+  ['toolkitBtn','devicesBtn','commsBtn','brainMapBtn','adminBtn','boardBtn','ccBtn','learnBtn','settingsBtn','langBtn']
     .forEach(function(id){ var e=$(id); if(e)e.style.display='none'; });
 
   collapseSidebarModes();

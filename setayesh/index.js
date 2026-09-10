@@ -181,7 +181,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.65';
+const APP_VERSION = '9.9.66';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -5718,6 +5718,42 @@ app.get('/api/brain/knowledge', requireAuth, (req, res) => {
   read(path.join(BRAIN_DIR, 'vault', 'knowledge'), 'knowledge');
   read(path.join(BRAIN_DIR, 'vault', 'lessons'), 'lessons');
   res.json({ available: fs.existsSync(path.join(BRAIN_DIR, 'vault')), items });
+});
+
+// ---- Brain map: every file as a node, grouped, with purpose/health ----
+// Feeds the visual brain view (a central core with file nodes around it). Each
+// node says what the file does, whether it's editable, and whether it's healthy
+// (present on disk). Admin only — it exposes the code layout.
+app.get('/api/admin/brain/map', requireAuth, requireAdmin, (req, res) => {
+  const groupOf = (name) => {
+    if (name.startsWith('routes/')) return 'مسیرها';
+    if (name.startsWith('public/')) return 'رابط کاربری';
+    if (['README.md', 'RULES.md', 'CLAUDE.md', 'package.json', 'Start-Setayesh.bat', 'start.sh', 'Build-Portable.bat', 'test/smoke.test.js'].includes(name)) return 'اسناد و ابزار';
+    return 'هستهٔ سرور';
+  };
+  const editable = brainEditable();
+  const groups = {};
+  for (const [name, purpose] of Object.entries(SELF_MAP)) {
+    const g = groupOf(name);
+    (groups[g] = groups[g] || []);
+    let exists = false, lines = 0;
+    try {
+      const full = path.join(DATA_DIR, name);
+      const st = fs.statSync(full);
+      exists = st.isFile();
+      if (exists && st.size < 2 * 1024 * 1024) lines = fs.readFileSync(full, 'utf8').split('\n').length;
+    } catch (e) {}
+    groups[g].push({ name, purpose, editable: editable.includes(name), exists, lines });
+  }
+  // The Python brain as its own node/cluster, so the owner sees the second
+  // brain here too.
+  let brainFiles = 0;
+  try { brainFiles = fs.readdirSync(path.join(BRAIN_DIR, 'vault', 'knowledge')).filter((f) => f.endsWith('.md')).length; } catch (e) {}
+  res.json({
+    version: APP_VERSION,
+    groups,
+    pybrain: { exists: fs.existsSync(BRAIN_MAIN), python: !!PYTHON_BIN, knowledgeFiles: brainFiles },
+  });
 });
 
 // Only these may be replaced — a dropped zip can never write anywhere else.
