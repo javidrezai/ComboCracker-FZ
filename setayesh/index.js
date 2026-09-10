@@ -181,7 +181,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.67';
+const APP_VERSION = '9.9.68';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -2020,51 +2020,86 @@ async function webFetch(rawUrl, maxChars) {
 
 // Search. Uses Brave or Tavily if a key is configured; otherwise falls back to
 // DuckDuckGo's HTML endpoint, which needs no key.
+// ---- Search engines: an editable, ordered list the owner can add to / remove ----
+const SEARCH_FILE = process.env.SETAYESH_SEARCH_FILE || path.join(DATA_DIR, '.setayesh-search.json');
+const SEARCH_LABELS = { duckduckgo: 'DuckDuckGo (رایگان)', brave: 'Brave Search', tavily: 'Tavily' };
+function defaultSearchEngines() {
+  return [
+    { id: 'duckduckgo', label: SEARCH_LABELS.duckduckgo, enabled: true, keyless: true },
+    { id: 'brave', label: SEARCH_LABELS.brave, enabled: !!cfg.KEY_BRAVE, keyless: false },
+    { id: 'tavily', label: SEARCH_LABELS.tavily, enabled: !!cfg.KEY_TAVILY, keyless: false },
+  ];
+}
+let searchEngines = (function () {
+  const saved = loadJsonFile(SEARCH_FILE, null);
+  if (saved && Array.isArray(saved.engines) && saved.engines.length) return saved.engines;
+  return defaultSearchEngines();
+})();
+function searchKeyFor(id) {
+  const e = searchEngines.find((x) => x.id === id);
+  if (e && e.key) return e.key;
+  if (id === 'brave') return cfg.KEY_BRAVE || '';
+  if (id === 'tavily') return cfg.KEY_TAVILY || '';
+  return '';
+}
+async function searchOneEngine(id, q, n) {
+  try {
+    if (id === 'brave') {
+      const key = searchKeyFor('brave'); if (!key) return null;
+      const r = await fetchWithTimeout('https://api.search.brave.com/res/v1/web/search?q=' + encodeURIComponent(q) + '&count=' + n,
+        { headers: { Accept: 'application/json', 'X-Subscription-Token': key } });
+      if (!r.ok) return null;
+      const d = await r.json();
+      const items = ((d.web && d.web.results) || []).slice(0, n).map((x) => ({ title: x.title, url: x.url, snippet: x.description || '' }));
+      return items.length ? items : null;
+    }
+    if (id === 'tavily') {
+      const key = searchKeyFor('tavily'); if (!key) return null;
+      const r = await fetchWithTimeout('https://api.tavily.com/search', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ api_key: key, query: q, max_results: n }),
+      });
+      if (!r.ok) return null;
+      const d = await r.json();
+      const items = (d.results || []).slice(0, n).map((x) => ({ title: x.title, url: x.url, snippet: x.content || '' }));
+      return items.length ? items : null;
+    }
+    if (id === 'duckduckgo') {
+      const r = await fetchWithTimeout('https://html.duckduckgo.com/html/?q=' + encodeURIComponent(q),
+        { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; SetayeshAI/1.0)' } });
+      if (!r.ok) return null;
+      const html = await r.text();
+      const out = [];
+      const re = /<a[^>]+class="result__a"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
+      let m;
+      while ((m = re.exec(html)) && out.length < n) {
+        let link = m[1];
+        const dd = link.match(/uddg=([^&]+)/);
+        if (dd) { try { link = decodeURIComponent(dd[1]); } catch (e) {} }
+        out.push({ title: htmlToText(m[2]).slice(0, 200), url: link, snippet: '' });
+      }
+      return out.length ? out : null;
+    }
+  } catch (e) { /* try the next engine */ }
+  return null;
+}
 async function webSearch(query, count) {
   const q = String(query || '').trim();
   if (!q) throw new Error('عبارت جستجو لازم است.');
   const n = Math.max(1, Math.min(8, Number(count) || 5));
-
-  if (cfg.KEY_BRAVE) {
-    const r = await fetchWithTimeout('https://api.search.brave.com/res/v1/web/search?q=' + encodeURIComponent(q) + '&count=' + n,
-      { headers: { 'Accept': 'application/json', 'X-Subscription-Token': cfg.KEY_BRAVE } });
-    if (r.ok) {
-      const d = await r.json();
-      const items = ((d.web && d.web.results) || []).slice(0, n)
-        .map((x) => ({ title: x.title, url: x.url, snippet: x.description || '' }));
-      if (items.length) return { engine: 'brave', results: items };
-    }
+  // Try each ENABLED engine in the owner's chosen order.
+  for (const e of searchEngines) {
+    if (!e.enabled) continue;
+    const items = await searchOneEngineSafe(e.id, q, n);
+    if (items && items.length) return { engine: e.id, results: items };
   }
-  if (cfg.KEY_TAVILY) {
-    const r = await fetchWithTimeout('https://api.tavily.com/search', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ api_key: cfg.KEY_TAVILY, query: q, max_results: n }),
-    });
-    if (r.ok) {
-      const d = await r.json();
-      const items = (d.results || []).slice(0, n)
-        .map((x) => ({ title: x.title, url: x.url, snippet: x.content || '' }));
-      if (items.length) return { engine: 'tavily', results: items };
-    }
-  }
-  // Keyless fallback.
-  const r = await fetchWithTimeout('https://html.duckduckgo.com/html/?q=' + encodeURIComponent(q), {
-    headers: { 'User-Agent': 'Mozilla/5.0 (compatible; SetayeshAI/1.0)' },
-  });
-  if (!r.ok) throw new Error('جستجو ناموفق بود (' + r.status + ').');
-  const html = await r.text();
-  const out = [];
-  const re = /<a[^>]+class="result__a"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
-  let m;
-  while ((m = re.exec(html)) && out.length < n) {
-    let link = m[1];
-    const dd = link.match(/uddg=([^&]+)/);            // DDG wraps links in a redirect
-    if (dd) { try { link = decodeURIComponent(dd[1]); } catch (e) {} }
-    out.push({ title: htmlToText(m[2]).slice(0, 200), url: link, snippet: '' });
-  }
-  if (!out.length) throw new Error('نتیجه‌ای پیدا نشد.');
-  return { engine: 'duckduckgo', results: out };
+  // DuckDuckGo is always the last-resort fallback, even if turned off.
+  const dd = await searchOneEngineSafe('duckduckgo', q, n);
+  if (dd && dd.length) return { engine: 'duckduckgo', results: dd };
+  throw new Error('نتیجه‌ای پیدا نشد.');
 }
+// alias kept stable in case of hoisting order
+async function searchOneEngineSafe(id, q, n) { return searchOneEngine(id, q, n); }
 
 // ---------------- GitHub (public, keyless) ----------------
 // Let Setayesh find and read open-source libraries and code on GitHub. Uses the
@@ -4709,6 +4744,28 @@ app.post('/api/admin/local-models', requireAuth, requireAdmin, (req, res) => {
   saveJsonFile(LOCAL_MODELS_FILE, { models });
   applyLocalModels();
   res.json({ ok: true, active: (PROVIDERS.local.models || []).map((m) => m.id) });
+});
+
+// ---- Editable search-engine list (add / remove / key) ----
+function searchEnginesPublic() {
+  return searchEngines.map((e) => ({ id: e.id, label: e.label || SEARCH_LABELS[e.id] || e.id, enabled: !!e.enabled, keyless: e.id === 'duckduckgo', hasKey: !!searchKeyFor(e.id) }));
+}
+app.get('/api/admin/search-engines', requireAuth, requireAdmin, (req, res) => {
+  res.json({ engines: searchEnginesPublic() });
+});
+app.post('/api/admin/search-engines', requireAuth, requireAdmin, (req, res) => {
+  const list = Array.isArray((req.body || {}).engines) ? req.body.engines : [];
+  const next = [];
+  for (const e of list) {
+    const id = String(e.id || '').toLowerCase();
+    if (!SEARCH_LABELS[id] || next.find((x) => x.id === id)) continue;
+    const item = { id, label: SEARCH_LABELS[id], enabled: !!e.enabled, keyless: id === 'duckduckgo' };
+    if (e.key != null && String(e.key).trim()) item.key = String(e.key).trim().slice(0, 200);
+    else { const ex = searchEngines.find((x) => x.id === id); if (ex && ex.key) item.key = ex.key; }
+    next.push(item);
+  }
+  if (next.length) { searchEngines = next; saveJsonFile(SEARCH_FILE, { engines: next }); }
+  res.json({ ok: true, engines: searchEnginesPublic() });
 });
 
 app.get('/api/admin/providers/custom', requireAuth, requireAdmin, (req, res) => {

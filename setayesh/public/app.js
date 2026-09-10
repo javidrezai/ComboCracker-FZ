@@ -1669,7 +1669,7 @@ function ccTab(which){
     b.style.padding='7px 14px'; b.style.fontSize='12.5px';
   });
   if(which==='users')loadCCUsers();
-  if(which==='power'){loadCCBrainLibs();loadCCLocalModels();}
+  if(which==='power'){loadCCBrainLibs();loadCCLocalModels();loadCCSearchEngines();}
   if(which==='privacy')loadCCPrivacy();
   if(which==='devices')loadCCDevices();
   if(which==='look')loadCCLook();
@@ -2188,6 +2188,43 @@ function pollLibLog(){
     }).catch(function(){ clearInterval(_libPollTimer); _libPollTimer=null; });
   },1500);
 }
+/* Editable search-engine list — enable/disable each and set keys. */
+var _searchEngines=[];
+function renderSearchEngines(){
+  var box=$('ccSearchEngines'); if(!box)return; box.innerHTML='';
+  _searchEngines.forEach(function(e,i){
+    var row=el('div','tk-card'); row.style.cssText='margin-bottom:8px;padding:10px 12px';
+    var top=el('div'); top.style.cssText='display:flex;align-items:center;gap:8px';
+    var lab=el('label'); lab.style.cssText='display:flex;align-items:center;gap:8px;flex:1;font-size:12.5px;font-weight:600;cursor:pointer';
+    var cb=el('input'); cb.type='checkbox'; cb.checked=!!e.enabled;
+    cb.addEventListener('change',function(){ _searchEngines[i].enabled=cb.checked; });
+    lab.appendChild(cb); lab.appendChild(document.createTextNode(e.label));
+    top.appendChild(lab);
+    var dot=el('span'); dot.textContent=e.hasKey||e.keyless?'●':'○'; dot.style.color=(e.hasKey||e.keyless)?'#34d399':'var(--muted)';
+    top.appendChild(dot); row.appendChild(top);
+    if(!e.keyless){
+      var inp=el('input','input'); inp.type='password'; inp.placeholder=e.hasKey?'کلید ثبت شده — برای تغییر بنویس':'کلید API (اختیاری)';
+      inp.style.cssText='font-size:12px;margin-top:6px;direction:ltr;text-align:left';
+      inp.addEventListener('input',function(){ _searchEngines[i].key=inp.value.trim(); });
+      row.appendChild(inp);
+    }
+    box.appendChild(row);
+  });
+}
+function loadCCSearchEngines(){
+  adminFetch('/api/admin/search-engines').then(function(d){ _searchEngines=(d.engines||[]).map(function(e){return Object.assign({},e);}); renderSearchEngines(); })
+    .catch(function(e){ var n=$('ccSearchNote'); if(n){n.style.color='#fb7185';n.textContent=e.message;} });
+}
+(function(){
+  var sv=$('ccSearchSave'); if(!sv)return;
+  sv.addEventListener('click',function(){
+    var n=$('ccSearchNote'); n.style.color='var(--muted)'; n.textContent='در حال ذخیره...';
+    var payload=_searchEngines.map(function(e){ var o={id:e.id,enabled:!!e.enabled}; if(e.key)o.key=e.key; return o; });
+    adminFetch('/api/admin/search-engines',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({engines:payload})})
+      .then(function(d){ _searchEngines=(d.engines||[]).map(function(e){return Object.assign({},e);}); renderSearchEngines(); n.style.color='#34d399'; n.textContent='ذخیره شد.'; })
+      .catch(function(e){ n.style.color='#fb7185'; n.textContent=e.message; });
+  });
+})();
 /* Editable local (Ollama) model list — add/remove which models show as
    engines, and detect what Ollama has installed. */
 var _localModels=[];
@@ -2232,6 +2269,25 @@ function loadCCLocalModels(){
       .then(function(d){ n.style.color='#34d399'; n.textContent='ذخیره شد. فهرست موتورها به‌روز شد.'; if(CFG&&CFG.providers){var lp=CFG.providers.find(function(p){return p.id==='local';}); if(lp)lp.models=(d.active||[]).map(function(m){return {id:m,label:m};});} buildModelPicker&&buildModelPicker(); })
       .catch(function(e){ n.style.color='#fb7185'; n.textContent=e.message; });
   });
+  // Telegram, right inside the connectors panel the owner already knows.
+  var tgSave=$('cxTgSave');
+  if(tgSave){
+    var tgStatus=function(){ fetch('/api/admin/telegram',{headers:authHeaders()}).then(function(r){return r.json();}).then(function(d){ var dot=$('cxTgDot'); if(dot)dot.style.background=(d&&d.configured)?'#34d399':'#6b7280'; }).catch(function(){}); };
+    tgSave.addEventListener('click',function(){
+      var note=$('cxTgNote'); note.style.color='var(--muted)'; note.textContent='در حال ذخیره و تست...';
+      var upd={}, tk=($('cxTgToken').value||'').trim(), ch=($('cxTgChat').value||'').trim();
+      if(tk)upd.TELEGRAM_BOT_TOKEN=tk; if(ch)upd.TELEGRAM_CHAT_ID=ch;
+      fetch('/api/admin/settings',{method:'POST',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify({updates:upd})})
+        .then(function(r){return r.json();})
+        .then(function(){ return fetch('/api/admin/telegram/test',{method:'POST',headers:authHeaders()}); })
+        .then(function(r){return r.json();}).then(function(d){
+          if(d&&d.ok){ note.style.color='#34d399'; note.textContent='✓ پیام آزمایشی در تلگرام فرستاده شد.'; }
+          else { note.style.color='#fb7185'; note.textContent=(d&&d.error)||'تست ناموفق'; }
+          tgStatus();
+        }).catch(function(e){ note.style.color='#fb7185'; note.textContent=e.message; });
+    });
+    tgStatus();
+  }
   var b=$('ccInstallLibs'); if(!b)return;
   b.addEventListener('click',function(){
     b.disabled=true; ccNote('در حال دانلود کتابخانه‌ها... چند دقیقه صبر کن.');
