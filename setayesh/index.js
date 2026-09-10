@@ -181,7 +181,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.59';
+const APP_VERSION = '9.9.60';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -5558,6 +5558,41 @@ app.get('/api/admin/build-update', requireAuth, requireAdmin, (req, res) => {
     res.setHeader('Content-Disposition', 'attachment; filename="SETAYESH' + APP_VERSION + '.zip"');
     res.end(zip);
   } catch (e) { res.status(500).json({ error: 'ساخت بسته ناموفق: ' + e.message }); }
+});
+
+// ---- The Python library store (pybrain/libs) ----
+// List what is installed, and download the important libraries into it via pip
+// so the brain can use them (even offline afterwards).
+let _libInstallRunning = false, _libInstallLog = '';
+app.get('/api/admin/pybrain/libs', requireAuth, requireAdmin, (req, res) => {
+  const libsDir = path.join(BRAIN_DIR, 'libs');
+  let installed = [];
+  try {
+    installed = fs.readdirSync(libsDir, { withFileTypes: true })
+      .filter((e) => e.isDirectory() && !e.name.endsWith('.dist-info') && !e.name.startsWith('_') && e.name !== '__pycache__')
+      .map((e) => e.name).sort();
+  } catch (e) {}
+  res.json({ python: !!PYTHON_BIN, brain: fs.existsSync(BRAIN_MAIN), installed, running: _libInstallRunning });
+});
+app.post('/api/admin/pybrain/install-libs', requireAuth, requireAdmin, (req, res) => {
+  if (!PYTHON_BIN) return res.status(400).json({ error: 'پایتون نصب نیست — اول Python را نصب کن.' });
+  if (!fs.existsSync(BRAIN_MAIN)) return res.status(400).json({ error: 'مغز پایتون (pybrain) پیدا نشد.' });
+  if (_libInstallRunning) return res.json({ ok: true, running: true });
+  _libInstallRunning = true; _libInstallLog = '';
+  const { spawn } = require('child_process');
+  const libsDir = path.join(BRAIN_DIR, 'libs');
+  const reqFile = path.join(BRAIN_DIR, 'requirements-libs.txt');
+  const child = spawn(PYTHON_BIN, ['-m', 'pip', 'install', '--upgrade', '--target', libsDir, '-r', reqFile],
+    { cwd: BRAIN_DIR, windowsHide: true });
+  const cap = (d) => { _libInstallLog = (_libInstallLog + d.toString('utf8')).slice(-4000); };
+  child.stdout.on('data', cap); child.stderr.on('data', cap);
+  const timer = setTimeout(() => { try { child.kill('SIGKILL'); } catch (e) {} }, 300000);
+  child.on('close', (code) => { clearTimeout(timer); _libInstallRunning = false; _libInstallLog += `\n[پایان · کد ${code}]`; });
+  child.on('error', (e) => { clearTimeout(timer); _libInstallRunning = false; _libInstallLog += '\nخطا: ' + e.message; });
+  res.json({ ok: true, started: true });
+});
+app.get('/api/admin/pybrain/install-log', requireAuth, requireAdmin, (req, res) => {
+  res.json({ running: _libInstallRunning, log: _libInstallLog });
 });
 
 // Only these may be replaced — a dropped zip can never write anywhere else.

@@ -13,7 +13,7 @@
 <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">
 <link rel="icon" type="image/png" sizes="512x512" href="/icon-512.png">
 <title>Setayesh AI</title>
-<link rel="stylesheet" href="/app.css?v=9.9.59">
+<link rel="stylesheet" href="/app.css?v=9.9.60">
 </head>
 <body>
 <div class="bg"></div><canvas id="fx3d" aria-hidden="true"></canvas><div class="grid"></div><div class="scan"></div><div class="sweep"></div>
@@ -485,7 +485,14 @@
       <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:10px;cursor:pointer">
         <input type="checkbox" id="ccLocal"> <span>موتور محلی Ollama</span>
       </label>
-      <div class="tk-hint">برای وقتی که می‌خواهی هیچ‌چیز از این کامپیوتر خارج نشود.</div>
+      <div class="tk-hint" style="margin-bottom:16px">برای وقتی که می‌خواهی هیچ‌چیز از این کامپیوتر خارج نشود.</div>
+
+      <div class="side-label" style="padding:0;margin-bottom:6px">🧠 مغز پایتون + کتابخانه‌ها</div>
+      <div id="ccBrainStatus" class="tk-hint" style="margin-bottom:8px">در حال بررسی…</div>
+      <div class="tk-hint" style="margin-bottom:8px">کتابخانه‌های مهم پایتون را در مخزن داخلی ستایش دانلود می‌کند تا مغز از آن‌ها استفاده کند (نیاز به اینترنت فقط همین یک‌بار).</div>
+      <button class="btn ghost" id="ccInstallLibs" style="width:100%">📥 دانلود کتابخانه‌های مهم پایتون</button>
+      <div id="ccLibsList" style="font-size:11.5px;color:var(--muted);margin-top:8px;line-height:1.8"></div>
+      <pre id="ccLibsLog" style="display:none;max-height:160px;overflow:auto;background:rgba(0,0,0,.25);border-radius:8px;padding:8px;font-size:10.5px;direction:ltr;text-align:left;white-space:pre-wrap;margin-top:8px"></pre>
     </div>
 
     <div id="ccDevices" class="ccpane" style="display:none">
@@ -835,13 +842,13 @@
   </div>
 </div>
 
-<script src="/app-i18n.js?v=9.9.59"></script>
-<script src="/app.js?v=9.9.59"></script>
-<script src="/secure-store.js?v=9.9.59"></script>
-<script src="/draft-cache.js?v=9.9.59"></script>
+<script src="/app-i18n.js?v=9.9.60"></script>
+<script src="/app.js?v=9.9.60"></script>
+<script src="/secure-store.js?v=9.9.60"></script>
+<script src="/draft-cache.js?v=9.9.60"></script>
 
 <!-- ============ DEEP-BLUE FLOWING PARTICLE BACKGROUND ============ -->
-<script src="/login-fx.js?v=9.9.59"></script>
+<script src="/login-fx.js?v=9.9.60"></script>
 <!-- ===== SETAYESH BRAIN — a living 3D view of her real internal state ===== -->
 <div id="brainOverlay" style="position:fixed;inset:0;z-index:500;background:#03040a;display:none">
   <canvas id="brainCanvas" style="position:absolute;inset:0;width:100%;height:100%;display:block"></canvas>
@@ -942,7 +949,7 @@
   </div>
   <div id="memLong" style="display:grid;gap:8px"></div>
 </div>
-<script src="/memory-panel.js?v=9.9.59"></script>
+<script src="/memory-panel.js?v=9.9.60"></script>
 <!-- ===== Connectors panel: Google (Gmail + Calendar), admin only ===== -->
 <div id="cxScrim" style="position:fixed;inset:0;z-index:600;display:none;background:rgba(4,6,14,.42);-webkit-backdrop-filter:blur(7px);backdrop-filter:blur(7px)"></div>
 <div id="cxPanel" role="dialog" aria-label="کانکتورها" style="position:fixed;z-index:601;inset-inline:0;bottom:0;top:auto;display:none;max-height:90vh;overflow:auto;
@@ -1013,8 +1020,8 @@
     </div>
   </div>
 </div>
-<script src="/connectors-panel.js?v=9.9.59"></script>
+<script src="/connectors-panel.js?v=9.9.60"></script>
 <script src="/three.min.js"></script>
-<script src="/brain3d.js?v=9.9.59"></script>
+<script src="/brain3d.js?v=9.9.60"></script>
 </body>
 </html>

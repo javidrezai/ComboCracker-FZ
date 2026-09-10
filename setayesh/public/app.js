@@ -1668,6 +1668,7 @@ function ccTab(which){
     b.style.padding='7px 14px'; b.style.fontSize='12.5px';
   });
   if(which==='users')loadCCUsers();
+  if(which==='power')loadCCBrainLibs();
   if(which==='privacy')loadCCPrivacy();
   if(which==='devices')loadCCDevices();
   if(which==='look')loadCCLook();
@@ -2160,6 +2161,41 @@ function loadCC(){
     $('ccLocal').onchange=function(){ CC.dirty.ENABLE_LOCAL=$('ccLocal').checked?'1':''; };
   }).catch(function(e){ ccNote(e.message,true); });
 }
+/* Python brain + its library store: show whether python/brain are present and
+   what's installed, and download the important libraries into pybrain/libs. */
+var _libPollTimer=null;
+function loadCCBrainLibs(){
+  var st=$('ccBrainStatus'), list=$('ccLibsList');
+  if(!st)return;
+  adminFetch('/api/admin/pybrain/libs').then(function(d){
+    var bits=[];
+    bits.push(d.python?'پایتون: ✅ نصب است':'پایتون: 🔴 نصب نیست (اول Python را نصب کن)');
+    bits.push(d.brain?'مغز پایتون: ✅ آماده':'مغز پایتون: 🔴 پیدا نشد');
+    st.innerHTML=bits.join(' · ');
+    if(list)list.textContent=(d.installed&&d.installed.length)?('نصب‌شده: '+d.installed.join('، ')):'هنوز کتابخانه‌ای نصب نشده.';
+    var btn=$('ccInstallLibs'); if(btn)btn.disabled=!d.python||!!d.running;
+    if(d.running)pollLibLog();
+  }).catch(function(e){ st.textContent=e.message; });
+}
+function pollLibLog(){
+  if(_libPollTimer)clearInterval(_libPollTimer);
+  var pre=$('ccLibsLog'); if(pre)pre.style.display='block';
+  _libPollTimer=setInterval(function(){
+    adminFetch('/api/admin/pybrain/install-log').then(function(d){
+      var pre=$('ccLibsLog'); if(pre){pre.textContent=d.log||'…'; pre.scrollTop=pre.scrollHeight;}
+      if(!d.running){ clearInterval(_libPollTimer); _libPollTimer=null; var b=$('ccInstallLibs'); if(b)b.disabled=false; loadCCBrainLibs(); }
+    }).catch(function(){ clearInterval(_libPollTimer); _libPollTimer=null; });
+  },1500);
+}
+(function(){
+  var b=$('ccInstallLibs'); if(!b)return;
+  b.addEventListener('click',function(){
+    b.disabled=true; ccNote('در حال دانلود کتابخانه‌ها... چند دقیقه صبر کن.');
+    adminFetch('/api/admin/pybrain/install-libs',{method:'POST'})
+      .then(function(d){ if(d.error){ccNote(d.error,true);b.disabled=false;return;} pollLibLog(); })
+      .catch(function(e){ ccNote(e.message,true); b.disabled=false; });
+  });
+})();
 function loadCCUsers(){
   var box=$('ccUserList'); box.innerHTML='<div class="tk-hint"><span class="spin"></span></div>';
   // Who is online right now — the one thing you see about the others at a glance.

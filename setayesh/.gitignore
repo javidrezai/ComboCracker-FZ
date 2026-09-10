@@ -24,3 +24,11 @@ tls-key.pem
 *.pem
 node_modules
 /node_modules
+
+# Python brain library store — packages are downloaded on the user's machine,
+# never committed. Keep only the folder, its README and the keep-marker.
+pybrain/libs/*
+!pybrain/libs/README.md
+!pybrain/libs/.gitkeep
+__pycache__/
+*.pyc
