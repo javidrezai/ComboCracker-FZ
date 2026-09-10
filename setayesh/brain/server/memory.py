@@ -33,6 +33,11 @@ class Vault:
         self.notes = self.root / "notes"
         for d in (self.knowledge, self.lessons, self.config, self.dashboard, self.logs, self.notes):
             d.mkdir(parents=True, exist_ok=True)
+        # بازیابی برداری (اختیاری): در make_brain تنظیم می‌شود
+        self.embedder = None
+        self.retrieval_mode = "auto"   # auto | tfidf | embeddings
+        self.emb_model = "nomic-embed-text"
+        self._emb_index = None
 
     # ---------- خواندن تنظیمات (بدون ری‌استارت، هر گام تازه خوانده می‌شود) ----------
     def read_settings(self):
@@ -85,13 +90,54 @@ class Vault:
                 continue
         return notes
 
-    def retrieve(self, query, k=4):
-        """بازیابی برداری محلی (TF-IDF کسینوسی) + دنبال‌کردن لینک‌های [[...]].
+    def _embeddings_active(self):
+        if self.retrieval_mode == "tfidf" or self.embedder is None:
+            return False
+        try:
+            return self.embedder.embeddings_available(self.emb_model)
+        except Exception:
+            return False
 
-        بدون هیچ وابستگی خارجی و کاملاً آفلاین؛ جایگزین شمارش سادهٔ کلیدواژه.
+    def _emb_rank(self, query, notes, k):
+        from retrieval import EmbeddingIndex
+        if self._emb_index is None:
+            self._emb_index = EmbeddingIndex(
+                self.embedder, self.emb_model, self.root / ".index" / "emb-cache.json")
+        return self._emb_index.rank(query, notes, k)
+
+    def _expand_links(self, top, by_name, k):
+        """یک سطح لینک [[...]] را برای غنی‌سازی زمینه دنبال می‌کند."""
+        result, seen = [], set()
+        for _score, f, txt in top:
+            if f.stem in seen:
+                continue
+            seen.add(f.stem)
+            result.append((f.stem, txt.strip()))
+            for link in LINK_RE.findall(txt):
+                name = link.split("|")[0].strip()
+                if name in by_name and name not in seen:
+                    seen.add(name)
+                    lf, ltxt = by_name[name]
+                    result.append((name, ltxt.strip()))
+        return result[: k + 2]
+
+    def retrieve(self, query, k=4):
+        """بازیابی مرتبط‌ترین نوت‌ها + دنبال‌کردن لینک‌های [[...]].
+
+        اگر embeddings در دسترس باشد از آن استفاده می‌کند، وگرنه TF-IDF محلی.
         """
         notes = self._all_notes()
         by_name = {f.stem: (f, txt) for f, txt in notes}
+        if not notes:
+            return []
+
+        # مسیر embeddings (وقتی Ollama + مدلِ embedding در دسترس است)
+        if self._embeddings_active():
+            top = self._emb_rank(query, notes, k)
+            if top:
+                return self._expand_links(top, by_name, k)
+            # شکست → بازگشت به TF-IDF
+
         cmap = self._canonical_map()
         docs = []
         for f, txt in notes:
@@ -130,22 +176,26 @@ class Vault:
             if score > 0:
                 scored.append((score, f, txt))
         scored.sort(key=lambda x: -x[0])
-        top = scored[:k]
-        # دنبال‌کردن یک سطح لینک‌های [[...]] برای غنی‌سازی زمینه
-        result = []
-        seen = set()
-        for score, f, txt in top:
-            if f.stem in seen:
-                continue
-            seen.add(f.stem)
-            result.append((f.stem, txt.strip()))
-            for link in LINK_RE.findall(txt):
-                name = link.split("|")[0].strip()
-                if name in by_name and name not in seen:
-                    seen.add(name)
-                    lf, ltxt = by_name[name]
-                    result.append((name, ltxt.strip()))
-        return result[: k + 2]
+        return self._expand_links(scored[:k], by_name, k)
+
+    def knowledge_graph(self):
+        """گراف دانش: گره‌ها (نوت‌های knowledge) و یال‌ها (لینک‌های [[...]] معتبر)."""
+        nodes, edges = [], []
+        stems = set()
+        texts = {}
+        for f in sorted(self.knowledge.rglob("*.md")):
+            stems.add(f.stem)
+            try:
+                texts[f.stem] = f.read_text(encoding="utf-8")
+            except Exception:
+                texts[f.stem] = ""
+        nodes = sorted(stems)
+        for stem in nodes:
+            for link in LINK_RE.findall(texts.get(stem, "")):
+                target = link.split("|")[0].strip()
+                if target in stems and target != stem and (stem, target) not in edges and (target, stem) not in edges:
+                    edges.append((stem, target))
+        return {"nodes": nodes, "edges": edges}
 
     def list_files(self):
         """لیست همهٔ فایل‌های markdown والت."""

@@ -45,6 +45,10 @@ def make_brain():
         remote=os.environ.get("SETAYESH_VAULT_REMOTE", s.get("vault_remote")),
         auto_sync=s.get("auto_sync", "true"),
     )
+    # بازیابی برداری (اگر Ollama + مدل embedding در دسترس باشد)
+    vault.embedder = llm
+    vault.retrieval_mode = s.get("retrieval", "auto")
+    vault.emb_model = s.get("embeddings_model", "nomic-embed-text")
     fallback = LocalFallbackLLM()
     loop = AgentLoop(llm, vault, max_steps=int(s.get("max_steps", 6)), bridge=bridge, fallback=fallback)
     return vault, llm, loop, bridge
@@ -119,6 +123,7 @@ class Handler(BaseHTTPRequestHandler):
         vault, llm, loop, bridge = self.brain
         dash.build(vault, llm, vault.read_settings(), bridge)
         md = (vault.dashboard / "DASHBOARD.md").read_text(encoding="utf-8")
+        svg = dash.graph_svg(vault.knowledge_graph())
         html = ("<!doctype html><html lang=fa dir=rtl><meta charset=utf-8>"
                 "<meta http-equiv=refresh content=10>"
                 "<title>داشبورد مغز ستایش</title>"
@@ -126,7 +131,11 @@ class Handler(BaseHTTPRequestHandler):
                 "padding:0 1rem;background:#0f1420;color:#e6e9ef;line-height:1.8}"
                 "code{background:#1c2333;padding:2px 6px;border-radius:4px}"
                 "table{border-collapse:collapse;width:100%}td,th{border:1px solid #2a3550;padding:6px}"
-                "a{color:#6ea8fe}</style><pre style='white-space:pre-wrap'>" +
+                "a{color:#6ea8fe}h2{color:#e8b64a}"
+                ".graph{background:#0c111d;border:1px solid #26324c;border-radius:12px;padding:10px;margin:0 0 16px;text-align:center}"
+                "</style>"
+                "<h2>گراف دانش</h2><div class=graph>" + svg + "</div>"
+                "<pre style='white-space:pre-wrap'>" +
                 md.replace("&", "&amp;").replace("<", "&lt;") + "</pre></html>")
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")

@@ -55,6 +55,24 @@ class OllamaClient:
         base = target.split(":")[0]
         return any(n == target or n.split(":")[0] == base for n in names)
 
+    def embed(self, text, model=None):
+        """بردار embedding یک متن را از Ollama می‌گیرد (یا [] در خطا)."""
+        payload = {"model": model or "nomic-embed-text", "prompt": text}
+        data = json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(
+            f"{self.host}/api/embeddings", data=data,
+            headers={"Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+                body = json.loads(resp.read().decode("utf-8"))
+            return body.get("embedding", []) or []
+        except Exception:
+            return []
+
+    def embeddings_available(self, model="nomic-embed-text"):
+        """آیا سرویس بالا است و مدلِ embedding نصب است؟"""
+        return self.is_available() and self.has_model(model)
+
     def warmup(self, model=None):
         """مدل را با یک درخواست کوچک در حافظه بارگذاری می‌کند (اولین پاسخ سریع‌تر)."""
         try:

@@ -99,6 +99,20 @@ class BrainTests(unittest.TestCase):
         self.assertTrue(rel.startswith("notes/"))  # هرگز خارج از notes/
         self.assertFalse((self.vault.knowledge / "hack.md").exists())
 
+    def test_knowledge_graph_nodes_and_edges(self):
+        (self.vault.knowledge / "الف.md").write_text("# الف\nمرتبط با [[ب]].", encoding="utf-8")
+        (self.vault.knowledge / "ب.md").write_text("# ب\nمتن.", encoding="utf-8")
+        g = self.vault.knowledge_graph()
+        self.assertIn("الف", g["nodes"])
+        self.assertIn(("الف", "ب"), g["edges"])
+
+    def test_summarize_tool(self):
+        (self.vault.knowledge / "قهوه.md").write_text("# قهوه\nنوشیدنی تلخ و داغ از دانهٔ قهوه.", encoding="utf-8")
+        reg = build_registry(self.vault)
+        out = reg["summarize"]("قهوه")
+        self.assertIn("خلاصه", out)
+        self.assertIn("قهوه", out)
+
     def test_save_note_tool_registered(self):
         reg = build_registry(self.vault)
         self.assertIn("save_note", reg)
@@ -339,6 +353,58 @@ class NormalizationTests(unittest.TestCase):
             self.assertEqual(hits[0][0], "Ollama")
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
+
+
+class FakeEmbedder:
+    def __init__(self, available=True):
+        self._a = available
+    def is_available(self):
+        return self._a
+    def has_model(self, m=None):
+        return self._a
+    def embeddings_available(self, m=None):
+        return self._a
+    def embed(self, text, model=None):
+        # بردار قطعی بر پایهٔ طول و چند ویژگی ساده
+        import hashlib
+        h = hashlib.sha1(text.encode("utf-8")).digest()
+        return [b / 255.0 for b in h[:8]]
+
+
+class EmbeddingRetrievalTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.vault = Vault(self.tmp)
+        (self.vault.knowledge / "n1.md").write_text("# n1\nمتن یک", encoding="utf-8")
+        (self.vault.knowledge / "n2.md").write_text("# n2\nمتن دو", encoding="utf-8")
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_embeddings_path_active_when_available(self):
+        self.vault.embedder = FakeEmbedder(available=True)
+        self.vault.retrieval_mode = "auto"
+        self.assertTrue(self.vault._embeddings_active())
+        hits = self.vault.retrieve("متن یک", k=2)
+        self.assertTrue(len(hits) >= 1)
+
+    def test_falls_back_to_tfidf_when_embedder_down(self):
+        self.vault.embedder = FakeEmbedder(available=False)
+        self.vault.retrieval_mode = "auto"
+        self.assertFalse(self.vault._embeddings_active())
+        hits = self.vault.retrieve("متن یک", k=2)
+        self.assertEqual(hits[0][0], "n1")  # TF-IDF درست کار می‌کند
+
+    def test_tfidf_forced_mode(self):
+        self.vault.embedder = FakeEmbedder(available=True)
+        self.vault.retrieval_mode = "tfidf"
+        self.assertFalse(self.vault._embeddings_active())
+
+    def test_graph_svg_and_markdown(self):
+        import dashboard as dash
+        g = self.vault.knowledge_graph()
+        self.assertIn("<svg", dash.graph_svg(g))
+        self.assertIsInstance(dash.graph_markdown(g), str)
 
 
 if __name__ == "__main__":

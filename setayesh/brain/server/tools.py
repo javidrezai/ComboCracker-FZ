@@ -87,6 +87,18 @@ def build_registry(vault):
         txt = vault.read_note(name.strip())
         return txt if txt is not None else f"نوتی به نام «{name}» پیدا نشد."
 
+    def tool_summarize(query):
+        """خلاصهٔ چند نوتِ مرتبط. ورودی: موضوع/کلیدواژه."""
+        hits = vault.retrieve(query, k=4)
+        if not hits:
+            return "نوتی برای خلاصه‌سازی پیدا نشد."
+        parts = []
+        for n, t in hits:
+            first = clean_excerpt(t, 140)
+            if first:
+                parts.append(f"• {n}: {first}")
+        return f"خلاصهٔ «{query}» از {len(parts)} نوت:\n" + "\n".join(parts)
+
     def tool_save_note(arg):
         """ذخیرهٔ نوت در ناحیهٔ مجاز. ورودی: «عنوان :: محتوا»."""
         if "::" in arg:
@@ -113,6 +125,7 @@ def build_registry(vault):
         "search": tool_search,
         "web_search": tool_web_search,
         "save_note": tool_save_note,
+        "summarize": tool_summarize,
     }
 
 
@@ -126,5 +139,6 @@ def tool_help(registry):
         "search": "جست‌وجوی دانش والت، search(کلیدواژه)",
         "web_search": "جست‌وجوی وب، web_search(عبارت)",
         "save_note": "ذخیرهٔ نوت، save_note(عنوان :: محتوا)",
+        "summarize": "خلاصهٔ چند نوت، summarize(موضوع)",
     }
     return "\n".join(f"- {name}: {docs.get(name, '')}" for name in registry)

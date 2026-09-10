@@ -20,6 +20,7 @@ _TIME_HINTS = ("ساعت", "زمان", "تاریخ", "چند شد", "الان چ
 _WEB_HINTS = ("جست‌وجو وب", "جستجو وب", "سرچ وب", "توی وب", "در وب", "اینترنت", "web", "search online", "google")
 _KB_HINTS = ("چیست", "کیست", "یعنی چه", "توضیح", "درباره", "معرفی", "چطور", "چگونه", "what is", "who is", "explain")
 _NOTE_HINTS = ("یادداشت کن", "ذخیره کن", "نوت کن", "بنویس که", "ثبت کن", "save note", "note this", "remember that")
+_SUM_HINTS = ("خلاصه کن", "خلاصه‌ای", "خلاصه بده", "جمع‌بندی", "summarize", "summary of")
 
 
 class LocalFallbackLLM:
@@ -94,6 +95,15 @@ class LocalFallbackLLM:
             if h in ql:
                 content = q[ql.find(h) + len(h):].strip(" :،.") or q
                 return f"TOOL: save_note({content[:40]} :: {content})"
+
+        # ۰.۵) خلاصه‌سازی چند نوت
+        for h in _SUM_HINTS:
+            if h in ql:
+                topic = q[ql.find(h) + len(h):].strip(" :،.")
+                for lead in ("دربارهٔ", "درباره", "راجع به", "در مورد", "از"):
+                    if topic.startswith(lead):
+                        topic = topic[len(lead):].strip()
+                return f"TOOL: summarize({topic or q})"
 
         # ۱) ریاضی
         expr = self._math_expr(q)
