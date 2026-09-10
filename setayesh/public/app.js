@@ -1668,7 +1668,7 @@ function ccTab(which){
     b.style.padding='7px 14px'; b.style.fontSize='12.5px';
   });
   if(which==='users')loadCCUsers();
-  if(which==='power')loadCCBrainLibs();
+  if(which==='power'){loadCCBrainLibs();loadCCLocalModels();}
   if(which==='privacy')loadCCPrivacy();
   if(which==='devices')loadCCDevices();
   if(which==='look')loadCCLook();
@@ -2187,7 +2187,50 @@ function pollLibLog(){
     }).catch(function(){ clearInterval(_libPollTimer); _libPollTimer=null; });
   },1500);
 }
+/* Editable local (Ollama) model list — add/remove which models show as
+   engines, and detect what Ollama has installed. */
+var _localModels=[];
+function renderLocalModelChips(){
+  var box=$('ccLocalModels'); if(!box)return; box.innerHTML='';
+  if(!_localModels.length){ box.innerHTML='<span class="tk-hint" style="padding:0">هیچ مدلی — از پیش‌فرض استفاده می‌شود.</span>'; }
+  _localModels.forEach(function(m){
+    var chip=el('span'); chip.style.cssText='display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border-radius:20px;background:rgba(56,189,248,.12);border:1px solid rgba(56,189,248,.3);font-size:12px;direction:ltr';
+    chip.appendChild(document.createTextNode(m));
+    var x=el('button'); x.textContent='✕'; x.style.cssText='border:0;background:none;color:#fda4af;cursor:pointer;font-size:12px;padding:0';
+    x.addEventListener('click',function(){ _localModels=_localModels.filter(function(t){return t!==m;}); renderLocalModelChips(); });
+    chip.appendChild(x); box.appendChild(chip);
+  });
+}
+function loadCCLocalModels(){
+  adminFetch('/api/admin/local-models').then(function(d){
+    _localModels=(d.active||[]).slice();
+    renderLocalModelChips();
+    var det=$('ccLocalDetected');
+    if(det){
+      if((d.detected||[]).length){
+        det.innerHTML='نصب‌شده در Ollama (بزن تا اضافه شود): ';
+        d.detected.forEach(function(m){
+          var a=el('button','btn ghost'); a.textContent='+ '+m; a.style.cssText='padding:3px 9px;font-size:11px;margin:2px;direction:ltr';
+          a.addEventListener('click',function(){ if(_localModels.indexOf(m)<0){_localModels.push(m);renderLocalModelChips();} });
+          det.appendChild(a);
+        });
+      } else det.textContent='Ollama در دسترس نیست یا مدلی ندارد (می‌توانی دستی اضافه کنی).';
+    }
+  }).catch(function(e){ var n=$('ccLocalModelsNote'); if(n){n.style.color='#fb7185';n.textContent=e.message;} });
+}
 (function(){
+  var add=$('ccLocalModelAdd'), addBtn=$('ccLocalModelAddBtn');
+  function doAdd(){ var v=(add.value||'').trim(); if(v&&_localModels.indexOf(v)<0){_localModels.push(v);renderLocalModelChips();} add.value=''; }
+  if(addBtn)addBtn.addEventListener('click',doAdd);
+  if(add)add.addEventListener('keydown',function(e){ if(e.key==='Enter'){e.preventDefault();doAdd();} });
+  var det=$('ccLocalDetect'); if(det)det.addEventListener('click',loadCCLocalModels);
+  var sv=$('ccLocalModelsSave');
+  if(sv)sv.addEventListener('click',function(){
+    var n=$('ccLocalModelsNote'); n.style.color='var(--muted)'; n.textContent='در حال ذخیره...';
+    adminFetch('/api/admin/local-models',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({models:_localModels})})
+      .then(function(d){ n.style.color='#34d399'; n.textContent='ذخیره شد. فهرست موتورها به‌روز شد.'; if(CFG&&CFG.providers){var lp=CFG.providers.find(function(p){return p.id==='local';}); if(lp)lp.models=(d.active||[]).map(function(m){return {id:m,label:m};});} buildModelPicker&&buildModelPicker(); })
+      .catch(function(e){ n.style.color='#fb7185'; n.textContent=e.message; });
+  });
   var b=$('ccInstallLibs'); if(!b)return;
   b.addEventListener('click',function(){
     b.disabled=true; ccNote('در حال دانلود کتابخانه‌ها... چند دقیقه صبر کن.');

@@ -181,7 +181,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.63';
+const APP_VERSION = '9.9.64';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -4663,6 +4663,43 @@ function registerCustomProviders() {
   }
 }
 registerCustomProviders();
+
+// ---- Editable local (Ollama) model list ----
+// The owner can add/remove which local models appear as engines, and detect
+// what Ollama actually has installed. Stored in its own file so it takes effect
+// without a restart and never needs a code edit.
+const LOCAL_MODELS_FILE = process.env.SETAYESH_LOCAL_MODELS_FILE || path.join(DATA_DIR, '.setayesh-local-models.json');
+function applyLocalModels() {
+  try {
+    const saved = loadJsonFile(LOCAL_MODELS_FILE, null);
+    if (saved && Array.isArray(saved.models) && saved.models.length) {
+      PROVIDERS.local.models = saved.models.map((t) => ({ id: t, label: t + ' (local)' }));
+    }
+  } catch (e) {}
+}
+applyLocalModels();
+async function detectOllamaModels() {
+  try {
+    const base = (baseUrlFor('local') || 'http://localhost:11434/v1').replace(/\/v1\/?$/, '');
+    const r = await fetchWithTimeout(base + '/api/tags', { timeout: 4000 });
+    const d = await r.json();
+    return (d.models || []).map((m) => m.name).filter(Boolean);
+  } catch (e) { return []; }
+}
+app.get('/api/admin/local-models', requireAuth, requireAdmin, async (req, res) => {
+  res.json({
+    active: (PROVIDERS.local.models || []).map((m) => m.id),
+    detected: await detectOllamaModels(),
+  });
+});
+app.post('/api/admin/local-models', requireAuth, requireAdmin, (req, res) => {
+  const models = Array.isArray((req.body || {}).models)
+    ? [...new Set(req.body.models.map((x) => String(x).trim()).filter(Boolean))].slice(0, 30)
+    : [];
+  saveJsonFile(LOCAL_MODELS_FILE, { models });
+  applyLocalModels();
+  res.json({ ok: true, active: (PROVIDERS.local.models || []).map((m) => m.id) });
+});
 
 app.get('/api/admin/providers/custom', requireAuth, requireAdmin, (req, res) => {
   res.json({
