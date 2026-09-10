@@ -2081,6 +2081,37 @@ function loadCCComms(){
   }
   if(CC.settings&&CC.settings.settings)render();
   else adminFetch('/api/admin/settings').then(function(d){CC.settings=d;render();}).catch(function(e){ccNote(e.message,true);});
+  // Live status: is email / telegram actually connected right now?
+  ccCommsRefreshStatus();
+}
+function ccCommsRefreshStatus(){
+  adminFetch('/api/admin/notify-status').then(function(d){
+    var s=$('ccMailStatus'); if(!s)return;
+    if(d.emailConfigured)s.innerHTML='<span style="color:#34d399">● آماده</span> · '+(d.address||'');
+    else s.innerHTML='<span style="color:var(--muted)">○ هنوز تنظیم نشده</span> — ایمیل و App Password را بگذار و «ذخیره و تست» را بزن.';
+  }).catch(function(){});
+  adminFetch('/api/admin/telegram').then(function(d){
+    var s=$('ccTgStatus'); if(!s)return;
+    if(d&&d.configured)s.innerHTML='<span style="color:#34d399">● توکن ثبت شده</span>'+(d.chatSet?' · Chat ID دارد':' — هنوز Chat ID نداری؛ یک پیام به ربات بفرست.');
+    else s.innerHTML='<span style="color:var(--muted)">○ هنوز تنظیم نشده</span> — توکن ربات را بگذار و «ذخیره و تست» را بزن.';
+  }).catch(function(){});
+}
+/* Save whatever is pending, then run the matching test — so one button both
+   stores the value and proves it works, which is what "does it work?" needs. */
+function ccSaveThenTest(statusId,testUrl){
+  var s=$(statusId); if(s){s.innerHTML='<span class="spin"></span> در حال ذخیره و تست...';}
+  var body=JSON.stringify({updates:CC.dirty||{}});
+  adminFetch('/api/admin/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:body})
+    .then(function(){ CC.dirty={}; return adminFetch(testUrl,{method:'POST'}); })
+    .then(function(r){ return r; })
+    .catch(function(e){ if(s)s.innerHTML='<span style="color:#fb7185">خطا: '+(e.message||'')+'</span>'; throw e; })
+    .then(function(d){
+      if(!d)return;
+      if(d.ok&&d.emailed!==undefined){ s.innerHTML=d.emailed?'<span style="color:#34d399">✓ ایمیل آزمایشی فرستاده شد — صندوق ورودی‌ات را ببین.</span>':('<span style="color:#fbbf24">در برنامه ثبت شد ولی ایمیل نرفت'+(d.emailError?': '+d.emailError:' (ایمیل کامل تنظیم نشده)')+'</span>'); }
+      else if(d.ok){ s.innerHTML='<span style="color:#34d399">✓ پیام آزمایشی در تلگرام فرستاده شد.</span>'; }
+      else if(d.error){ s.innerHTML='<span style="color:#fb7185">'+d.error+'</span>'; }
+      ccCommsRefreshStatus();
+    }).catch(function(){});
 }
 function loadCCUsers(){
   var box=$('ccUserList'); box.innerHTML='<div class="tk-hint"><span class="spin"></span></div>';
@@ -2168,6 +2199,10 @@ $('ccPrivAdd').addEventListener('click',function(){
     body:JSON.stringify({term:v})}).then(function(){$('ccPrivTerm').value='';loadCCPrivacy();ccNote('اضافه شد.');})
     .catch(function(e){ccNote(e.message,true);});
 });
+(function(){
+  var mt=$('ccMailTest'); if(mt)mt.addEventListener('click',function(){ ccSaveThenTest('ccMailStatus','/api/admin/notify-test'); });
+  var tt=$('ccTgTest'); if(tt)tt.addEventListener('click',function(){ ccSaveThenTest('ccTgStatus','/api/admin/telegram/test'); });
+})();
 $('ccSave').addEventListener('click',function(){
   var keys=Object.keys(CC.dirty);
   if(!keys.length){ccNote('چیزی تغییر نکرده.');return;}
