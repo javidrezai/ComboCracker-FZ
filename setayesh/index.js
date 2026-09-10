@@ -181,7 +181,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.62';
+const APP_VERSION = '9.9.63';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -3096,6 +3096,7 @@ function promptFor(username, modeId, safe, libSel, message) {
   base += personalizationBlock(username);
   base += memoryBlock(username);
   base += knowledgeSystemBlock();
+  base += brainVaultBlock();
   const tut = TUTORS[(username || '').toLowerCase()];
   return tut ? base + tut : base;
 }
@@ -3631,6 +3632,44 @@ function knowledgeSystemBlock() {
   const ctx = knowledgeContext(KNOWLEDGE_INJECT_CHARS);
   if (!ctx) return '';
   return `\n\n*** دانشِ رشدیابنده‌ی ستایش (تأییدشده توسط ادمین) ***\nاین‌ها نکاتی‌اند که خودت قبلاً در پس‌زمینه تحقیق کرده، یاد گرفته، و ادمین تأییدشان کرده. اگر به سوال کاربر مربوط بودند طبیعی و بدون اشاره‌ی مستقیم به «تحقیق پس‌زمینه» استفاده‌شان کن؛ اگر بی‌ربط بودند نادیده بگیر:\n${ctx}`;
+}
+
+// Shared memory with the Python brain: fold what the brain has learned (its
+// vault lessons + knowledge) into the system prompt, so the LOCAL engine
+// (Ollama) and the cloud engines all share the same mind as the brain. Cached
+// for a few seconds so it doesn't read the disk on every message. The app's own
+// memory mirror (app-memory.md) is excluded here — it already reaches the model
+// through memoryBlock(), which is privacy-redacted.
+let _brainBlockCache = { at: 0, text: '' };
+function brainVaultBlock() {
+  try {
+    const vault = path.join(BRAIN_DIR, 'vault');
+    if (!fs.existsSync(vault)) return '';
+    const now = Date.now();
+    if (now - _brainBlockCache.at < 30000) return _brainBlockCache.text;
+    const parts = [];
+    const grab = (dir, cap) => {
+      let files = [];
+      try { files = fs.readdirSync(dir).filter((f) => f.endsWith('.md')); } catch (e) { return; }
+      for (const f of files) {
+        if (f === 'app-memory.md' || f.toUpperCase().startsWith('README')) continue;
+        try {
+          const txt = fs.readFileSync(path.join(dir, f), 'utf8').replace(/^#.*$/m, '').replace(/\s+/g, ' ').trim();
+          if (txt) parts.push('• ' + f.replace(/\.md$/, '') + ': ' + txt.slice(0, cap));
+        } catch (e) {}
+      }
+    };
+    grab(path.join(vault, 'lessons'), 300);
+    grab(path.join(vault, 'knowledge'), 220);
+    let body = parts.join('\n');
+    if (body.length > 2000) body = body.slice(0, 2000);
+    let text = body.trim()
+      ? `\n\n*** آنچه مغز محلی ستایش یاد گرفته (حافظهٔ مشترک) ***\nاین‌ها را مغز پایتونِ ستایش می‌داند. حافظه‌ی اپ و مغز مشترک است؛ اگر به سوال مربوط بود طبیعی استفاده کن:\n${body.trim()}`
+      : '';
+    if (text && privacy.enabled) text = redactOutbound(text);
+    _brainBlockCache = { at: now, text };
+    return text;
+  } catch (e) { return ''; }
 }
 
 // Ask the preferred provider to propose ONE new, useful, non-duplicate topic.
