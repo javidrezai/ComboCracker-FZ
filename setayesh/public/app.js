@@ -3347,22 +3347,22 @@ document.getElementById('shDiag').addEventListener('click',function(){ sheetGo(o
 var BRAIN = { scene:null, cam:null, renderer:null, raf:null, regions:[], pulses:[], data:null, pollTimer:null, hovered:null };
 
 function openBrain(){
-  // The brain view is now the hexagon file-map (brainmap.js). Every old entry
-  // point opens it instead of the previous 3D scene.
+  // The brain view is ALWAYS the hexagon file-map (brainmap.js). The old 3D
+  // scene is retired and must never appear. If the map script hasn't loaded,
+  // load it on demand and open it — we never fall back to the old view.
   if(typeof window.openBrainMap==='function'){ window.openBrainMap(); return; }
-  var ov=document.getElementById('brainOverlay');
-  ov.style.display='block';
-  if(typeof THREE==='undefined'){
-    // نمای سه‌بعدی در دسترس نیست — به‌جای صفحه‌ی خالی، همان داده‌ها را ساده
-    // نشان می‌دهیم تا مغز همیشه چیزی برای دیدن داشته باشد.
-    document.getElementById('brainStatus').textContent='نمای ساده (سه‌بعدی بارگذاری نشد)';
-    brainRefresh2D();
-    BRAIN.pollTimer=setInterval(brainRefresh2D, 4000);
+  var tag=document.querySelector('script[data-brainmap]');
+  if(!tag){
+    tag=document.createElement('script');
+    tag.setAttribute('data-brainmap','1');
+    tag.src='/brainmap.js?v='+Date.now();
+    tag.onload=function(){ if(typeof window.openBrainMap==='function')window.openBrainMap();
+      else alert('نقشه‌ی مغز بارگذاری نشد — لطفاً Ctrl+Shift+R بزن.'); };
+    tag.onerror=function(){ alert('نقشه‌ی مغز پیدا نشد (brainmap.js). لطفاً نسخه‌ی کامل را دوباره نصب کن.'); };
+    document.head.appendChild(tag);
     return;
   }
-  brainInit();
-  brainRefresh();
-  BRAIN.pollTimer=setInterval(brainRefresh, 4000);
+  alert('نقشه‌ی مغز آماده نیست — لطفاً Ctrl+Shift+R بزن.');
 }
 function closeBrain(){
   var ov=document.getElementById('brainOverlay');

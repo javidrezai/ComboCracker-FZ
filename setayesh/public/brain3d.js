@@ -934,18 +934,27 @@
 
   /* ------------------------------------------------------------- open/close */
   function open() {
-    // The brain view is now the hexagon file-map. This old 3D scene is kept in
-    // the codebase but the top button opens the new map instead.
+    // The brain view is ALWAYS the new hexagon file-map (brainmap.js). The old
+    // 3D scene below is retired and must never show again. If the map script
+    // hasn't loaded yet (e.g. a partial update), load it on demand and open it —
+    // we never fall back to the 3D blob.
     if (typeof window.openBrainMap === 'function') { window.openBrainMap(); return; }
-    if (!window.THREE) { alert('کتابخانه‌ی سه‌بعدی بارگذاری نشده است.'); return; }
-    if (!S.overlay) { buildOverlay(); initScene(); }
-    S.open = true;
-    S.overlay.style.display = 'block';
-    resize();
-    if (!S.raf) frame();
-    loadData();
-    if (S.poll) clearInterval(S.poll);
-    S.poll = setInterval(loadData, POLL_MS);
+    var tag = document.querySelector('script[data-brainmap]');
+    if (!tag) {
+      tag = document.createElement('script');
+      tag.setAttribute('data-brainmap', '1');
+      tag.src = '/brainmap.js?v=' + Date.now();
+      tag.onload = function () {
+        if (typeof window.openBrainMap === 'function') window.openBrainMap();
+        else alert('نقشه‌ی مغز بارگذاری نشد — لطفاً Ctrl+Shift+R بزن.');
+      };
+      tag.onerror = function () { alert('نقشه‌ی مغز پیدا نشد (brainmap.js). لطفاً نسخه‌ی کامل را دوباره نصب کن.'); };
+      document.head.appendChild(tag);
+      return;
+    }
+    // Script is present but the function still isn't defined — ask for a refresh
+    // rather than showing the old 3D scene.
+    alert('نقشه‌ی مغز آماده نیست — لطفاً Ctrl+Shift+R بزن.');
   }
 
   function close() {
