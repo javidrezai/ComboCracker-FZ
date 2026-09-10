@@ -15,6 +15,9 @@ auto_pull_model: true
 retrieval: auto
 embeddings_model: nomic-embed-text
 
+## به‌روزرسانی
+check_updates: true
+
 ## زمان‌بندِ داخلی (کارهای خودکار پس‌زمینه)
 scheduler: true
 dashboard_interval: 60
@@ -35,6 +38,7 @@ vault_remote:
 - `auto_pull_model` — اگر `true` باشد، ستایش خودش مدل نبود را دانلود می‌کند.
 - `retrieval` — `auto` (embeddings اگر بود، وگرنه TF-IDF)، یا `tfidf`، یا `embeddings`.
 - `embeddings_model` — مدلِ برداری‌سازی روی Ollama (مثلاً `nomic-embed-text`).
+- `check_updates` — اگر `true` باشد، ستایش هنگام اجرا خبر می‌دهد نسخهٔ جدیدی هست.
 - `auto_sync` — اگر `true` باشد، مغز سرور قبل هر اجرا از والت `pull` و بعد از آن `push` می‌کند.
 - `vault_remote` — آدرس مخزن گیت والت (اختیاری).
 - `scheduler` — روشن/خاموش کردن زمان‌بند داخلی.

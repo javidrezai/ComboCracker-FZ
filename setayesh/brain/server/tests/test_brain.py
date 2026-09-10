@@ -17,7 +17,7 @@ from ollama_setup import ensure_ollama, connection_summary
 from scheduler import BrainScheduler
 from local_llm import LocalFallbackLLM
 import normalize as norm
-from updater import self_update, _find_repo
+from updater import self_update, _find_repo, check_for_update, check_for_update_cached
 from bridge import VaultBridge
 
 
@@ -437,6 +437,61 @@ class UpdaterTests(unittest.TestCase):
             (Path(tmp) / "VERSION").write_text("1.2.3", encoding="utf-8")
             r = self_update(tmp)
             self.assertEqual(r["old"], "1.2.3")
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
+class UpdateCheckTests(unittest.TestCase):
+    def _run(self, *a):
+        import subprocess
+        return subprocess.run(a, capture_output=True, text=True)
+
+    def test_detects_newer_origin(self):
+        import subprocess, os
+        work = tempfile.mkdtemp(); origin = tempfile.mkdtemp(); clone = tempfile.mkdtemp()
+        try:
+            self._run("git", "init", "-q", "-b", "main", work)
+            os.makedirs(os.path.join(work, "setayesh"))
+            open(os.path.join(work, "setayesh", "VERSION"), "w").write("0.6.0")
+            self._run("git", "-C", work, "add", ".")
+            self._run("git", "-C", work, "-c", "user.email=t@t", "-c", "user.name=t",
+                      "commit", "-q", "-m", "v0.6.0")
+            self._run("git", "init", "--bare", "-q", "-b", "main", origin)
+            self._run("git", "-C", work, "remote", "add", "origin", origin)
+            self._run("git", "-C", work, "push", "-q", "origin", "main")
+            self._run("git", "clone", "-q", origin, clone)
+            open(os.path.join(work, "setayesh", "VERSION"), "w").write("0.7.0")
+            self._run("git", "-C", work, "add", ".")
+            self._run("git", "-C", work, "-c", "user.email=t@t", "-c", "user.name=t",
+                      "commit", "-q", "-m", "v0.7.0")
+            self._run("git", "-C", work, "push", "-q", "origin", "main")
+            r = check_for_update(os.path.join(clone, "setayesh"))
+            self.assertTrue(r["available"])
+            self.assertEqual(r["latest"], "0.7.0")
+            self.assertEqual(r["behind"], 1)
+        finally:
+            for d in (work, origin, clone):
+                shutil.rmtree(d, ignore_errors=True)
+
+    def test_non_git_not_available(self):
+        tmp = tempfile.mkdtemp()
+        try:
+            (Path(tmp) / "VERSION").write_text("0.6.0", encoding="utf-8")
+            r = check_for_update(tmp)
+            self.assertFalse(r["available"])
+            self.assertEqual(r["reason"], "not-git")
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_cache_reused(self):
+        tmp = tempfile.mkdtemp()
+        try:
+            (Path(tmp) / "VERSION").write_text("0.6.0", encoding="utf-8")
+            cache = os.path.join(tmp, "c.json")
+            r1 = check_for_update_cached(tmp, cache)
+            r2 = check_for_update_cached(tmp, cache)
+            self.assertFalse(r1.get("cached"))
+            self.assertTrue(r2.get("cached"))
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
 

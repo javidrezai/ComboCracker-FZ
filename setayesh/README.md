@@ -145,6 +145,12 @@ bash setayesh/scripts/setup-vault-repo.sh git@github.com:USER/setayesh-vault.git
 curl -fsSL https://raw.githubusercontent.com/javidrezai/ComboCracker-FZ/claude/setayesh-project-continuation-tcud92/setayesh/bootstrap.sh | bash
 ```
 
+**ستایش هنگام اجرا خبر می‌دهد نسخهٔ جدیدی هست:**
+اگر نسخهٔ تازه‌تری روی مخزن باشد، این خط را می‌بینید (بررسیِ کش‌شده، بدون کندکردن اجرا):
+> 🆕 نسخهٔ جدید ستایش موجود است: 0.6.0 → 0.7.0. به‌روزرسانی: `main.py --update`
+
+خاموش‌کردن با `check_updates: false` در تنظیمات.
+
 **ستایش خودش را به‌روز می‌کند (مثل آپدیت درون‌برنامه‌ای):**
 ```bash
 python3 setayesh/brain/server/main.py --update

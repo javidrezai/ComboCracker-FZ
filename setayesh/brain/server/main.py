@@ -64,6 +64,26 @@ def make_brain():
     return vault, llm, loop, bridge
 
 
+def update_notice(vault, quiet=False):
+    """اگر نسخهٔ جدیدی هست، یک اعلان یک‌خطی چاپ می‌کند (کش‌شده، بدون کندکردن)."""
+    s = vault.read_settings()
+    if str(s.get("check_updates", "true")).lower() in ("false", "0", "no", "off"):
+        return None
+    try:
+        from updater import check_for_update_cached
+        root = Path(__file__).resolve().parents[2]
+        r = check_for_update_cached(root, vault.root / ".index" / "update-check.json")
+        if r.get("available"):
+            msg = (f"🆕 نسخهٔ جدید ستایش موجود است: {r['current']} → {r['latest']} "
+                   f"({r['behind']} کامیت جلوتر). به‌روزرسانی: main.py --update")
+            if not quiet:
+                print(msg)
+            return msg
+    except Exception:
+        pass
+    return None
+
+
 def auto_connect(vault, llm, quiet=False):
     """اتصال خودکار اولاما به ستایش بر اساس تنظیمات والت."""
     s = vault.read_settings()
@@ -183,6 +203,7 @@ def main():
 
     if args and args[0] == "--serve":
         auto_connect(vault, llm)
+        update_notice(vault)
         BrainScheduler(vault, llm, bridge).start()
         return serve((vault, llm, loop, bridge))
     if args and args[0] == "--dashboard":
@@ -227,8 +248,9 @@ def main():
         print(__doc__)
         return
 
-    # اتصال خودکار اولاما به ستایش (بدون دخالت دستی)
+    # اتصال خودکار اولاما + بررسی نسخهٔ جدید
     auto_connect(vault, llm)
+    update_notice(vault)
 
     if args:
         return ask(loop, vault, llm, " ".join(args), bridge) and None

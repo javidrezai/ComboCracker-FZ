@@ -12,6 +12,7 @@ def build(vault, llm, settings, bridge=None):
     engine = f"`{settings.get('model', llm.model)}`" if llm.is_available() else "مدل محلیِ جایگزین (اولاما آفلاین)"
 
     graph_md = graph_markdown(vault.knowledge_graph())
+    _upd = _update_line(vault)
     md = f"""# 🧠 داشبورد زندهٔ مغز ستایش
 
 > آخرین به‌روزرسانی: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
@@ -22,6 +23,7 @@ def build(vault, llm, settings, bridge=None):
 - **دما:** {settings.get('temperature', llm.temperature)}
 - **سقف گام:** {settings.get('max_steps', 6)}
 - **اتصال به والت ابسیدین:** {link}
+- **نسخه:** {_upd}
 
 ## نقشهٔ حافظهٔ دائمی
 | بخش | تعداد فایل |
@@ -44,6 +46,23 @@ def build(vault, llm, settings, bridge=None):
 """
     vault.write_dashboard(md)
     return md
+
+
+def _update_line(vault):
+    import json
+    from pathlib import Path
+    v = "?"
+    try:
+        v = (Path(__file__).resolve().parents[2] / "VERSION").read_text(encoding="utf-8").strip()
+    except Exception:
+        pass
+    try:
+        c = json.loads((Path(vault.root) / ".index" / "update-check.json").read_text(encoding="utf-8"))
+        if c.get("available"):
+            return f"{v} — 🆕 نسخهٔ {c.get('latest')} موجود است (main.py --update)"
+    except Exception:
+        pass
+    return f"{v} — ✅ به‌روز"
 
 
 def _esc(t):
