@@ -15,6 +15,7 @@ import dashboard as dash
 from ollama_setup import ensure_ollama, connection_summary
 from scheduler import BrainScheduler
 from local_llm import LocalFallbackLLM
+import normalize as norm
 from bridge import VaultBridge
 
 
@@ -287,6 +288,35 @@ class LocalFallbackTests(unittest.TestCase):
             loop = AgentLoop(down, vault, max_steps=4, fallback=LocalFallbackLLM())
             res = loop.run("۶ ضربدر ۷")
             self.assertEqual(res["answer"].strip(), "42")
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
+class NormalizationTests(unittest.TestCase):
+    def test_unifies_arabic_persian_chars(self):
+        self.assertEqual(norm.normalize_text("كتاب ي"), norm.normalize_text("کتاب ی"))
+
+    def test_strips_zwnj_and_digits(self):
+        self.assertEqual(norm.normalize_text("وب‌هوک ۱۲۳"), "وبهوک 123")
+
+    def test_canonical_map_bridges_scripts(self):
+        cmap = norm.build_canonical_map()
+        self.assertEqual(cmap[norm.normalize_text("اولاما")], cmap[norm.normalize_text("ollama")])
+
+    def test_parse_alias_file(self):
+        groups = norm.parse_alias_file("اصطلاح = term, واژه\n# نظر\nبد")
+        self.assertEqual(len(groups), 1)
+        self.assertIn("term", groups[0])
+
+    def test_cross_script_retrieval(self):
+        tmp = tempfile.mkdtemp()
+        try:
+            v = Vault(tmp)
+            (v.knowledge / "Ollama.md").write_text(
+                "# Ollama\nاجرای مدل محلی. ollama serve و ollama pull.", encoding="utf-8")
+            (v.knowledge / "چای.md").write_text("# چای\nنوشیدنی گرم.", encoding="utf-8")
+            hits = v.retrieve("اولاما چیست", k=2)  # پرسش فارسی → نوت لاتین
+            self.assertEqual(hits[0][0], "Ollama")
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
 

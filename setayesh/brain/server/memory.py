@@ -9,6 +9,8 @@ import datetime
 from collections import Counter
 from pathlib import Path
 
+import normalize as norm
+
 
 LINK_RE = re.compile(r"\[\[([^\]]+)\]\]")
 WORD_RE = re.compile(r"[\w؀-ۿ]+", re.UNICODE)
@@ -62,6 +64,16 @@ class Vault:
         f.write_text(text, encoding="utf-8")
         return value
 
+    # ---------- یکسان‌سازی و هم‌معنی‌ها ----------
+    def _canonical_map(self):
+        f = self.config / "aliases.md"
+        extra = norm.parse_alias_file(f.read_text(encoding="utf-8")) if f.exists() else []
+        return norm.build_canonical_map(extra)
+
+    def _tokens(self, text, cmap):
+        toks = [w.lower() for w in WORD_RE.findall(norm.normalize_text(text)) if len(w) > 1]
+        return norm.canonicalize(toks, cmap)
+
     # ---------- ایندکس و بازیابی گراف دانش ----------
     def _all_notes(self):
         notes = []
@@ -79,12 +91,13 @@ class Vault:
         """
         notes = self._all_notes()
         by_name = {f.stem: (f, txt) for f, txt in notes}
+        cmap = self._canonical_map()
         docs = []
         for f, txt in notes:
-            toks = [w.lower() for w in WORD_RE.findall(txt) if len(w) > 1]
+            toks = self._tokens(txt, cmap)
             if toks:
                 docs.append((f, txt, toks))
-        q_tokens = [w.lower() for w in WORD_RE.findall(query) if len(w) > 1]
+        q_tokens = self._tokens(query, cmap)
         if not docs or not q_tokens:
             return []
 
@@ -111,7 +124,7 @@ class Vault:
             dot = sum(qv * dvec[t] for t, qv in qvec.items() if t in dvec)
             score = dot / (qnorm * dnorm)
             # تقویت تطبیق عنوان
-            if q_title_set & set(w.lower() for w in WORD_RE.findall(f.stem)):
+            if q_title_set & set(self._tokens(f.stem, cmap)):
                 score += 0.15
             if score > 0:
                 scored.append((score, f, txt))
