@@ -1,4 +1,4 @@
-/* SETAYESH_BUILD 9.9.71 */
+/* SETAYESH_BUILD 9.9.72 */
 (function(){
 'use strict';
 
