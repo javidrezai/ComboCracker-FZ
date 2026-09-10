@@ -181,7 +181,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.57';
+const APP_VERSION = '9.9.58';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -3834,6 +3834,33 @@ app.put('/api/chats', requireAuth, (req, res) => {
     const t = Number(body.t) || Date.now();
     fs.mkdirSync(CHATS_DIR, { recursive: true });
     fs.writeFileSync(chatsFileFor(req.username), JSON.stringify({ t, chats }), { mode: 0o600 });
+    res.json({ ok: true, t });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Per-user UI preferences (theme, text size, language) — kept on the server
+// too, so a member's look follows them from phone to tablet to PC. Same
+// last-write-wins shape as chats; memory already lives on the server.
+const PREFS_DIR = process.env.SETAYESH_PREFS_DIR || path.join(DATA_DIR, '.setayesh-prefs');
+function prefsFileFor(user) { return path.join(PREFS_DIR, encodeURIComponent(String(user || 'default')) + '.json'); }
+app.get('/api/prefs', requireAuth, (req, res) => {
+  try {
+    const f = prefsFileFor(req.username);
+    if (!fs.existsSync(f)) return res.json({ t: 0, prefs: {} });
+    const raw = JSON.parse(fs.readFileSync(f, 'utf8'));
+    res.json({ t: raw.t || 0, prefs: raw.prefs || {} });
+  } catch (e) { res.json({ t: 0, prefs: {} }); }
+});
+app.put('/api/prefs', requireAuth, (req, res) => {
+  try {
+    const body = req.body || {};
+    const inP = (body && typeof body.prefs === 'object' && body.prefs) ? body.prefs : {};
+    // Only these keys, all short strings — nothing else is stored.
+    const prefs = {};
+    ['theme', 'textsize', 'lang'].forEach((k) => { if (inP[k] != null) prefs[k] = String(inP[k]).slice(0, 40); });
+    const t = Number(body.t) || Date.now();
+    fs.mkdirSync(PREFS_DIR, { recursive: true });
+    fs.writeFileSync(prefsFileFor(req.username), JSON.stringify({ t, prefs }), { mode: 0o600 });
     res.json({ ok: true, t });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });

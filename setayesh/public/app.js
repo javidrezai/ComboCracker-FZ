@@ -906,19 +906,24 @@ var THEMES=[
   {id:'sunset',c:'linear-gradient(135deg,#fb923c,#f472b6)'}
 ];
 function themeKey(){return 'setayesh.theme.'+(currentUsername||'default');}
-function applyTheme(id){
+// NOTE: renamed from applyTheme — a second function named applyTheme (the
+// custom-appearance one that takes an object) is declared later in this file
+// and was shadowing this one, so the preset theme swatches silently did
+// nothing. Distinct names fix both features.
+function applyPresetTheme(id){
   if(id&&id!=='violet')document.documentElement.setAttribute('data-theme',id);
   else document.documentElement.removeAttribute('data-theme');
   try{localStorage.setItem(themeKey(),id||'violet');}catch(e){}
   renderThemePicker(id||'violet');
+  pushPrefs();
 }
-function loadTheme(){var id='cyber';try{id=localStorage.getItem(themeKey())||'cyber';}catch(e){}applyTheme(id);}
+function loadTheme(){var id='cyber';try{id=localStorage.getItem(themeKey())||'cyber';}catch(e){}applyPresetTheme(id);}
 function renderThemePicker(active){
   var box=$('themePicker');if(!box)return;box.innerHTML='';
   THEMES.forEach(function(th){
     var s=el('button','swatch'+(th.id===active?' on':''));s.type='button';s.style.background=th.c;
     s.title=t('th_'+th.id);
-    s.addEventListener('click',function(){applyTheme(th.id);});
+    s.addEventListener('click',function(){applyPresetTheme(th.id);});
     box.appendChild(s);
   });
 }
@@ -942,10 +947,42 @@ function applyTextSize(sz){
   Array.prototype.forEach.call(document.querySelectorAll('#textSizeRow .seg'),function(b){
     b.classList.toggle('on',b.getAttribute('data-size')===sz);
   });
+  pushPrefs();
 }
 function loadTextSize(){
   var sz='medium';try{sz=localStorage.getItem('setayesh.textsize')||'medium';}catch(e){}
   applyTextSize(sz);
+}
+/* Cross-device preferences: theme, text size and language follow the account
+   from one device to another. Memory and conversations already live on the
+   server; this covers the last per-browser bits. */
+var _prefsReady=false,_prefsPushTimer=null;
+function currentPrefs(){
+  var p={theme:'violet',textsize:'medium',lang:(typeof lang!=='undefined'?lang:'fa')};
+  try{p.theme=localStorage.getItem(themeKey())||'violet';}catch(e){}
+  try{p.textsize=localStorage.getItem('setayesh.textsize')||'medium';}catch(e){}
+  try{p.lang=localStorage.getItem('setayesh.lang')||p.lang;}catch(e){}
+  return p;
+}
+function pushPrefs(){
+  if(!_prefsReady||!token)return;
+  if(_prefsPushTimer)clearTimeout(_prefsPushTimer);
+  _prefsPushTimer=setTimeout(function(){
+    fetch('/api/prefs',{method:'PUT',headers:authHeaders({'Content-Type':'application/json'}),
+      body:JSON.stringify({t:Date.now(),prefs:currentPrefs()})}).catch(function(){});
+  },1000);
+}
+function syncPrefsFromServer(done){
+  if(!token){if(done)done();return;}
+  fetch('/api/prefs',{headers:authHeaders()}).then(function(r){return r.json();}).then(function(d){
+    var p=(d&&d.prefs)||{}, has=!!(p.theme||p.textsize||p.lang);
+    if(p.theme)applyPresetTheme(p.theme);
+    if(p.textsize)applyTextSize(p.textsize);
+    if(p.lang&&typeof lang!=='undefined'&&p.lang!==lang){lang=p.lang;try{localStorage.setItem('setayesh.lang',lang);}catch(e){}applyLang();}
+    _prefsReady=true;
+    if(!has)pushPrefs();   // first device sets the shared copy
+    if(done)done();
+  }).catch(function(){_prefsReady=true;if(done)done();});
 }
 function clearAllChats(){
   if(!confirm(t('clearChatsConfirm')))return;
@@ -1173,6 +1210,8 @@ async function enterApp(){
   syncChatsFromServer(function(){
     if(!chats.length){ newChat(); } else { renderChatList(); renderThread(); }
   });
+  // Bring this account's look (theme, text size, language) from the server too.
+  syncPrefsFromServer();
 }
 
 /* ================= events ================= */
@@ -1947,22 +1986,36 @@ $('auEnabled').addEventListener('change',function(){
     .then(function(){ ccNote($('auEnabled').checked?'روشن شد — هر ZIP در پوشه‌ی updates خودکار نصب می‌شود.':'خاموش شد.'); loadCCUpdate(); })
     .catch(function(e){ ccNote(e.message,true); });
 });
+/* Build an installable ZIP of the current code and hand it to the browser to
+   save. Shared by the Control-Center button and the in-brain button. `report`
+   is an optional callback(message, isError, done). */
+function downloadSelfPackage(report){
+  report&&report('در حال بستن نسخه...',false,false);
+  return fetch('/api/admin/build-update',{headers:authHeaders()}).then(function(r){
+    if(!r.ok)return r.json().then(function(d){throw new Error((d&&d.error)||'خطا');});
+    return r.blob();
+  }).then(function(blob){
+    var url=URL.createObjectURL(blob);
+    var a=document.createElement('a'); a.href=url; a.download='SETAYESH'+(RUNNING_VERSION||'')+'.zip';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function(){URL.revokeObjectURL(url);},4000);
+    report&&report('ساخته شد و دانلود شروع شد ('+Math.round(blob.size/1024)+' کیلوبایت).',false,true);
+  }).catch(function(e){ report&&report('خطا: '+e.message,true,true); throw e; });
+}
 (function(){
-  var bp=$('ccBuildPkg'); if(!bp)return;
-  bp.addEventListener('click',function(){
-    var note=$('ccBuildNote'); note.style.color='var(--muted)'; note.textContent='در حال بستن نسخه...';
-    bp.disabled=true;
-    fetch('/api/admin/build-update',{headers:authHeaders()}).then(function(r){
-      if(!r.ok)return r.json().then(function(d){throw new Error((d&&d.error)||'خطا');});
-      return r.blob();
-    }).then(function(blob){
-      var url=URL.createObjectURL(blob);
-      var a=document.createElement('a'); a.href=url; a.download='SETAYESH'+(RUNNING_VERSION||'')+'.zip';
-      document.body.appendChild(a); a.click(); a.remove();
-      setTimeout(function(){URL.revokeObjectURL(url);},4000);
-      note.style.color='#34d399'; note.textContent='ساخته شد و دانلود شروع شد ('+Math.round(blob.size/1024)+' کیلوبایت).';
-      bp.disabled=false;
-    }).catch(function(e){ note.style.color='#fb7185'; note.textContent='خطا: '+e.message; bp.disabled=false; });
+  var bp=$('ccBuildPkg');
+  if(bp)bp.addEventListener('click',function(){
+    var note=$('ccBuildNote'); bp.disabled=true;
+    downloadSelfPackage(function(msg,err){ note.style.color=err?'#fb7185':(msg.indexOf('ساخته')===0?'#34d399':'var(--muted)'); note.textContent=msg; })
+      .then(function(){bp.disabled=false;}).catch(function(){bp.disabled=false;});
+  });
+  // Same action, reachable from inside the 3D brain view.
+  var bb=$('brainBuildPkg'), st=$('brainStatus');
+  if(bb)bb.addEventListener('click',function(){
+    bb.disabled=true; var old=bb.textContent; bb.textContent='… در حال ساخت';
+    downloadSelfPackage(function(msg){ if(st)st.textContent=msg; })
+      .then(function(){bb.disabled=false;bb.textContent=old;})
+      .catch(function(){bb.disabled=false;bb.textContent=old;});
   });
 })();
 $('auScan').addEventListener('click',function(){
@@ -3529,7 +3582,7 @@ document.addEventListener('drop',function(e){
   renderPending();
 });
 
-function switchLang(){lang=lang==='fa'?'en':'fa';localStorage.setItem('setayesh.lang',lang);applyLang();}
+function switchLang(){lang=lang==='fa'?'en':'fa';localStorage.setItem('setayesh.lang',lang);applyLang();pushPrefs();}
 $('langBtn').addEventListener('click',switchLang);
 $('langBtnLogin').addEventListener('click',switchLang);
 
