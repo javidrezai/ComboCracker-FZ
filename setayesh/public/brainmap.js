@@ -1,4 +1,4 @@
-/* SETAYESH_BUILD 9.9.73 */
+/* SETAYESH_BUILD 9.9.74 */
 /* Brain map — a living picture of Setayesh's whole self: a central hexagon
    core with every file as a node around it, colour-coded by area, green when
    healthy / red when missing. Click a node to see what it does and edit it.
@@ -97,6 +97,8 @@
     var g=svg('g',{style:'cursor:pointer'});
     g.setAttribute('transform','translate('+cx+' '+cy+') scale('+s+')');
     g.innerHTML=''+
+      // the brain slowly spins about its own centre
+      '<animateTransform attributeName="transform" type="rotate" from="0 0 0" to="360 0 0" dur="48s" repeatCount="indefinite" additive="sum"/>'+
       '<ellipse cx="0" cy="118" rx="96" ry="20" fill="#0a1020" opacity=".7"/>'+
       // hemispheres
       '<path d="M-4,-118 C-46,-124 -92,-96 -100,-46 C-107,6 -90,58 -58,94 C-42,112 -16,116 -6,102 C-4,60 -4,-40 -4,-118 Z" fill="url(#brL)" stroke="#ff8a1f" stroke-width="1.5" filter="url(#brGlow)"/>'+
@@ -136,13 +138,24 @@
       '<radialGradient id="brL" cx="42%" cy="40%" r="70%"><stop offset="0" stop-color="#ffd7a0"/><stop offset=".45" stop-color="#ff8a1f"/><stop offset="1" stop-color="#7a2a00"/></radialGradient>'+
       '<radialGradient id="brR" cx="58%" cy="40%" r="70%"><stop offset="0" stop-color="#cfe8ff"/><stop offset=".45" stop-color="#3fa0e6"/><stop offset="1" stop-color="#0b2f5e"/></radialGradient>'+
       '<filter id="bmGlow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="6" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>'+
-      '<filter id="brGlow" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>';
+      '<filter id="brGlow" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>'+
+      // moving signals along every connection + a gently breathing glow
+      '<style>.bm-flow{stroke-dasharray:5 9;animation:bmflow .9s linear infinite}'+
+      '@keyframes bmflow{to{stroke-dashoffset:-14}}'+
+      '.bm-flow2{stroke-dasharray:7 10;animation:bmflow2 1.1s linear infinite}'+
+      '@keyframes bmflow2{to{stroke-dashoffset:17}}</style>';
     s.appendChild(defs);
     var linesG=svg('g'), nodesG=svg('g'); s.appendChild(linesG); s.appendChild(nodesG);
 
-    // bridge between the two brains
-    var bridge=svg('line',{x1:cxA,y1:cy,x2:cxB,y2:cy,stroke:'rgba(123,92,255,.5)','stroke-width':3,'stroke-dasharray':'6 7',filter:'url(#bmGlow)'});
+    // bridge between the two brains — signals flow both ways across it
+    var bridge=svg('line',{x1:cxA,y1:cy,x2:cxB,y2:cy,stroke:'rgba(123,92,255,.7)','stroke-width':3,filter:'url(#bmGlow)',class:'bm-flow2'});
     linesG.appendChild(bridge);
+    // two bright signal pulses travelling across the bridge in opposite ways
+    var pulse1=svg('circle',{r:4,fill:'#c4b5fd',filter:'url(#bmGlow)'});
+    pulse1.innerHTML='<animate attributeName="cx" values="'+cxA+';'+cxB+'" dur="2.4s" repeatCount="indefinite"/><animate attributeName="cy" values="'+cy+';'+cy+'" dur="2.4s" repeatCount="indefinite"/>';
+    var pulse2=svg('circle',{r:3.5,fill:'#7dd3fc',filter:'url(#bmGlow)'});
+    pulse2.innerHTML='<animate attributeName="cx" values="'+cxB+';'+cxA+'" dur="3s" repeatCount="indefinite"/><animate attributeName="cy" values="'+cy+';'+cy+'" dur="3s" repeatCount="indefinite"/>';
+    linesG.appendChild(pulse1); linesG.appendChild(pulse2);
     var bl=svg('text',{x:(cxA+cxB)/2,y:cy-12,'text-anchor':'middle',fill:'#b9a7ff','font-size':'12','font-weight':'700'}); bl.textContent='⇄ هماهنگ';
     nodesG.appendChild(bl);
 
@@ -159,7 +172,7 @@
       var R=rings[r].r, x=cxA+R*Math.cos(ang), y=cy+R*Math.sin(ang);
       n._x=x; n._y=y;
       var col=GROUP_COLORS[n.group]||'#8ea0c8', health=n.exists?col:'#fb7185';
-      linesG.appendChild(svg('line',{x1:cxA,y1:cy,x2:x,y2:y,stroke:n.exists?'rgba(120,160,220,.26)':'rgba(251,113,133,.5)','stroke-width':n.exists?1:1.6}));
+      linesG.appendChild(svg('line',{x1:cxA,y1:cy,x2:x,y2:y,stroke:n.exists?'rgba(120,190,255,.5)':'rgba(251,113,133,.6)','stroke-width':n.exists?1.4:1.8,class:'bm-flow'}));
       var g=svg('g',{style:'cursor:pointer'});
       g.appendChild(svg('circle',{cx:x,cy:y,r:11,fill:'rgba(10,14,26,.92)',stroke:health,'stroke-width':2,filter:'url(#bmGlow)'}));
       g.appendChild(svg('circle',{cx:x,cy:y,r:4,fill:health,opacity:n.exists?'.95':'1'}));
@@ -177,7 +190,7 @@
     for(var k=0;k<kn;k++){
       var a=(Math.PI*2)*(k/Math.max(kn,1)) - Math.PI/2, R2=120;
       var x2=cxB+R2*Math.cos(a), y2=cy+R2*Math.sin(a);
-      linesG.appendChild(svg('line',{x1:cxB,y1:cy,x2:x2,y2:y2,stroke:'rgba(244,114,182,.3)','stroke-width':1}));
+      linesG.appendChild(svg('line',{x1:cxB,y1:cy,x2:x2,y2:y2,stroke:'rgba(244,114,182,.55)','stroke-width':1.4,class:'bm-flow'}));
       var gk=svg('g'); gk.appendChild(svg('circle',{cx:x2,cy:y2,r:7,fill:'rgba(20,10,20,.9)',stroke:'#f472b6','stroke-width':2,filter:'url(#bmGlow)'}));
       gk.appendChild(svg('circle',{cx:x2,cy:y2,r:2.6,fill:'#f9a8d4'})); nodesG.appendChild(gk);
     }
@@ -201,20 +214,50 @@
       sp.innerHTML='<span style="width:9px;height:9px;border-radius:2px;background:'+GROUP_COLORS[g]+'"></span>'+g; leg.appendChild(sp);
     }); }
   }
+  // A command panel that lives inside each brain: type something, press اجرا
+  // (or Ctrl/Cmd+Enter), and it runs on that brain and shows the answer.
+  // Brain one runs on the default engine; brain two runs on the Python brain.
+  function cmdHTML(color,ph){
+    return '<div style="margin-top:12px;border-top:1px solid rgba(255,255,255,.12);padding-top:10px">'+
+      '<div style="font-size:12px;font-weight:700;color:'+color+';margin-bottom:6px">▮ پنل دستوری</div>'+
+      '<textarea id="bmCmd" placeholder="'+ph+'" style="width:100%;height:74px;background:#080b16;color:#dbe4f7;border:1px solid rgba(255,255,255,.14);border-radius:10px;padding:8px;font:400 12px/1.6 inherit;resize:vertical"></textarea>'+
+      '<button id="bmRun" style="margin-top:8px;padding:8px 18px;border-radius:9px;border:0;background:linear-gradient(135deg,'+color+',#22d3ee);color:#04121e;font-weight:800;cursor:pointer;font-size:12.5px">▶ اجرا</button>'+
+      '<span style="font-size:10.5px;color:#7e8fb5;margin-inline-start:8px">Ctrl+Enter</span>'+
+      '<div id="bmOut" style="font-size:12px;margin-top:8px;line-height:1.8;white-space:pre-wrap;color:#cfe0ff;max-height:34vh;overflow:auto"></div></div>';
+  }
+  function wireCommand(engineId){
+    var run=el('bmRun'), ta=el('bmCmd'), out=el('bmOut'); if(!run||!ta||!out)return;
+    function go(){
+      var msg=(ta.value||'').trim(); if(!msg)return;
+      out.style.color='#8ea0c8'; out.textContent='در حال اجرا…'; run.disabled=true;
+      var fd=new FormData(); fd.append('message',msg); fd.append('auto','false'); if(engineId)fd.append('provider',engineId);
+      fetch('/api/chat',{method:'POST',headers:authH(),body:fd})
+        .then(function(r){return r.json().then(function(d){ return {ok:r.ok,d:d}; });})
+        .then(function(x){ run.disabled=false;
+          if(!x.ok||x.d.error){ out.style.color='#fb7185'; out.textContent='خطا: '+((x.d&&x.d.error)||'اجرا نشد'); return; }
+          out.style.color='#cfe0ff'; out.textContent=x.d.reply||'(بدون پاسخ)';
+        })
+        .catch(function(e){ run.disabled=false; out.style.color='#fb7185'; out.textContent='خطا: '+e.message; });
+    }
+    run.addEventListener('click',go);
+    ta.addEventListener('keydown',function(e){ if((e.ctrlKey||e.metaKey)&&e.key==='Enter'){ e.preventDefault(); go(); } });
+  }
   function selectPybrain(){
     var p=panel(); if(!p)return; var pb=MAP.pybrain||{};
     p.innerHTML='<div style="font-weight:800;font-size:15px;color:#f472b6;margin-bottom:6px">🧠 مغز دوم — پایتون</div>'+
       '<div style="font-size:12.5px;color:#c9d4ee;line-height:1.9;margin-bottom:8px">مغز خودآموزِ محلی با حافظهٔ والت (Obsidian). کنار مغز اول کار می‌کند و با آن هماهنگ می‌ماند.</div>'+
-      '<div style="font-size:12px;color:#8ea0c8">پایتون: '+(pb.python?'✅ آماده':'🔴 نصب نیست')+' · فایل مغز: '+(pb.exists?'✅':'🔴')+' · دانش والت: '+(pb.knowledgeFiles||0)+' نوت</div>';
-    p.style.display='block';
+      '<div style="font-size:12px;color:#8ea0c8">پایتون: '+(pb.python?'✅ آماده':'🔴 نصب نیست')+' · فایل مغز: '+(pb.exists?'✅':'🔴')+' · دانش والت: '+(pb.knowledgeFiles||0)+' نوت</div>'+
+      cmdHTML('#f472b6','چیزی بنویس تا مغز دوم (پایتون) اجرا کند…');
+    p.style.display='block'; wireCommand('brain');
   }
 
   function panel(){ return el('brainMapPanel'); }
   function selectCore(){
     var p=panel(); if(!p)return;
-    p.innerHTML='<div style="font-weight:800;font-size:15px;color:#7dd3fc;margin-bottom:6px">🧠 هستهٔ ستایش</div>'+
-      '<div style="font-size:12.5px;color:#b9c4e0;line-height:1.9">این نقشهٔ کاملِ خودِ ستایش است. هر گره یک فایل است؛ رنگ = بخش، حلقهٔ سبز = سالم، قرمز = گم‌شده. روی هر گره بزن تا کارش را ببینی و ویرایشش کنی.</div>';
-    p.style.display='block';
+    p.innerHTML='<div style="font-weight:800;font-size:15px;color:#7dd3fc;margin-bottom:6px">🧠 مغز اول — ستایش</div>'+
+      '<div style="font-size:12.5px;color:#b9c4e0;line-height:1.9">این نقشهٔ کاملِ خودِ ستایش است. هر گره یک فایل است؛ رنگ = بخش، حلقهٔ سبز = سالم، قرمز = گم‌شده. روی هر گره بزن تا کارش را ببینی و ویرایشش کنی.</div>'+
+      cmdHTML('#7dd3fc','چیزی بنویس تا مغز اول اجرا کند…');
+    p.style.display='block'; wireCommand('');
   }
   function selectNode(n){
     SEL=n; var p=panel(); if(!p)return;
