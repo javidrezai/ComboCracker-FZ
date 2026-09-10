@@ -5512,6 +5512,16 @@ async function processInboxFile(file, opts) {
     try {
       await inspectUpdateZip(full, opts);
     } catch (e) {
+      // A zip that IS a Setayesh package but was refused (same/older version,
+      // or bad code) must not be filed away silently as a random file — the
+      // admin needs the real reason (e.g. "turn on repair mode"). Only a zip
+      // that isn't a Setayesh package at all gets kept as a plain file.
+      const isPackage = !/index\.js ندارد/.test(e.message);
+      if (isPackage) {
+        try { fs.unlinkSync(full); } catch (e2) {}
+        nightLog(`بسته‌ی «${file}» نصب نشد: ${e.message}`, 'info');
+        return { kind: 'update-rejected', reason: e.message };
+      }
       const dest = path.join(inboxSub('files'), file);
       try { fs.renameSync(full, dest); } catch (e2) {}
       nightLog(`«${file}» بسته‌ی به‌روزرسانی نبود (${e.message}) — در inbox/files گذاشته شد.`, 'info');
@@ -6072,6 +6082,8 @@ app.post('/api/admin/inbox/upload', requireAuth, requireAdmin, upload.single('fi
           ? ('هشدار: بعضی فایل‌ها نوشته نشدند (' + result.verifyFail.slice(0, 5).join('، ') + '). فضای دیسک را بررسی کن و دوباره امتحان کن.')
           : (RESTART_SUPPORTED ? 'نسخه ' + result.version + (repair ? ' دوباره نصب شد (تعمیر)' : ' نصب شد') + ' — در حال ری‌استارت…' : 'نصب شد — برنامه را ری‌استارت کن.') });
       if (RESTART_SUPPORTED && !bad) setTimeout(() => process.exit(88), 1500);
+    } else if (result && result.kind === 'update-rejected') {
+      res.status(400).json({ error: result.reason });
     } else if (result && result.kind === 'script') {
       res.json({ ok: true, kind: 'script', name: result.name, note: 'اسکریپت به کتابخانه اضافه شد.' });
     } else if (result && result.kind === 'file') {
