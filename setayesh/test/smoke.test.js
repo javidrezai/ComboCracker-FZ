@@ -87,6 +87,33 @@ test('version matches package.json', async () => {
   assert.equal(d.version, PKG.version);
 });
 
+// The frontend build markers are the single guard against a silent partial
+// install (index.html/index.js updating while app.js/brainmap.js stay old).
+// If these drift from the package version, the integrity check would false-
+// positive forever, so the tests refuse to let them fall out of sync.
+test('frontend build markers match the package version', () => {
+  const files = ['public/app.js', 'public/brainmap.js', 'public/index.html'];
+  for (const rel of files) {
+    const head = fs.readFileSync(path.join(ROOT, rel), 'utf8').slice(0, 600);
+    const m = head.match(/SETAYESH_BUILD\s+([0-9]+\.[0-9]+\.[0-9]+)/);
+    assert.ok(m, `missing SETAYESH_BUILD marker in ${rel}`);
+    assert.equal(m[1], PKG.version, `stale build marker in ${rel}`);
+  }
+});
+
+test('served shell injects the version into asset URLs (no __VER__ left)', async () => {
+  const html = await (await fetch(BASE + '/')).text();
+  assert.ok(!html.includes('__VER__'), 'shell still contains the __VER__ placeholder');
+  assert.ok(html.includes('?v=' + PKG.version), 'shell asset URLs are not stamped with the version');
+});
+
+test('integrity endpoint reports a healthy install', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  const d = await (await api('/api/admin/integrity', { token })).json();
+  assert.equal(d.ok, true, 'integrity should be ok: ' + JSON.stringify(d.stale || []));
+  assert.equal(d.version, PKG.version);
+});
+
 test('login rejects a wrong password with 401', async () => {
   const r = await api('/api/login', { method: 'POST', body: { username: 'admin', password: 'wrong-pass' } });
   assert.equal(r.status, 401);

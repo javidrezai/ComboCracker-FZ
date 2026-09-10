@@ -181,7 +181,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.70';
+const APP_VERSION = '9.9.71';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -880,6 +880,35 @@ app.post('/api/change-password', requireAuth, passwordLimiter, async (req, res) 
 app.get('/api/version', (req, res) => {
   res.set('Cache-Control', 'no-store');
   res.json({ version: APP_VERSION });
+});
+
+// ---- Frontend integrity: catch a stale / partial install ----------------
+// The whole "my changes never showed up" class of bug came from the in-app
+// updater once skipping public/app.js and public/brainmap.js: index.js and
+// index.html updated, but the JS on disk stayed old, silently. Each shipped
+// frontend file now carries a "SETAYESH_BUILD <version>" marker on its first
+// line (enforced by a smoke test). Here we read that marker straight off disk
+// and compare it to the running server version, so a mismatch is DETECTED and
+// surfaced to the admin instead of failing in silence.
+const INTEGRITY_FILES = ['public/app.js', 'public/brainmap.js', 'public/index.html'];
+function assetBuildVersion(rel) {
+  try {
+    const head = fs.readFileSync(path.join(DATA_DIR, rel), 'utf8').slice(0, 600);
+    const m = head.match(/SETAYESH_BUILD\s+([0-9]+\.[0-9]+\.[0-9]+)/);
+    return m ? m[1] : null;
+  } catch (e) { return null; }
+}
+function frontendIntegrity() {
+  const stale = [];
+  for (const rel of INTEGRITY_FILES) {
+    const v = assetBuildVersion(rel);
+    if (v !== APP_VERSION) stale.push({ file: rel, found: v || 'نامشخص' });
+  }
+  return { ok: stale.length === 0, version: APP_VERSION, stale };
+}
+app.get('/api/admin/integrity', requireAuth, requireAdmin, (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json(frontendIntegrity());
 });
 
 app.get('/api/health', (req, res) => {
@@ -5465,7 +5494,8 @@ function inboxSub(name) {
   return d;
 }
 
-async function processInboxFile(file) {
+async function processInboxFile(file, opts) {
+  opts = opts || {};
   const full = path.join(INBOX_DIR, file);
   const ext = path.extname(file).toLowerCase();
 
@@ -5480,15 +5510,15 @@ async function processInboxFile(file) {
   if (ext === '.zip') {
     // Is it a Setayesh package, or just a zip someone dropped?
     try {
-      await inspectUpdateZip(full);
+      await inspectUpdateZip(full, opts);
     } catch (e) {
       const dest = path.join(inboxSub('files'), file);
       try { fs.renameSync(full, dest); } catch (e2) {}
       nightLog(`«${file}» بسته‌ی به‌روزرسانی نبود (${e.message}) — در inbox/files گذاشته شد.`, 'info');
       return { kind: 'file', name: file };
     }
-    const info = await applyUpdateZip(full, 'inbox');
-    return { kind: 'update', version: info.version };
+    const info = await applyUpdateZip(full, 'inbox', opts);
+    return { kind: 'update', version: info.version, verifyFail: info.verifyFail };
   }
 
   if (ext === '.py') {
@@ -5865,7 +5895,8 @@ function checkJsSyntax(code, label) {
   });
 }
 
-async function inspectUpdateZip(zipPath) {
+async function inspectUpdateZip(zipPath, opts) {
+  opts = opts || {};
   const buf = fs.readFileSync(zipPath);
   const raw = readZip(buf);
 
@@ -5891,8 +5922,15 @@ async function inspectUpdateZip(zipPath) {
   if (!m) throw new Error('شماره‌ی نسخه در بسته پیدا نشد.');
   const version = m[1];
 
-  if (!versionGreater(version, APP_VERSION)) {
-    throw new Error(`نسخه‌ی بسته (${version}) جدیدتر از نسخه‌ی فعلی (${APP_VERSION}) نیست.`);
+  // Normal updates must be strictly newer (this prevents an auto-update loop).
+  // A REPAIR reinstall (opts.allowEqual) also accepts the SAME version, so a
+  // partial/failed install can be completed without inventing a new number.
+  // A genuinely older package is always refused.
+  if (versionGreater(APP_VERSION, version)) {
+    throw new Error(`نسخه‌ی بسته (${version}) قدیمی‌تر از نسخه‌ی فعلی (${APP_VERSION}) است.`);
+  }
+  if (version === APP_VERSION && !opts.allowEqual) {
+    throw new Error(`نسخه‌ی بسته (${version}) همان نسخه‌ی فعلی است. برای نصب مجدد (تعمیر) گزینه‌ی تعمیر را روشن کن.`);
   }
 
   // Every JS file must parse.
@@ -5904,8 +5942,8 @@ async function inspectUpdateZip(zipPath) {
   return { version, files, count: Object.keys(files).length };
 }
 
-async function applyUpdateZip(zipPath, who) {
-  const info = await inspectUpdateZip(zipPath);   // reads every file into memory + version/syntax checks
+async function applyUpdateZip(zipPath, who, opts) {
+  const info = await inspectUpdateZip(zipPath, opts);   // reads every file into memory + version/syntax checks
 
   // Move the zip OUT of the scan folder NOW — right after it validates and its
   // contents are already in memory, BEFORE writing files or restarting. This
@@ -5929,7 +5967,24 @@ async function applyUpdateZip(zipPath, who) {
     fs.writeFileSync(full, data);
   }
 
-  nightLog(`نسخه ${info.version} نصب شد — ری‌استارت برای فعال شدن.`, 'ok');
+  // Verify every file actually landed on disk byte-for-byte. This is what turns
+  // a silent partial install into a loud, visible problem: if the disk was full
+  // or a file was locked, we say exactly which files failed instead of leaving
+  // the app half-updated and the user staring at old behaviour.
+  const verifyFail = [];
+  for (const [rel, data] of Object.entries(info.files)) {
+    const full = path.resolve(DATA_DIR, rel);
+    try {
+      if (!fs.readFileSync(full).equals(data)) verifyFail.push(rel);
+    } catch (e) { verifyFail.push(rel); }
+  }
+  info.verified = Object.keys(info.files).length - verifyFail.length;
+  info.verifyFail = verifyFail;
+  if (verifyFail.length) {
+    nightLog(`هشدار: ${verifyFail.length} فایل درست نوشته نشد: ${verifyFail.slice(0, 8).join('، ')}${verifyFail.length > 8 ? '…' : ''}`, 'error');
+  } else {
+    nightLog(`نسخه ${info.version} نصب شد (${info.verified} فایل، همه تأیید شدند) — ری‌استارت برای فعال شدن.`, 'ok');
+  }
   return info;
 }
 
@@ -6005,12 +6060,18 @@ app.post('/api/admin/inbox/upload', requireAuth, requireAdmin, upload.single('fi
     fs.mkdirSync(INBOX_DIR, { recursive: true });
     const dest = path.join(INBOX_DIR, name);
     fs.writeFileSync(dest, req.file.buffer);
+    // "repair" lets the admin reinstall the SAME version to finish a partial
+    // install (e.g. after an old updater skipped app.js/brainmap.js).
+    const repair = /^(1|true|on|yes)$/i.test(String((req.body && req.body.repair) || req.query.repair || ''));
     // Process it right away rather than waiting for the 45s scan.
-    const result = await processInboxFile(name);
+    const result = await processInboxFile(name, { allowEqual: repair });
     if (result && result.kind === 'update') {
-      res.json({ ok: true, kind: 'update', version: result.version,
-        note: RESTART_SUPPORTED ? 'نسخه ' + result.version + ' نصب شد — در حال ری‌استارت…' : 'نصب شد — برنامه را ری‌استارت کن.' });
-      if (RESTART_SUPPORTED) setTimeout(() => process.exit(88), 1500);
+      const bad = result.verifyFail && result.verifyFail.length;
+      res.json({ ok: !bad, kind: 'update', version: result.version, verifyFail: result.verifyFail || [],
+        note: bad
+          ? ('هشدار: بعضی فایل‌ها نوشته نشدند (' + result.verifyFail.slice(0, 5).join('، ') + '). فضای دیسک را بررسی کن و دوباره امتحان کن.')
+          : (RESTART_SUPPORTED ? 'نسخه ' + result.version + (repair ? ' دوباره نصب شد (تعمیر)' : ' نصب شد') + ' — در حال ری‌استارت…' : 'نصب شد — برنامه را ری‌استارت کن.') });
+      if (RESTART_SUPPORTED && !bad) setTimeout(() => process.exit(88), 1500);
     } else if (result && result.kind === 'script') {
       res.json({ ok: true, kind: 'script', name: result.name, note: 'اسکریپت به کتابخانه اضافه شد.' });
     } else if (result && result.kind === 'file') {
@@ -7067,21 +7128,52 @@ require('./sync').register(app, {
 });
 
 // ---------------- Static web UI ----------------
+// The shell (index.html) is served through a tiny template that injects the
+// running version into every asset URL: the file on disk writes `?v=__VER__`
+// and we replace `__VER__` with APP_VERSION at send time. This single-sources
+// the cache-busting version from APP_VERSION — there is no separate list of
+// `?v=` strings to bump and forget, and the shell can never reference a
+// version different from the server it is talking to. Result cached per
+// version so it's built at most once per release.
+let _shellCache = { ver: null, html: null };
+function readShellSource() {
+  if (EMBEDDED_ASSETS && EMBEDDED_ASSETS['/index.html']) {
+    return Buffer.from(EMBEDDED_ASSETS['/index.html'].data, 'base64').toString('utf8');
+  }
+  return fs.readFileSync(path.join(__dirname, 'public', 'index.html'), 'utf8');
+}
+function serveShell(res) {
+  try {
+    if (_shellCache.ver !== APP_VERSION || _shellCache.html == null) {
+      _shellCache = { ver: APP_VERSION, html: readShellSource().split('__VER__').join(APP_VERSION) };
+    }
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-store');
+    res.send(_shellCache.html);
+  } catch (e) {
+    res.status(500).send('Setayesh: could not read UI shell.');
+  }
+}
+// Serve the shell for the app entry points BEFORE static, so the raw
+// (untemplated) index.html is never sent.
+app.get(['/', '/index.html'], (req, res) => serveShell(res));
+
 if (EMBEDDED_ASSETS) {
-  // Packaged build: everything is served from memory.
+  // Packaged build: everything else is served from memory.
   app.get('*', (req, res) => {
     const key = req.path === '/' ? '/index.html' : req.path;
-    const asset = EMBEDDED_ASSETS[key] || EMBEDDED_ASSETS['/index.html'];
+    const asset = EMBEDDED_ASSETS[key];
+    if (!asset) return serveShell(res);
     res.setHeader('Content-Type', asset.mime);
     res.setHeader('Cache-Control', 'no-store');
     res.send(Buffer.from(asset.data, 'base64'));
   });
 } else {
-  // index.html must stay fresh (it holds the whole UI and changes often), but
-  // the big static assets do not: three.min.js alone is ~589 KB and was being
-  // re-downloaded on every single page load, which is most of the wait on a
-  // phone. Cache those for a day and leave HTML uncached.
+  // Static assets carry a day-long cache; because their URLs now always carry
+  // the current ?v=, a new release busts the cache automatically. index.html
+  // is handled above (never by static) so it always reflects APP_VERSION.
   app.use(express.static(path.join(__dirname, 'public'), {
+    index: false,
     setHeaders: (r, filePath) => {
       if (/\.(js|css|png|jpg|jpeg|svg|webp|woff2?|ico)$/i.test(filePath)) {
         r.setHeader('Cache-Control', 'public, max-age=86400');
@@ -7090,7 +7182,7 @@ if (EMBEDDED_ASSETS) {
       }
     },
   }));
-  app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
+  app.get('*', (req, res) => serveShell(res));
 }
 
 function localLanIps() {

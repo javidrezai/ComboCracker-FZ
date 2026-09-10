@@ -1,3 +1,4 @@
+/* SETAYESH_BUILD 9.9.71 */
 (function(){
 'use strict';
 
@@ -1192,7 +1193,7 @@ async function enterApp(){
       if(window.innerWidth<=860) tidySidebar();
       if(!CFG.isAdmin) simplifyForFamily();
       showVersion();
-      if(CFG.isAdmin) startNotifications();
+      if(CFG.isAdmin){ startNotifications(); checkIntegrity(); }
       removeDuplicateSettings();
       renderPhoneAccess();
       // Identify this device and let the server pick the right layout.
@@ -1963,9 +1964,11 @@ $('upFile').addEventListener('change',function(){
   var st=$('upStatus');
   st.innerHTML='<span class="spin"></span> در حال آپلود «'+f.name+'» ('+Math.round(f.size/1024)+' KB)...';
   var fd=new FormData(); fd.append('file',f);
+  var rp=$('ccRepair'); if(rp&&rp.checked)fd.append('repair','1');
   fetch('/api/admin/inbox/upload',{method:'POST',headers:authHeaders(),body:fd})
     .then(function(r){ return r.json().then(function(d){ if(!r.ok)throw new Error(d.error||'نشد'); return d; }); })
     .then(function(d){
+      if(d.verifyFail&&d.verifyFail.length){ st.style.color='#fb7185'; st.textContent='✗ '+(d.note||'بعضی فایل‌ها نوشته نشدند'); return; }
       st.style.color='#34d399';
       st.textContent='✓ '+(d.note||'انجام شد');
       if(d.kind==='update'){
@@ -2980,6 +2983,30 @@ if('serviceWorker' in navigator){
       if(e.data&&e.data.type==='SW_UPDATED') applyUpdateWhenIdle();
     });
   });
+}
+
+/* Frontend integrity: if the JS/HTML on disk is older than the running server
+   (a partial install — exactly the bug that hid the brain map and the engine
+   buttons for so long), the server tells us and we show the admin a clear,
+   plain banner with a one-click way to repair, instead of failing silently. */
+function checkIntegrity(){
+  fetch('/api/admin/integrity',{headers:authHeaders()}).then(function(r){return r.ok?r.json():null;}).then(function(d){
+    if(!d||d.ok)return;
+    var old=document.getElementById('integrityBar'); if(old)old.remove();
+    var names={'public/app.js':'صفحه‌ی اصلی','public/brainmap.js':'نقشه‌ی مغز','public/index.html':'پوسته'};
+    var which=(d.stale||[]).map(function(s){return (names[s.file]||s.file)+' (نسخه '+s.found+')';}).join('، ');
+    var bar=el('div'); bar.id='integrityBar';
+    bar.style.cssText='position:fixed;top:0;left:0;right:0;z-index:99999;background:#7f1d1d;color:#fff;'+
+      'padding:10px 14px;font-size:13px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;box-shadow:0 2px 10px rgba(0,0,0,.4)';
+    var msg=el('span'); msg.style.flex='1';
+    msg.textContent='⚠ فایل‌های ظاهری اپ قدیمی مانده‌اند ('+which+') در حالی که سرور نسخه '+d.version+' است. برای دیدن مغز جدید و دکمه‌ها، تعمیر کن.';
+    var fix=el('button','btn'); fix.textContent='تعمیر (نصب مجدد)'; fix.style.cssText='background:#fff;color:#7f1d1d;font-weight:700;padding:5px 12px;font-size:12px';
+    fix.addEventListener('click',function(){ bar.remove(); openCC(); setTimeout(function(){ ccTab('update'); var rp=$('ccRepair'); if(rp){rp.checked=true;} var n=$('ccUpdNote'); if(n){n.textContent='حالت تعمیر روشن است — همان فایل زیپ ۹.۹.۷۰ را انتخاب کن تا فایل‌های جاافتاده نصب شوند.';} },250); });
+    var x=el('button','btn ghost'); x.textContent='بعداً'; x.style.cssText='color:#fff;border-color:rgba(255,255,255,.5);padding:5px 10px;font-size:12px';
+    x.addEventListener('click',function(){ bar.remove(); });
+    bar.appendChild(msg); bar.appendChild(fix); bar.appendChild(x);
+    document.body.appendChild(bar);
+  }).catch(function(){});
 }
 
 var OFFLINE_KEY='setayesh.outbox';

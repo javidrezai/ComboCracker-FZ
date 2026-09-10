@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+<!-- SETAYESH_BUILD 9.9.71 -->
 <html lang="fa" dir="rtl">
 <head>
 <meta charset="UTF-8">
@@ -13,7 +14,7 @@
 <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">
 <link rel="icon" type="image/png" sizes="512x512" href="/icon-512.png">
 <title>Setayesh AI</title>
-<link rel="stylesheet" href="/app.css?v=9.9.70">
+<link rel="stylesheet" href="/app.css?v=__VER__">
 </head>
 <body>
 <div class="bg"></div><canvas id="fx3d" aria-hidden="true"></canvas><div class="grid"></div><div class="scan"></div><div class="sweep"></div>
@@ -626,7 +627,11 @@
         <div style="font-size:11.5px;color:var(--muted);line-height:1.8;margin-bottom:10px">فایل به‌روزرسانی را همین‌جا از گوشی انتخاب کن — خودش بررسی، نصب و ری‌استارت می‌شود. نیازی به پوشه‌ی مشترک نیست.</div>
         <input type="file" id="upFile" accept=".zip,.py" hidden>
         <button class="btn" id="upBtn" style="width:100%">انتخاب فایل و نصب</button>
-        <div id="upStatus" style="font-size:12px;margin-top:10px;line-height:1.7"></div>
+        <label style="display:flex;align-items:center;gap:8px;font-size:12px;margin-top:10px;cursor:pointer;color:var(--muted)">
+          <input type="checkbox" id="ccRepair"> <span>حالت تعمیر: نصب مجدد همان نسخه (برای کامل‌کردن نصب ناقص)</span>
+        </label>
+        <div id="upStatus" style="font-size:12px;margin-top:8px;line-height:1.7"></div>
+        <div id="ccUpdNote" style="font-size:12px;margin-top:6px;line-height:1.7;color:var(--cyan)"></div>
       </div>
 
       <div class="tk-hint" style="margin-bottom:12px">یا یک فایل ZIP در پوشه‌ی <code>updates</code> بگذار — خودش نصب می‌کند و ری‌استارت می‌شود.</div>
@@ -879,13 +884,13 @@
   </div>
 </div>
 
-<script src="/app-i18n.js?v=9.9.70"></script>
-<script src="/app.js?v=9.9.70"></script>
-<script src="/secure-store.js?v=9.9.70"></script>
-<script src="/draft-cache.js?v=9.9.70"></script>
+<script src="/app-i18n.js?v=__VER__"></script>
+<script src="/app.js?v=__VER__"></script>
+<script src="/secure-store.js?v=__VER__"></script>
+<script src="/draft-cache.js?v=__VER__"></script>
 
 <!-- ============ DEEP-BLUE FLOWING PARTICLE BACKGROUND ============ -->
-<script src="/login-fx.js?v=9.9.70"></script>
+<script src="/login-fx.js?v=__VER__"></script>
 <!-- ===== SETAYESH BRAIN — a living 3D view of her real internal state ===== -->
 <div id="brainOverlay" style="position:fixed;inset:0;z-index:500;background:#03040a;display:none">
   <canvas id="brainCanvas" style="position:absolute;inset:0;width:100%;height:100%;display:block"></canvas>
@@ -986,7 +991,7 @@
   </div>
   <div id="memLong" style="display:grid;gap:8px"></div>
 </div>
-<script src="/memory-panel.js?v=9.9.70"></script>
+<script src="/memory-panel.js?v=__VER__"></script>
 <!-- ===== Connectors panel: Google (Gmail + Calendar), admin only ===== -->
 <div id="cxScrim" style="position:fixed;inset:0;z-index:600;display:none;background:rgba(4,6,14,.42);-webkit-backdrop-filter:blur(7px);backdrop-filter:blur(7px)"></div>
 <div id="cxPanel" role="dialog" aria-label="کانکتورها" style="position:fixed;z-index:601;inset-inline:0;bottom:0;top:auto;display:none;max-height:90vh;overflow:auto;
@@ -1071,7 +1076,7 @@
     <div id="cxTgNote" style="font-size:11.5px;min-height:16px;margin-top:8px"></div>
   </div>
 </div>
-<script src="/connectors-panel.js?v=9.9.70"></script>
+<script src="/connectors-panel.js?v=__VER__"></script>
 
 <!-- ===== Brain map: the whole app as a hexagon core + file nodes ===== -->
 <div id="brainMapOverlay" style="position:fixed;inset:0;z-index:640;background:radial-gradient(circle at 50% 45%,#0b1226,#04060e 70%);display:none">
@@ -1087,9 +1092,9 @@
   <div id="brainMapPanel" style="position:absolute;top:74px;inset-inline-end:16px;width:min(360px,90vw);max-height:80vh;overflow:auto;display:none;
     background:rgba(8,11,24,.94);backdrop-filter:blur(12px);border:1px solid rgba(123,92,255,.35);border-radius:16px;padding:16px;box-shadow:0 20px 60px rgba(0,0,0,.6)"></div>
 </div>
-<script src="/brainmap.js?v=9.9.70"></script>
+<script src="/brainmap.js?v=__VER__"></script>
 
 <script src="/three.min.js"></script>
-<script src="/brain3d.js?v=9.9.70"></script>
+<script src="/brain3d.js?v=__VER__"></script>
 </body>
 </html>
