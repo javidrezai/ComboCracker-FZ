@@ -22,3 +22,5 @@ antivirus-root.pem
 tls-cert.pem
 tls-key.pem
 *.pem
+node_modules
+/node_modules
