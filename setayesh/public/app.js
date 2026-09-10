@@ -1097,6 +1097,7 @@ async function enterApp(){
       if(isKidUser()&&lang!=='en'){lang='en';applyLang();}
       buildModes();setMode(mode);buildModelPicker();buildCompareChips();renderKeyList();
       $('adminBtn').style.display=CFG.isAdmin?'grid':'none';
+      { var _cb=$('commsBtn'); if(_cb)_cb.style.display=CFG.isAdmin?'flex':'none'; }
       $('learnBtn').style.display=CFG.isAdmin?'grid':'none';
       $('ccBtn').style.display=CFG.isAdmin?'grid':'none';
       // The admin keeps the full interface — every tool where it was. Only
@@ -3345,7 +3346,7 @@ function collapseSidebarModes(){
 
 function tidySidebar(){
   // These all have drawer entries; remove the duplicates.
-  ['toolkitBtn','devicesBtn','adminBtn','boardBtn','ccBtn','learnBtn','settingsBtn','langBtn']
+  ['toolkitBtn','devicesBtn','commsBtn','adminBtn','boardBtn','ccBtn','learnBtn','settingsBtn','langBtn']
     .forEach(function(id){ var e=$(id); if(e)e.style.display='none'; });
 
   collapseSidebarModes();
@@ -3402,7 +3403,7 @@ function openSheet(){
   // shBrain stays out of this list on purpose: the brain now lives only in
   // the top-right button (single place, as asked), so the drawer never
   // re-shows it even for the admin.
-  ['shCC','shLearn','shUsers','shConnectors','shAdminTitle'].forEach(function(id){
+  ['shCC','shLearn','shUsers','shConnectors','shComms','shAdminTitle'].forEach(function(id){
     var e=$(id); if(e)e.style.display=admin?'':'none';
   });
   $('sheet').classList.add('on'); $('sheetScrim').classList.add('on');
@@ -3421,6 +3422,7 @@ $('shCC').addEventListener('click',function(){sheetGo(openCC);});
 $('shLearn').addEventListener('click',function(){sheetGo(openLearn);});
 $('shUsers').addEventListener('click',function(){sheetGo(openAdmin);});
 $('shTools').addEventListener('click',function(){sheetGo(openToolkit);});
+(function(){ var s=$('shComms'); if(s)s.addEventListener('click',function(){sheetGo(function(){openToolkitTab('comms');});}); })();
 $('shDevices').addEventListener('click',function(){sheetGo(devOpen);});
 $('shPass').addEventListener('click',function(){sheetGo(openSettings);});
 $('shLogout').addEventListener('click',function(){closeSheet();doLogout();});
@@ -3611,6 +3613,10 @@ Object.assign(LANG.en,{
 });
 
 function openToolkit(){buildTkTabs();showTkTab(TK.active);$('toolkitOverlay').classList.add('on');closeSidebar();}
+/* Open the toolkit straight onto one tab — used by the dedicated
+   "Email & Telegram" buttons so it is reachable in one tap, not hidden
+   among the other toolkit tabs. */
+function openToolkitTab(id){ TK.active=id; openToolkit(); }
 function closeToolkit(){$('toolkitOverlay').classList.remove('on');}
 
 function buildTkTabs(){
@@ -4301,6 +4307,7 @@ function tkExtPanel(){
 function hintNode(txt){var d=el('div','tk-hint');d.textContent=txt;return d;}
 
 $('toolkitBtn').addEventListener('click',openToolkit);
+(function(){ var c=$('commsBtn'); if(c)c.addEventListener('click',function(){openToolkitTab('comms');}); })();
 $('tkClose').addEventListener('click',closeToolkit);
 $('toolkitOverlay').addEventListener('click',function(e){if(e.target===$('toolkitOverlay'))closeToolkit();});
 
