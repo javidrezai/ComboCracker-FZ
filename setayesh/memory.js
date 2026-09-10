@@ -73,7 +73,9 @@ function memoryBlock(username) {
   for (const m of rest) push(`• ${m.text}`);
   if (!out.trim()) return '';
 
-  const safe = privacy.enabled ? redactOutbound(out) : out;
+  // Admin (father) waived the shield for his own account; family/child stay protected.
+  const shieldOn = privacy.enabled && !(typeof isAdmin === 'function' && isAdmin(username));
+  const safe = shieldOn ? redactOutbound(out) : out;
   return `\n\n*** آنچه درباره‌ی این کاربر می‌دانی ***\nاین‌ها را قبلاً یاد گرفته‌ای. طبیعی استفاده کن، فهرست‌وار تکرارشان نکن. اگر مهلتی نزدیک یا گذشته است، یک‌بار کوتاه یادآوری کن:\n${safe.trim()}`;
 }
 

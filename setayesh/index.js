@@ -181,7 +181,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.64';
+const APP_VERSION = '9.9.65';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -1362,7 +1362,9 @@ function askPythonBrain(messages) {
     q = String(q || '').trim();
     if (!q) return resolve('چه بپرسم؟');
     const { spawn } = require('child_process');
-    const child = spawn(PYTHON_BIN, [BRAIN_MAIN, q], {
+    // `--ask` makes the brain treat everything after it as the literal question,
+    // so a message like "--serve" can never flip the brain into another mode.
+    const child = spawn(PYTHON_BIN, [BRAIN_MAIN, '--ask', q], {
       cwd: BRAIN_DIR, windowsHide: true,
       env: Object.assign({}, process.env, { PYTHONIOENCODING: 'utf-8' }),
     });
@@ -1883,6 +1885,14 @@ function shieldMessage(raw) {
     blockedHighValue: list.some((k) => HIGH_VALUE.includes(k)),
     labels: list.map((k) => KIND_LABEL[k] || k),
   };
+}
+
+// The owner (father) asked to lift the privacy shield from HIS OWN account —
+// admin = father, no restriction. So the outbound shield stays on for family
+// and child accounts, but the admin's own messages/memory go out unredacted.
+// (Child protections and every other safety rule are untouched.)
+function privacyActiveFor(username) {
+  try { return privacy.enabled && !isAdmin(username); } catch (e) { return privacy.enabled; }
 }
 
 function redactOutbound(text) {
@@ -3185,7 +3195,7 @@ app.post('/api/chat', requireAuth, chatLimiter, upload.array('files', 8), async 
   // normally so the user still gets a real answer, and the response reports
   // what was held back so nothing happens behind their back.
   let shield = { text: message, removed: [], blockedHighValue: false, labels: [] };
-  if (privacy.enabled && message) {
+  if (privacyActiveFor(req.username) && message) {
     shield = shieldMessage(message);
     if (shield.removed.length) recordBlock('user-message', shield.removed.map((k) => ({ kind: k })), message);
   }

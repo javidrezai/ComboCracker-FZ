@@ -230,6 +230,16 @@ def main():
     if args and args[0] in ("--help", "-h"):
         print(__doc__)
         return
+    # A safe way to pass a question: everything after --ask is the literal
+    # question, never interpreted as a command flag. The app uses this so a
+    # message like "--serve" can never switch the brain into another mode.
+    if args and args[0] == "--ask":
+        question = " ".join(args[1:])
+        auto_connect(vault, llm)
+        if not question.strip():
+            print("چه بپرسم؟")
+            return
+        return ask(loop, vault, llm, question, bridge) and None
 
     # اتصال خودکار اولاما به ستایش (بدون دخالت دستی)
     auto_connect(vault, llm)
