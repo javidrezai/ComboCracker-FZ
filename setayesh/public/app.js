@@ -3237,6 +3237,9 @@ document.getElementById('shDiag').addEventListener('click',function(){ sheetGo(o
 var BRAIN = { scene:null, cam:null, renderer:null, raf:null, regions:[], pulses:[], data:null, pollTimer:null, hovered:null };
 
 function openBrain(){
+  // The brain view is now the hexagon file-map (brainmap.js). Every old entry
+  // point opens it instead of the previous 3D scene.
+  if(typeof window.openBrainMap==='function'){ window.openBrainMap(); return; }
   var ov=document.getElementById('brainOverlay');
   ov.style.display='block';
   if(typeof THREE==='undefined'){

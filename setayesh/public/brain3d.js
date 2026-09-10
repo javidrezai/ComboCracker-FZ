@@ -934,6 +934,9 @@
 
   /* ------------------------------------------------------------- open/close */
   function open() {
+    // The brain view is now the hexagon file-map. This old 3D scene is kept in
+    // the codebase but the top button opens the new map instead.
+    if (typeof window.openBrainMap === 'function') { window.openBrainMap(); return; }
     if (!window.THREE) { alert('کتابخانه‌ی سه‌بعدی بارگذاری نشده است.'); return; }
     if (!S.overlay) { buildOverlay(); initScene(); }
     S.open = true;
