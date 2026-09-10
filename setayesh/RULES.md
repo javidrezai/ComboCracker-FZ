@@ -17,7 +17,7 @@ enforced today** or **🚧 roadmap**.
 | 1.1 | **TLS هیچ‌گاه پیش‌فرض خاموش نمی‌شود.** فقط با `SETAYESH_INSECURE_TLS=1` که باید عمداً و آگاهانه ست شود و روی هر اجرا هشدار می‌دهد. TLS is never disabled by default. | ✅ | `index.js` (`INSECURE_TLS`) |
 | 1.2 | **ذخیره‌سازی محلی و 0600.** کلیدهای API، توکن‌ها و دادهٔ حساس فقط محلی و با دسترسی `0600` نوشته می‌شوند؛ رمزها فقط به‌صورت هش. Secrets local-only, mode `0600`; passwords hashed only. | ✅ | `.setayesh-config`, `.setayesh-users.json`, `.setayesh-connectors.json` |
 | 1.3 | **دفاع‌های پیش‌فرض الزامی:** `helmet`، `bcrypt` برای رمزها، و `express-rate-limit`. helmet + bcrypt + rate limiting are mandatory. | ✅ | `index.js` (`helmet`, `bcrypt`, limiters) |
-| 1.4 | **خودویرایشیِ کد پشت تأیید مدیر و پیش‌فرض خاموش.** ابزارهای `read_own_source`/`propose_change` فقط برای ادمین و فقط وقتی `ENABLE_SELF_EDIT=1`. هوش مصنوعی هرگز خودش کد را اعمال نمی‌کند؛ مدیر diff را تأیید می‌کند. Self-editing is admin-only, off by default, and never auto-applied. | ✅ | `SELF_EDIT_ENABLED`, `toolsFor()` |
+| 1.4 | **خودویرایشیِ کد فقط برای ادمین و همیشه با تأیید مدیر.** ابزارهای `read_own_source`/`propose_change` فقط برای ادمین دیده می‌شوند. به‌خواست صاحب برنامه اکنون پیش‌فرض **روشن** است (فقط با `ENABLE_SELF_EDIT=0` خاموش می‌شود). هوش مصنوعی هرگز خودش کد را اعمال نمی‌کند؛ مدیر هر diff را تأیید می‌کند و تغییری که بوت را خراب کند خودکار برمی‌گردد. Invariant = admin-only + never auto-applied (approval + rollback); the default state is the owner's choice. | ✅ | `SELF_EDIT_ENABLED`, `toolsFor()` |
 | 1.5 | **ابزارهای امنیتی محدود به فضای آدرس محلی.** اسکن شبکه/پورت فقط روی محدوده‌های خصوصی؛ این مرز هرگز گسترده نمی‌شود. Network/port scans limited to private IP space — never widen it. | ✅ | `toolkit.js` (`PRIVATE_RANGES`) |
 
 ---

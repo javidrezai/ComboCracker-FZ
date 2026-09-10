@@ -181,7 +181,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.54';
+const APP_VERSION = '9.9.55';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -2043,9 +2043,16 @@ async function githubGetFile(repo, filePath, ref) {
 // deliberately hostile code, which is why it is opt-in and admin-only.
 const { spawn } = require('child_process');
 const PYTHON_ENABLED = String(cfg.ENABLE_PYTHON || process.env.SETAYESH_ENABLE_PYTHON || '') === '1';
-// Self-modification is off by default. It is the one capability that can stop
-// the app from starting at all, so it must be switched on deliberately.
-const SELF_EDIT_ENABLED = String(cfg.ENABLE_SELF_EDIT || process.env.SETAYESH_ENABLE_SELF_EDIT || '') === '1';
+// Self-modification: the owner asked for it to be available by default, so it
+// is ON unless explicitly turned off with ENABLE_SELF_EDIT=0. The safety that
+// matters is unchanged: it is ADMIN-ONLY (a family/child session never even
+// sees the tools), never auto-applied (the admin approves each proposed diff),
+// and a change that stops the app from booting is rolled back automatically.
+const _selfEditRaw = String(
+  cfg.ENABLE_SELF_EDIT != null ? cfg.ENABLE_SELF_EDIT
+  : (process.env.SETAYESH_ENABLE_SELF_EDIT != null ? process.env.SETAYESH_ENABLE_SELF_EDIT : '')
+).trim().toLowerCase();
+const SELF_EDIT_ENABLED = _selfEditRaw !== '0' && _selfEditRaw !== 'false' && _selfEditRaw !== 'off';
 // On by default: knowing an account was opened somewhere new is the single
 // most useful signal, and it costs nothing when nothing is wrong.
 const loginAlerts = String(cfg.LOGIN_ALERTS || '1') === '1';

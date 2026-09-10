@@ -10,8 +10,11 @@ via the app's own self-editing feature.
   deliberately, may skip verification (rule 1.1).
 - **Secrets stay local, mode `0600`; passwords are hashed only** (rule 1.2).
 - **`helmet`, `bcrypt`, and rate limiting are mandatory** (rule 1.3).
-- **Self-editing (`read_own_source`/`propose_change`) is admin-only, off by
-  default, and never auto-applied** — the admin approves a diff (rule 1.4).
+- **Self-editing (`read_own_source`/`propose_change`) is admin-only and never
+  auto-applied** — the admin approves each diff, and a change that breaks boot
+  rolls back automatically. Per the owner's decision it is now ON by default
+  (disable only with `ENABLE_SELF_EDIT=0`); the admin-only and approval
+  guarantees are the invariant, not the default state (rule 1.4).
 - **Security-tool scans stay within private IP space** — never widen
   `PRIVATE_RANGES` in `toolkit.js` (rule 1.5).
 - **Keep dependencies minimal** (currently 6). Adding an npm dependency needs a
