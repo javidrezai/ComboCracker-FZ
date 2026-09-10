@@ -1572,7 +1572,7 @@ function ccNote(m,bad){ var n=$('ccNote'); n.textContent=m||''; n.className='not
 function openCC(){ ccNote(''); CC.dirty={}; $('ccOverlay').classList.add('on'); ccTab('engines'); loadCC(); checkRestartSupport(); }
 function closeCC(){ $('ccOverlay').classList.remove('on'); }
 function ccTab(which){
-  ['engines','users','privacy','power','devices','look','update','scripts','actions','sync'].forEach(function(t){
+  ['engines','comms','users','privacy','power','devices','look','update','scripts','actions','sync'].forEach(function(t){
     var pane=$('cc'+t.charAt(0).toUpperCase()+t.slice(1));
     if(pane)pane.style.display=(t===which)?'':'none';
   });
@@ -1580,6 +1580,7 @@ function ccTab(which){
     b.className='btn '+(b.getAttribute('data-cc')===which?'':'ghost');
     b.style.padding='7px 14px'; b.style.fontSize='12.5px';
   });
+  if(which==='comms')loadCCComms();
   if(which==='users')loadCCUsers();
   if(which==='privacy')loadCCPrivacy();
   if(which==='devices')loadCCDevices();
@@ -2040,6 +2041,43 @@ function loadCC(){
     $('ccLocal').checked=d.live.engines.indexOf('local')>=0;
     $('ccLocal').onchange=function(){ CC.dirty.ENABLE_LOCAL=$('ccLocal').checked?'1':''; };
   }).catch(function(e){ ccNote(e.message,true); });
+}
+/* ===== Email & Telegram: a tidy, findable home for comms settings =====
+   These keys were in the config API but had no visible UI, so the user could
+   not find them. One clear tab, grouped and explained; saved via ccSave. */
+function ccCommsField(box,key,opts){
+  opts=opts||{};
+  var st=(CC.settings&&CC.settings.settings)?CC.settings.settings[key]:null;
+  if(!st)return;
+  var row=el('div','tk-card'); row.style.cssText='margin-bottom:8px;padding:10px 12px';
+  var top=el('div'); top.style.cssText='display:flex;align-items:center;gap:8px;margin-bottom:6px';
+  var nm=el('span'); nm.style.cssText='flex:1;font-size:12.5px;font-weight:600'; nm.textContent=opts.label||st.label;
+  var dot=el('span'); dot.textContent=st.set?'●':'○'; dot.style.color=st.set?'#34d399':'var(--muted)';
+  top.appendChild(nm); top.appendChild(dot);
+  var inp=el('input','input');
+  if(st.secret)inp.type='password';
+  inp.placeholder=st.set?st.value:(opts.placeholder||'اینجا بنویس...');
+  inp.style.fontSize='12px';
+  if(opts.ltr){inp.style.direction='ltr';inp.style.textAlign='left';}
+  inp.addEventListener('input',function(){ CC.dirty[key]=inp.value.trim(); });
+  row.appendChild(top); row.appendChild(inp);
+  box.appendChild(row);
+}
+function loadCCComms(){
+  function render(){
+    var n=$('ccCommsNotify'); if(n){n.innerHTML=''; ccCommsField(n,'NOTIFY_EMAIL',{placeholder:'you@example.com',ltr:true});}
+    var m=$('ccCommsMail'); if(m){m.innerHTML='';
+      ccCommsField(m,'MAIL_PROVIDER',{placeholder:'gmail / outlook / yahoo',ltr:true});
+      ccCommsField(m,'MAIL_USER',{placeholder:'you@gmail.com',ltr:true});
+      ccCommsField(m,'MAIL_PASS',{placeholder:'App Password ۱۶ حرفی'});
+    }
+    var tg=$('ccCommsTelegram'); if(tg){tg.innerHTML='';
+      ccCommsField(tg,'TELEGRAM_BOT_TOKEN',{placeholder:'123456:ABC... (از BotFather)',ltr:true});
+      ccCommsField(tg,'TELEGRAM_CHAT_ID',{placeholder:'مثلاً 123456789',ltr:true});
+    }
+  }
+  if(CC.settings&&CC.settings.settings)render();
+  else adminFetch('/api/admin/settings').then(function(d){CC.settings=d;render();}).catch(function(e){ccNote(e.message,true);});
 }
 function loadCCUsers(){
   var box=$('ccUserList'); box.innerHTML='<div class="tk-hint"><span class="spin"></span></div>';
