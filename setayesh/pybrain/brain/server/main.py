@@ -11,14 +11,20 @@
   python main.py --doctor           # بررسی سلامت اتصال‌ها (اولاما/والت)
   python main.py --daemon           # فقط زمان‌بند پس‌زمینه (بدون وبهوک)
 """
-# ---- Local Python library store (setayesh/pybrain/libs) ----
-# Important packages are vendored there so the brain can use them even offline.
-# Added to the import path first, before the brain's own imports.
-import sys as _sys
-from pathlib import Path as _Path
-_libs = _Path(__file__).resolve().parents[2] / "libs"
-if _libs.is_dir():
-    _sys.path.insert(0, str(_libs))
+# ---- Library store + auto-download (setayesh/pybrain/libs) ----
+# The brain auto-detects a library it needs and downloads it — into its own
+# folder only. autolibs adds the store to the import path and installs the
+# auto-download hook. If anything about it fails, fall back to just making the
+# store importable, so the brain always starts.
+try:
+    import autolibs as _autolibs
+    _autolibs.install_hook()
+except Exception:
+    import sys as _sys
+    from pathlib import Path as _Path
+    _libs = _Path(__file__).resolve().parents[2] / "libs"
+    if _libs.is_dir():
+        _sys.path.insert(0, str(_libs))
 # ---- end library-store bootstrap ----
 import os
 import sys
