@@ -32,3 +32,6 @@ pybrain/libs/*
 !pybrain/libs/.gitkeep
 __pycache__/
 *.pyc
+
+# Auto-generated mirror of the app's private memory into the brain vault — per machine, never committed.
+pybrain/vault/knowledge/app-memory.md

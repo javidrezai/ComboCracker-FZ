@@ -17,10 +17,15 @@ const crypto = require('crypto');
 
 function register(app, deps) {
   const { requireAuth, requireAdmin, isAdmin, users, rag, privacy, redactOutbound,
-          loadJsonFile, saveJsonFile, MEMORY_FILE } = deps;
+          loadJsonFile, saveJsonFile, MEMORY_FILE, afterMemoryWrite } = deps;
 
 let memory = loadJsonFile(MEMORY_FILE, {});   // username -> [entries]
-function saveMemory() { saveJsonFile(MEMORY_FILE, memory); }
+function saveMemory() {
+  saveJsonFile(MEMORY_FILE, memory);
+  // Mirror into the Python brain's vault so both memories stay in sync
+  // (best-effort — never block or break a save).
+  try { if (typeof afterMemoryWrite === 'function') afterMemoryWrite(memory); } catch (e) {}
+}
 
 const MEMORY_MAX_PER_USER = 200;
 const MEMORY_INJECT_CHARS = 2200;

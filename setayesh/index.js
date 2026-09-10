@@ -181,7 +181,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.61';
+const APP_VERSION = '9.9.62';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -5595,6 +5595,45 @@ app.get('/api/admin/pybrain/install-log', requireAuth, requireAdmin, (req, res) 
   res.json({ running: _libInstallRunning, log: _libInstallLog });
 });
 
+// ---- Memory sync between the app and the Python brain ----
+// App → brain: mirror the app's memories into the brain's vault as a knowledge
+// note, so the brain retrieves them like anything else it knows. Local only —
+// the mirror never leaves the machine. Best-effort; never breaks a save.
+function writeMemoryVaultMirror(memoryMap) {
+  try {
+    if (!fs.existsSync(BRAIN_DIR)) return;
+    const kdir = path.join(BRAIN_DIR, 'vault', 'knowledge');
+    fs.mkdirSync(kdir, { recursive: true });
+    let md = '# حافظهٔ اپ ستایش (خودکار)\n\n> این فایل خودکار از حافظهٔ برنامه ساخته می‌شود تا مغز هم آن را بداند. دستی ویرایشش نکن.\n\n';
+    for (const [user, list] of Object.entries(memoryMap || {})) {
+      if (!list || !list.length) continue;
+      md += `## ${user}\n`;
+      for (const m of list) md += `- ${m.due ? '[مهلت ' + m.due + '] ' : ''}${String(m.text || '').replace(/\s+/g, ' ').trim()}\n`;
+      md += '\n';
+    }
+    fs.writeFileSync(path.join(kdir, 'app-memory.md'), md, 'utf8');
+  } catch (e) { /* best-effort */ }
+}
+// Brain → app: read what the brain has learned (vault knowledge + lessons) so
+// the app can show it next to the app's own memory.
+app.get('/api/brain/knowledge', requireAuth, (req, res) => {
+  const items = [];
+  const read = (dir, kind) => {
+    let files = [];
+    try { files = fs.readdirSync(dir).filter((f) => f.endsWith('.md')); } catch (e) { return; }
+    for (const f of files) {
+      if (f === 'app-memory.md' || f.toUpperCase().startsWith('README')) continue;
+      try {
+        const txt = fs.readFileSync(path.join(dir, f), 'utf8');
+        items.push({ kind, title: f.replace(/\.md$/, ''), snippet: txt.replace(/^#.*$/m, '').replace(/\s+/g, ' ').trim().slice(0, 400) });
+      } catch (e) {}
+    }
+  };
+  read(path.join(BRAIN_DIR, 'vault', 'knowledge'), 'knowledge');
+  read(path.join(BRAIN_DIR, 'vault', 'lessons'), 'lessons');
+  res.json({ available: fs.existsSync(path.join(BRAIN_DIR, 'vault')), items });
+});
+
 // Only these may be replaced — a dropped zip can never write anywhere else.
 const UPDATABLE = new Set([
   'index.js', 'providers.js', 'toolkit.js', 'extensions.js', 'package.json',
@@ -6031,6 +6070,7 @@ const MEMORY_FILE = process.env.SETAYESH_MEMORY_FILE || path.join(DATA_DIR, '.se
 const _mem = require('./memory').register(app, {
   requireAuth, requireAdmin, isAdmin, users, rag, privacy, redactOutbound,
   loadJsonFile, saveJsonFile, MEMORY_FILE,
+  afterMemoryWrite: writeMemoryVaultMirror,
 });
 // Re-exposed so existing call sites (chat tools, prompt builder, sync,
 // suggestions) keep working byte-for-byte; memory is the same object, mutated

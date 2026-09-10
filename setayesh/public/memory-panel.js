@@ -87,7 +87,34 @@
         el('memAddText').value=''; load(); })
       .catch(function(){ note.textContent='خطای شبکه'; });
   }
-  function openMem(){ el('memScrim').style.display='block'; el('memPanel').style.display='block'; load(); }
+  /* What the Python brain has learned (its vault), shown next to the app's own
+     memory so the two feel like one shared mind. */
+  function loadBrain(){
+    var panel=el('memPanel'); if(!panel)return;
+    var box=el('memBrain');
+    if(!box){
+      box=document.createElement('div'); box.id='memBrain'; box.style.marginTop='18px';
+      panel.appendChild(box);
+    }
+    fetch('/api/brain/knowledge',{headers:authH()}).then(function(r){return r.json();}).then(function(d){
+      var items=(d&&d.items)||[];
+      if(!items.length){ box.innerHTML=''; return; }
+      var h='<div style="margin-bottom:6px;display:flex;align-items:center;gap:8px">'+
+        '<span style="font-size:13px;font-weight:800;color:#a78bfa">🧠 دانش مغز</span>'+
+        '<span style="font-size:11px;color:var(--muted,#8ea0c8)">آنچه مغز پایتون یاد گرفته (مشترک)</span>'+
+        '<span style="margin-inline-start:auto;font-size:11px;color:var(--muted,#8ea0c8)">'+faNum(items.length)+' مورد</span></div>';
+      h+='<div style="display:grid;gap:8px">';
+      items.forEach(function(it){
+        var tag=it.kind==='lessons'?'درس':'دانش';
+        h+='<div style="padding:10px 12px;border-radius:13px;background:rgba(167,139,250,.06);border:1px solid rgba(167,139,250,.22)">'+
+           '<div style="font-size:11px;font-weight:700;color:#c4b5fd;margin-bottom:3px">['+tag+'] '+String(it.title).replace(/</g,'')+'</div>'+
+           '<div style="font-size:12.5px;line-height:1.6;color:var(--text,#e8ecf7)">'+String(it.snippet).replace(/</g,'')+'</div></div>';
+      });
+      h+='</div>';
+      box.innerHTML=h;
+    }).catch(function(){ if(box)box.innerHTML=''; });
+  }
+  function openMem(){ el('memScrim').style.display='block'; el('memPanel').style.display='block'; load(); loadBrain(); }
   function closeMem(){ el('memScrim').style.display='none'; el('memPanel').style.display='none'; }
   window.openMemoryPanel=openMem;
   document.addEventListener('DOMContentLoaded',function(){
