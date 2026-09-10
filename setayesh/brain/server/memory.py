@@ -4,7 +4,9 @@
 lessons/، dashboard/ و logs/ می‌نویسد.
 """
 import re
+import math
 import datetime
+from collections import Counter
 from pathlib import Path
 
 
@@ -71,21 +73,46 @@ class Vault:
         return notes
 
     def retrieve(self, query, k=4):
-        """مرتبط‌ترین نوت‌ها را با امتیازدهی کلیدواژه‌ای + دنبال‌کردن لینک برمی‌گرداند."""
-        q_words = set(w.lower() for w in WORD_RE.findall(query) if len(w) > 1)
-        scored = []
+        """بازیابی برداری محلی (TF-IDF کسینوسی) + دنبال‌کردن لینک‌های [[...]].
+
+        بدون هیچ وابستگی خارجی و کاملاً آفلاین؛ جایگزین شمارش سادهٔ کلیدواژه.
+        """
         notes = self._all_notes()
         by_name = {f.stem: (f, txt) for f, txt in notes}
+        docs = []
         for f, txt in notes:
-            words = [w.lower() for w in WORD_RE.findall(txt)]
-            if not words:
-                continue
-            wset = set(words)
-            overlap = q_words & wset
-            score = sum(words.count(w) for w in overlap)
-            # عنوان مطابق، امتیاز بیشتر
-            if q_words & set(WORD_RE.findall(f.stem.lower())):
-                score += 5
+            toks = [w.lower() for w in WORD_RE.findall(txt) if len(w) > 1]
+            if toks:
+                docs.append((f, txt, toks))
+        q_tokens = [w.lower() for w in WORD_RE.findall(query) if len(w) > 1]
+        if not docs or not q_tokens:
+            return []
+
+        # فراوانی سندی (df) و idf
+        N = len(docs)
+        df = {}
+        for _, _, toks in docs:
+            for t in set(toks):
+                df[t] = df.get(t, 0) + 1
+        def idf(t):
+            return math.log((N + 1) / (df.get(t, 0) + 1)) + 1.0
+
+        # بردار پرسش
+        qtf = Counter(q_tokens)
+        qvec = {t: qtf[t] * idf(t) for t in qtf}
+        qnorm = math.sqrt(sum(v * v for v in qvec.values())) or 1.0
+        q_title_set = set(q_tokens)
+
+        scored = []
+        for f, txt, toks in docs:
+            dtf = Counter(toks)
+            dvec = {t: dtf[t] * idf(t) for t in dtf}
+            dnorm = math.sqrt(sum(v * v for v in dvec.values())) or 1.0
+            dot = sum(qv * dvec[t] for t, qv in qvec.items() if t in dvec)
+            score = dot / (qnorm * dnorm)
+            # تقویت تطبیق عنوان
+            if q_title_set & set(w.lower() for w in WORD_RE.findall(f.stem)):
+                score += 0.15
             if score > 0:
                 scored.append((score, f, txt))
         scored.sort(key=lambda x: -x[0])

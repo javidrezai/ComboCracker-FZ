@@ -12,6 +12,21 @@ import urllib.parse
 import urllib.request
 
 
+def clean_excerpt(text, limit=260):
+    """یک خلاصهٔ تمیز از یک نوت مارک‌داون می‌سازد (بدون #، لینک، تیتر)."""
+    lines = []
+    for ln in text.splitlines():
+        ln = ln.strip()
+        if not ln or ln.startswith("#"):
+            continue
+        ln = re.sub(r"\[\[([^\]|]+)(\|[^\]]+)?\]\]", r"\1", ln)  # [[لینک|متن]] → لینک
+        ln = re.sub(r"[*`>_-]{1,3}", "", ln).strip()
+        if ln:
+            lines.append(ln)
+    out = " ".join(lines)
+    return (out[:limit].rstrip() + "…") if len(out) > limit else out
+
+
 # --- ماشین‌حساب امن (بدون eval) ---
 _OPS = {
     ast.Add: op.add, ast.Sub: op.sub, ast.Mult: op.mul,
@@ -77,7 +92,7 @@ def build_registry(vault):
         hits = vault.retrieve(query, k=3)
         if not hits:
             return "نتیجه‌ای پیدا نشد."
-        return "\n\n".join(f"### {n}\n{t[:400]}" for n, t in hits)
+        return "\n".join(f"«{n}» — {clean_excerpt(t)}" for n, t in hits)
 
     return {
         "calc": tool_calc,

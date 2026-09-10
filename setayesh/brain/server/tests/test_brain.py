@@ -67,6 +67,21 @@ class BrainTests(unittest.TestCase):
         self.assertIn("پایتون", names)
         self.assertIn("کدنویسی", names)  # از طریق لینک [[کدنویسی]]
 
+    def test_tfidf_ranks_most_relevant_first(self):
+        (self.vault.knowledge / "قهوه.md").write_text(
+            "# قهوه\nنوشیدنی تلخ و داغ. با دانهٔ قهوه درست می‌شود.", encoding="utf-8")
+        (self.vault.knowledge / "چای.md").write_text(
+            "# چای\nنوشیدنی گرم از برگ چای.", encoding="utf-8")
+        hits = self.vault.retrieve("دانهٔ قهوه تلخ", k=3)
+        self.assertEqual(hits[0][0], "قهوه")  # مرتبط‌ترین اول
+
+    def test_clean_excerpt_strips_markdown(self):
+        from tools import clean_excerpt
+        out = clean_excerpt("# عنوان\nمتن **پررنگ** با [[لینک|برچسب]] اینجا.")
+        self.assertNotIn("#", out)
+        self.assertNotIn("[[", out)
+        self.assertIn("لینک", out)
+
     def test_settings_roundtrip(self):
         self.vault.set_setting("model", "llama3.1:8b")
         self.assertEqual(self.vault.read_settings().get("model"), "llama3.1:8b")
