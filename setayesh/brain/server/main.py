@@ -32,6 +32,14 @@ VAULT_PATH = os.environ.get(
 )
 
 
+def version():
+    f = Path(__file__).resolve().parents[2] / "VERSION"
+    try:
+        return f.read_text(encoding="utf-8").strip()
+    except Exception:
+        return "0.0.0"
+
+
 def make_brain():
     vault = Vault(VAULT_PATH)
     s = vault.read_settings()
@@ -68,7 +76,7 @@ def auto_connect(vault, llm, quiet=False):
 
 def cmd_doctor(vault, llm, bridge):
     """بررسی سلامت کامل اتصال‌ها."""
-    print("🩺 بررسی سلامت مغز ستایش\n" + "=" * 40)
+    print(f"🩺 بررسی سلامت مغز ستایش — نسخهٔ {version()}\n" + "=" * 40)
     st = auto_connect(vault, llm)
     print(f"اولاما: {connection_summary(st)}")
     print(f"میزبان اولاما: {llm.host}")
@@ -200,6 +208,9 @@ def main():
         else:
             vault.set_setting("model", args[1])
             print(f"✅ مدل به «{args[1]}» تغییر کرد (در vault/config/brain-settings.md).")
+        return
+    if args and args[0] in ("--version", "-v"):
+        print(f"ستایش نسخهٔ {version()}")
         return
     if args and args[0] in ("--help", "-h"):
         print(__doc__)
