@@ -10,6 +10,8 @@
   python main.py --transparency     # نمایش استدلال آخرین اجرا
   python main.py --doctor           # بررسی سلامت اتصال‌ها (اولاما/والت)
   python main.py --daemon           # فقط زمان‌بند پس‌زمینه (بدون وبهوک)
+  python main.py --update           # به‌روزرسانی خودکار ستایش به آخرین نسخه
+  python main.py --version          # نمایش نسخه
 """
 import os
 import sys
@@ -211,6 +213,15 @@ def main():
         return
     if args and args[0] in ("--version", "-v"):
         print(f"ستایش نسخهٔ {version()}")
+        return
+    if args and args[0] == "--update":
+        from updater import self_update
+        root = Path(__file__).resolve().parents[2]
+        print(f"🔄 به‌روزرسانی ستایش (نسخهٔ فعلی {version()})...")
+        r = self_update(root)
+        print(("✅ " if r["ok"] else "⚠️  ") + r["message"])
+        if r.get("changed"):
+            print("برای اعمال کامل، اجرای دوباره کافی است.")
         return
     if args and args[0] in ("--help", "-h"):
         print(__doc__)

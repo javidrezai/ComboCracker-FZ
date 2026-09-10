@@ -4,6 +4,7 @@ import sys
 import tempfile
 import shutil
 import unittest
+from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -16,6 +17,7 @@ from ollama_setup import ensure_ollama, connection_summary
 from scheduler import BrainScheduler
 from local_llm import LocalFallbackLLM
 import normalize as norm
+from updater import self_update, _find_repo
 from bridge import VaultBridge
 
 
@@ -405,6 +407,38 @@ class EmbeddingRetrievalTests(unittest.TestCase):
         g = self.vault.knowledge_graph()
         self.assertIn("<svg", dash.graph_svg(g))
         self.assertIsInstance(dash.graph_markdown(g), str)
+
+
+class UpdaterTests(unittest.TestCase):
+    def test_non_git_dir_gives_guidance(self):
+        tmp = tempfile.mkdtemp()
+        try:
+            (Path(tmp) / "VERSION").write_text("0.6.0", encoding="utf-8")
+            r = self_update(tmp)
+            self.assertFalse(r["ok"])
+            self.assertIn("git", r["message"])
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_find_repo_walks_up(self):
+        import subprocess
+        tmp = tempfile.mkdtemp()
+        try:
+            subprocess.run(["git", "init", "-q", tmp], check=True)
+            sub = Path(tmp) / "a" / "b"
+            sub.mkdir(parents=True)
+            self.assertEqual(_find_repo(sub), Path(tmp).resolve())
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_reports_version(self):
+        tmp = tempfile.mkdtemp()
+        try:
+            (Path(tmp) / "VERSION").write_text("1.2.3", encoding="utf-8")
+            r = self_update(tmp)
+            self.assertEqual(r["old"], "1.2.3")
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
 
 
 if __name__ == "__main__":

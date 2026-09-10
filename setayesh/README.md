@@ -138,6 +138,19 @@ bash setayesh/scripts/setup-vault-repo.sh git@github.com:USER/setayesh-vault.git
 سپس `vault_remote` را در `vault/config/brain-settings.md` بگذارید. این کاملاً اختیاری است؛
 بدون آن هم مغز با پوشهٔ محلیِ Obsidian کار می‌کند.
 
+## نصب یک‌خطی و خودبه‌روزرسانی 🚀
+
+**نصب یک‌خطی (fresh):**
+```bash
+curl -fsSL https://raw.githubusercontent.com/javidrezai/ComboCracker-FZ/claude/setayesh-project-continuation-tcud92/setayesh/bootstrap.sh | bash
+```
+
+**ستایش خودش را به‌روز می‌کند (مثل آپدیت درون‌برنامه‌ای):**
+```bash
+python3 setayesh/brain/server/main.py --update
+```
+آخرین نسخه را می‌کشد و اعمال می‌کند؛ اگر مخزن git نباشد، راهنمایی می‌دهد.
+
 ## نصب / به‌روزرسانی (یک فرمان) 📦
 
 ```bash
