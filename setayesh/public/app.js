@@ -1,4 +1,4 @@
-/* SETAYESH_BUILD 9.9.80 */
+/* SETAYESH_BUILD 9.9.81 */
 (function(){
 'use strict';
 
@@ -2306,6 +2306,51 @@ function refreshConfig(){
     try{ buildModelPicker(); buildCompareChips(); }catch(e){}
   }).catch(function(){});
 }
+/* Obsidian + GitHub connectors. Obsidian is a local folder we can find on our
+   own; GitHub just needs a token, which we verify before saving. */
+function loadObsidian(){
+  var st=$('obsStatus'); if(!st)return;
+  adminFetch('/api/admin/obsidian').then(function(d){
+    st.textContent=d.connected?('وصل است · '+d.notes+' یادداشت'):'وصل نیست';
+    st.style.color=d.connected?'#34d399':'';
+    var box=$('obsList'); if(!box)return; box.innerHTML='';
+    (d.detected||[]).forEach(function(p){
+      var row=el('button','btn ghost');
+      row.style.cssText='font-size:11.5px;padding:7px 10px;text-align:start;direction:ltr;word-break:break-all';
+      row.textContent=(p===d.vault?'✓ ':'') + p;
+      row.addEventListener('click',function(){ saveObsidian(p); });
+      box.appendChild(row);
+    });
+    if(!(d.detected||[]).length) box.innerHTML='<div style="font-size:11.5px;color:var(--muted)">والتی پیدا نشد — مسیر را دستی بنویس.</div>';
+    var inp=$('obsPath'); if(inp&&d.vault)inp.value=d.vault;
+  }).catch(function(e){ st.textContent=e.message; });
+}
+function saveObsidian(p){
+  var n=$('obsNote'); if(n){n.style.color='';n.textContent='در حال وصل…';}
+  adminFetch('/api/admin/obsidian',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({vault:p})})
+    .then(function(d){ if(n){n.style.color='#34d399';n.textContent=d.vault?('وصل شد ✓ · '+(d.notes||0)+' یادداشت'):'قطع شد';} loadObsidian(); })
+    .catch(function(e){ if(n){n.style.color='#fb7185';n.textContent=e.message;} });
+}
+function loadGithub(){
+  var st=$('ghStatus'); if(!st)return;
+  adminFetch('/api/admin/github').then(function(d){
+    if(d.connected){ st.style.color='#34d399'; st.textContent='وصل است · '+d.login+(d.name?(' ('+d.name+')'):''); }
+    else { st.style.color=d.error?'#fb7185':''; st.textContent=d.error||'وصل نیست'; }
+  }).catch(function(e){ st.textContent=e.message; });
+}
+window.loadObsidian=loadObsidian; window.loadGithub=loadGithub;
+(function(){
+  var sc=$('obsScan'); if(sc)sc.addEventListener('click',loadObsidian);
+  var os_=$('obsSave'); if(os_)os_.addEventListener('click',function(){ saveObsidian(($('obsPath').value||'').trim()); });
+  var gs=$('ghSave'); if(gs)gs.addEventListener('click',function(){
+    var n=$('ghNote'), t=($('ghToken').value||'').trim();
+    if(n){n.style.color='';n.textContent='در حال بررسی توکن…';}
+    adminFetch('/api/admin/github',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:t})})
+      .then(function(d){ $('ghToken').value=''; if(n){n.style.color='#34d399';n.textContent=d.connected?('وصل شد ✓ '+d.login):'قطع شد';} loadGithub(); })
+      .catch(function(e){ if(n){n.style.color='#fb7185';n.textContent=e.message;} });
+  });
+})();
+
 /* Autonomous mode: she applies the owner's own in-app instructions herself. */
 function loadAutonomy(){
   var cb=$('ccAutonomy'); if(!cb)return;

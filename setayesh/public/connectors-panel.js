@@ -114,7 +114,12 @@
         note('cxActionNote','قرار ثبت شد ✅',true); el('cxEvTitle').value=el('cxEvStart').value=el('cxEvEnd').value=''; })
       .catch(function(){ note('cxActionNote','خطای شبکه'); });
   }
-  function open(){ el('cxScrim').style.display='block'; el('cxPanel').style.display='block'; refresh(); }
+  function open(){
+    el('cxScrim').style.display='block'; el('cxPanel').style.display='block'; refresh();
+    // the local Obsidian vault and the GitHub account live in app.js
+    try{ if(typeof window.loadObsidian==='function')window.loadObsidian();
+         if(typeof window.loadGithub==='function')window.loadGithub(); }catch(e){}
+  }
   function close(){ el('cxScrim').style.display='none'; el('cxPanel').style.display='none'; }
   window.openConnectorsPanel=open;
   document.addEventListener('DOMContentLoaded',function(){

@@ -118,7 +118,7 @@ const { makeRag } = require('./rag');
 function loadOptional(name, factory, stubFactory) {
   try { return require(name)[factory]; }
   catch (e) {
-    console.warn(`   [warn] ${name} در دسترس نیست (${e.code || e.message}) — این قابلیت خاموش می‌ماند.`);
+    console.warn(`   [warn] ${name} unavailable (${e.code || e.message}) - that feature stays off.`);
     return stubFactory;
   }
 }
@@ -181,7 +181,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.80';
+const APP_VERSION = '9.9.81';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -589,7 +589,7 @@ const sessions = new Map(); // token -> { username, createdAt }
       sessions.set(token, { username: s.username, createdAt: s.createdAt });
       kept++;
     }
-    if (kept) console.log('   نشست‌های ذخیره‌شده بازیابی شد: ' + kept);
+    if (kept) console.log('   Restored saved sessions: ' + kept);
   } catch (e) { /* first run, or unreadable — start empty */ }
 })();
 
@@ -2571,7 +2571,7 @@ async function dispatchTool(name, input, ctx) {
         if (verdict.ok && ctx.isAdmin && ctx.interactive && autonomy().autoApply) {
           try {
             applyProposalNow(proposals[id]);
-            nightLog(`خودمختار: «${rel}» را خودم تغییر دادم — ${String(input.reason || '').slice(0, 120)}`, 'ok');
+            nightLog(`خودمختار: «${rel}» را خودم تغییر دادم — ${String(input.reason || '').slice(0, 120)}`, 'ok', `autonomous edit applied to ${rel}`);
             ctx.sideEffects.patch = { id, file: rel, ok: true, applied: true };
             return {
               ok: true, id, file: rel, applied: true, verification: verdict,
@@ -4670,6 +4670,126 @@ app.get('/api/admin/patch/:id/diff', requireAuth, requireAdmin, (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ---- Obsidian: find the owner's vault and read their notes ----------------
+// An Obsidian vault is just a folder of markdown with a ".obsidian" directory
+// inside it, so no API and no account is needed — we look in the usual places,
+// and once a vault is chosen Setayesh can search and read those notes. Reading
+// only: nothing in the vault is ever written or deleted from here.
+function obsidianCandidates() {
+  const home = os.homedir();
+  const roots = [home, path.join(home, 'Documents'), path.join(home, 'OneDrive'),
+                 path.join(home, 'OneDrive', 'Documents'), path.join(home, 'Desktop')];
+  const found = [];
+  const seen = new Set();
+  for (const root of roots) {
+    let entries = [];
+    try { entries = fs.readdirSync(root, { withFileTypes: true }); } catch (e) { continue; }
+    // the root itself may be a vault
+    try { if (fs.existsSync(path.join(root, '.obsidian')) && !seen.has(root)) { seen.add(root); found.push(root); } } catch (e) {}
+    for (const d of entries) {
+      if (!d.isDirectory() || d.name.startsWith('.')) continue;
+      const p = path.join(root, d.name);
+      try { if (fs.existsSync(path.join(p, '.obsidian')) && !seen.has(p)) { seen.add(p); found.push(p); } } catch (e) {}
+      if (found.length >= 12) return found;
+    }
+  }
+  return found;
+}
+function obsidianVault() { return String(cfg.OBSIDIAN_VAULT || '').trim(); }
+function obsidianNotes(limit) {
+  const root = obsidianVault();
+  if (!root) return [];
+  const out = [];
+  (function walk(dir, depth) {
+    if (depth > 4 || out.length >= (limit || 500)) return;
+    let entries = [];
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch (e) { return; }
+    for (const d of entries) {
+      if (out.length >= (limit || 500)) return;
+      if (d.name.startsWith('.')) continue;
+      const p = path.join(dir, d.name);
+      if (d.isDirectory()) walk(p, depth + 1);
+      else if (/\.md$/i.test(d.name)) out.push(p);
+    }
+  })(root, 0);
+  return out;
+}
+app.get('/api/admin/obsidian', requireAuth, requireAdmin, (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const vault = obsidianVault();
+  let notes = 0, ok = false;
+  try { ok = !!vault && fs.statSync(vault).isDirectory(); } catch (e) { ok = false; }
+  if (ok) notes = obsidianNotes(2000).length;
+  res.json({ vault, connected: ok, notes, detected: obsidianCandidates() });
+});
+app.post('/api/admin/obsidian', requireAuth, requireAdmin, (req, res) => {
+  const p = String((req.body && req.body.vault) || '').trim();
+  if (!p) { writeConfigFile({ OBSIDIAN_VAULT: '' }); cfg.OBSIDIAN_VAULT = ''; return res.json({ ok: true, vault: '' }); }
+  let st; try { st = fs.statSync(p); } catch (e) { return res.status(400).json({ error: 'این مسیر پیدا نشد.' }); }
+  if (!st.isDirectory()) return res.status(400).json({ error: 'باید یک پوشه باشد.' });
+  writeConfigFile({ OBSIDIAN_VAULT: p });
+  cfg.OBSIDIAN_VAULT = p;
+  nightLog(`والت Obsidian وصل شد: ${p}`, 'ok', 'obsidian vault connected');
+  res.json({ ok: true, vault: p, notes: obsidianNotes(2000).length });
+});
+// Search the owner's Obsidian notes (read-only).
+app.get('/api/admin/obsidian/search', requireAuth, requireAdmin, (req, res) => {
+  const q = String(req.query.q || '').trim().toLowerCase();
+  if (!q) return res.json({ hits: [] });
+  const hits = [];
+  for (const f of obsidianNotes(1200)) {
+    if (hits.length >= 20) break;
+    let txt = '';
+    try { txt = fs.readFileSync(f, 'utf8'); } catch (e) { continue; }
+    const hay = (path.basename(f) + '\n' + txt).toLowerCase();
+    const at = hay.indexOf(q);
+    if (at < 0) continue;
+    hits.push({
+      name: path.basename(f, '.md'),
+      rel: path.relative(obsidianVault(), f),
+      excerpt: txt.slice(Math.max(0, at - 120), at + 240).replace(/\s+/g, ' ').trim(),
+    });
+  }
+  res.json({ hits });
+});
+
+// ---- GitHub: connect an account so private repositories are reachable -----
+app.get('/api/admin/github', requireAuth, requireAdmin, async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const tokenSet = !!String(cfg.GITHUB_TOKEN || '').trim();
+  if (!tokenSet) return res.json({ connected: false, tokenSet: false });
+  try {
+    const r = await fetchWithTimeout('https://api.github.com/user', {
+      headers: { Authorization: 'Bearer ' + String(cfg.GITHUB_TOKEN).trim(), 'User-Agent': 'Setayesh', Accept: 'application/vnd.github+json' },
+      timeout: 8000,
+    });
+    if (!r.ok) return res.json({ connected: false, tokenSet: true, error: 'توکن پذیرفته نشد (' + r.status + ')' });
+    const d = await r.json();
+    res.json({ connected: true, tokenSet: true, login: d.login, name: d.name || '', repos: d.public_repos });
+  } catch (e) {
+    res.json({ connected: false, tokenSet: true, error: 'وصل نشد: ' + e.message });
+  }
+});
+app.post('/api/admin/github', requireAuth, requireAdmin, async (req, res) => {
+  const t = String((req.body && req.body.token) || '').trim();
+  if (!t) { writeConfigFile({ GITHUB_TOKEN: '' }); cfg.GITHUB_TOKEN = ''; return res.json({ ok: true, connected: false }); }
+  if (t.length > 300) return res.status(400).json({ error: 'توکن نامعتبر است.' });
+  try {
+    const r = await fetchWithTimeout('https://api.github.com/user', {
+      headers: { Authorization: 'Bearer ' + t, 'User-Agent': 'Setayesh', Accept: 'application/vnd.github+json' },
+      timeout: 8000,
+    });
+    if (!r.ok) return res.status(400).json({ error: 'گیت‌هاب این توکن را قبول نکرد (' + r.status + ').' });
+    const d = await r.json();
+    writeConfigFile({ GITHUB_TOKEN: t });
+    cfg.GITHUB_TOKEN = t;
+    nightLog(`گیت‌هاب وصل شد: ${d.login}`, 'ok', 'github connected');
+    res.json({ ok: true, connected: true, login: d.login, name: d.name || '' });
+  } catch (e) {
+    res.status(400).json({ error: 'وصل نشد: ' + e.message });
+  }
+});
+
 // ---- Autonomy: let her carry out the owner's own instructions herself ------
 // With this on, a change she proposes is applied straight away instead of
 // waiting in the approvals queue — but ONLY when the instruction came from the
@@ -4687,7 +4807,7 @@ app.get('/api/admin/autonomy', requireAuth, requireAdmin, (req, res) => {
 });
 app.post('/api/admin/autonomy', requireAuth, requireAdmin, (req, res) => {
   saveJsonFile(AUTONOMY_FILE, { autoApply: !!(req.body && req.body.autoApply) });
-  nightLog(autonomy().autoApply ? 'حالت خودمختار روشن شد — تغییرها را خودم اعمال می‌کنم (فقط با دستور مستقیم تو).' : 'حالت خودمختار خاموش شد.', 'info');
+  nightLog(autonomy().autoApply ? 'حالت خودمختار روشن شد — تغییرها را خودم اعمال می‌کنم (فقط با دستور مستقیم تو).' : 'حالت خودمختار خاموش شد.', 'info', autonomy().autoApply ? 'autonomous mode ON (owner-typed instructions only)' : 'autonomous mode OFF');
   res.json(Object.assign({ ok: true }, autonomy()));
 });
 
@@ -5162,10 +5282,15 @@ function saveNight() {
   if (night.log.length > 60) night.log = night.log.slice(-60);
   saveJsonFile(NIGHT_FILE, night);
 }
-function nightLog(msg, level) {
+function nightLog(msg, level, en) {
   night.log.push({ at: new Date().toISOString(), level: level || 'info', msg: String(msg).slice(0, 300) });
   saveNight();
-  console.log(`   [night] ${msg}`);
+  // The Windows console cannot shape Persian — it prints reversed, broken text.
+  // So the TERMINAL line is always plain ASCII/English; the Persian wording
+  // stays in the app's own log, where it renders correctly.
+  const ascii = /^[\x00-\x7F]*$/.test(String(msg));
+  const line = en || (ascii ? String(msg) : 'event logged - open the app to read it');
+  console.log(`   [night] ${line}`);
 }
 
 // --- boot-time verification: did the last restart survive? ---
@@ -5189,7 +5314,7 @@ function checkPendingVerification() {
       (res) => {
         if (res.statusCode === 200) {
           try { fs.unlinkSync(VERIFY_FILE); } catch (e) {}
-          nightLog('به‌روزرسانی خودکار تأیید شد — سرور سالم بالا آمد.', 'ok');
+          nightLog('به‌روزرسانی خودکار تأیید شد — سرور سالم بالا آمد.', 'ok', 'update verified - server booted healthy');
         }
         res.resume();
       });
@@ -5684,7 +5809,7 @@ async function scanInbox() {
   } finally { _inboxBusy = false; }
 
   if (restartNeeded && RESTART_SUPPORTED) {
-    nightLog('ری‌استارت برای فعال شدن نسخه‌ی جدید…', 'info');
+    nightLog('ری‌استارت برای فعال شدن نسخه‌ی جدید…', 'info', 'restarting to activate the new version...');
     setTimeout(() => process.exit(88), 1500);
   }
 }
@@ -5895,7 +6020,7 @@ function startLibInstall() {
   const timer = setTimeout(() => { try { child.kill('SIGKILL'); } catch (e) {} }, 300000);
   child.on('close', (code) => {
     clearTimeout(timer); _libInstallRunning = false; _libInstallLog += `\n[پایان · کد ${code}]`;
-    nightLog(code === 0 ? 'کتابخانه‌های مهم پایتون نصب شدند.' : `نصب کتابخانه‌ها با کد ${code} تمام شد.`, code === 0 ? 'ok' : 'info');
+    nightLog(code === 0 ? 'کتابخانه‌های مهم پایتون نصب شدند.' : `نصب کتابخانه‌ها با کد ${code} تمام شد.`, code === 0 ? 'ok' : 'info', code === 0 ? 'python libraries installed' : `python library install finished (code ${code})`);
   });
   child.on('error', (e) => { clearTimeout(timer); _libInstallRunning = false; _libInstallLog += '\nخطا: ' + e.message; });
   return { ok: true, started: true };
@@ -5923,7 +6048,7 @@ if (process.env.ENABLE_AUTOLIBS !== '0') {
       } catch (e) {}
       if (have.length) return;                       // already stocked
       if (!fs.existsSync(path.join(BRAIN_DIR, 'requirements-libs.txt'))) return;
-      nightLog('کتابخانه‌های مهم پایتون پیدا نشدند — خودم دارم نصبشان می‌کنم…', 'info');
+      nightLog('کتابخانه‌های مهم پایتون پیدا نشدند — خودم دارم نصبشان می‌کنم…', 'info', 'python libraries missing - installing them now...');
       startLibInstall();
     } catch (e) {}
   }, 20000).unref();
@@ -6153,7 +6278,7 @@ async function applyUpdateZip(zipPath, who, opts) {
     fs.renameSync(zipPath, path.join(UPDATES_DIR, 'installed', path.basename(zipPath)));
   } catch (e) {}
 
-  nightLog(`بسته‌ی ${info.version} بررسی شد (${info.count} فایل) — در حال نصب…`, 'info');
+  nightLog(`بسته‌ی ${info.version} بررسی شد (${info.count} فایل) — در حال نصب…`, 'info', `package ${info.version} verified (${info.count} files) - installing...`);
 
   runBackup('before-auto-update');
   applyWithVerification(Object.keys(info.files), `auto-update to ${info.version} (${who || 'folder'})`);
@@ -6181,7 +6306,7 @@ async function applyUpdateZip(zipPath, who, opts) {
   if (verifyFail.length) {
     nightLog(`هشدار: ${verifyFail.length} فایل درست نوشته نشد: ${verifyFail.slice(0, 8).join('، ')}${verifyFail.length > 8 ? '…' : ''}`, 'error');
   } else {
-    nightLog(`نسخه ${info.version} نصب شد (${info.verified} فایل، همه تأیید شدند) — ری‌استارت برای فعال شدن.`, 'ok');
+    nightLog(`نسخه ${info.version} نصب شد (${info.verified} فایل، همه تأیید شدند) — ری‌استارت برای فعال شدن.`, 'ok', `version ${info.version} installed (${info.verified} files verified) - restart to activate`);
   }
   return info;
 }
@@ -6208,7 +6333,7 @@ function scanUpdatesFolder() {
     try {
       const info = await applyUpdateZip(zipPath, 'updates folder');
       if (RESTART_SUPPORTED) {
-        nightLog('ری‌استارت خودکار برای فعال شدن نسخه‌ی جدید…', 'info');
+        nightLog('ری‌استارت خودکار برای فعال شدن نسخه‌ی جدید…', 'info', 'auto-restarting to activate the new version...');
         setTimeout(() => process.exit(88), 1500);
       }
     } catch (e) {
@@ -6726,6 +6851,8 @@ const EDITABLE_KEYS = {
   MAIL_PORT:         { secret: false, label: 'پورت IMAP (پیش‌فرض ۹۹۳)' },
   NOTIFY_EMAIL:      { secret: false, label: 'ایمیل تو برای دریافت اعلان‌های ستایش' },
   SMTP_HOST:         { secret: false, label: 'سرور SMTP دستی (اختیاری)' },
+  GITHUB_TOKEN:      { secret: true,  label: 'توکن GitHub (برای مخزن‌های خصوصی)' },
+  OBSIDIAN_VAULT:    { secret: false, label: 'مسیر والت Obsidian' },
   TUYA_CLIENT_ID:    { secret: false, label: 'Tuya Client ID (برای دوربین‌های LSC)' },
   TUYA_SECRET:       { secret: true,  label: 'Tuya Client Secret' },
   TUYA_REGION:       { secret: false, label: 'منطقه‌ی Tuya (eu / us / cn / in)' },

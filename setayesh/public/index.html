@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- SETAYESH_BUILD 9.9.80 -->
+<!-- SETAYESH_BUILD 9.9.81 -->
 <html lang="fa" dir="rtl">
 <head>
 <meta charset="UTF-8">
@@ -1034,6 +1034,43 @@
     <div style="width:34px;height:34px;border-radius:10px;display:flex;align-items:center;justify-content:center;background:radial-gradient(circle at 40% 30%,#34d39955,#0d3a2a);border:1px solid rgba(52,211,153,.4);font-size:17px">🔌</div>
     <div style="flex:1"><div style="font-size:16px;font-weight:800">کانکتورها</div><div style="font-size:11.5px;color:var(--muted,#8ea0c8)">اتصال ستایش به سرویس‌های بیرونی</div></div>
     <button id="cxClose" style="width:34px;height:34px;border-radius:9px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:var(--text,#e8ecf7);cursor:pointer;font-size:17px">✕</button>
+  </div>
+
+  <!-- Obsidian: a local vault, found automatically -->
+  <div style="border:1px solid rgba(255,255,255,.10);border-radius:16px;padding:14px;background:rgba(255,255,255,.03);margin-bottom:12px">
+    <div style="display:flex;align-items:center;gap:9px;margin-bottom:6px">
+      <span style="font-size:19px">🟣</span>
+      <div style="flex:1"><b style="font-size:13.5px">Obsidian</b>
+        <div id="obsStatus" style="font-size:11.5px;color:var(--muted,#8ea0c8)">…</div></div>
+      <button id="obsScan" class="btn ghost" style="font-size:11.5px;padding:6px 12px">🔍 پیدا کن</button>
+    </div>
+    <div style="font-size:11.5px;color:var(--muted,#8ea0c8);line-height:1.8;margin-bottom:8px">
+      والت Obsidian تو فقط یک پوشه است — خودم در جاهای معمول دنبالش می‌گردم. بعد از وصل شدن، یادداشت‌هایت را می‌خوانم و جستجو می‌کنم (فقط خواندن؛ هرگز چیزی را عوض یا پاک نمی‌کنم).
+    </div>
+    <div id="obsList" style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px"></div>
+    <div class="tk-row" style="gap:8px">
+      <input class="input" id="obsPath" placeholder="یا مسیر والت را دستی بنویس…" style="flex:1;font-size:12px;direction:ltr;text-align:left">
+      <button class="btn" id="obsSave" style="font-size:12px;padding:8px 14px">وصل کن</button>
+    </div>
+    <div id="obsNote" style="font-size:11.5px;margin-top:6px"></div>
+  </div>
+
+  <!-- GitHub -->
+  <div style="border:1px solid rgba(255,255,255,.10);border-radius:16px;padding:14px;background:rgba(255,255,255,.03);margin-bottom:12px">
+    <div style="display:flex;align-items:center;gap:9px;margin-bottom:6px">
+      <span style="font-size:19px">🐙</span>
+      <div style="flex:1"><b style="font-size:13.5px">GitHub</b>
+        <div id="ghStatus" style="font-size:11.5px;color:var(--muted,#8ea0c8)">…</div></div>
+    </div>
+    <div style="font-size:11.5px;color:var(--muted,#8ea0c8);line-height:1.8;margin-bottom:8px">
+      یک Personal Access Token بساز (فقط دسترسی repo) و اینجا بگذار تا مخزن‌های خصوصی‌ات را هم بتوانم بخوانم.
+      <a href="https://github.com/settings/tokens" target="_blank" rel="noopener" style="color:var(--cyan)">ساختن توکن ↗</a>
+    </div>
+    <div class="tk-row" style="gap:8px">
+      <input class="input" id="ghToken" type="password" placeholder="ghp_… (خالی = قطع اتصال)" style="flex:1;font-size:12px;direction:ltr;text-align:left">
+      <button class="btn" id="ghSave" style="font-size:12px;padding:8px 14px">وصل کن</button>
+    </div>
+    <div id="ghNote" style="font-size:11.5px;margin-top:6px"></div>
   </div>
 
   <div style="border:1px solid rgba(255,255,255,.10);border-radius:16px;padding:14px;background:rgba(255,255,255,.03)">
