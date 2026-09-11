@@ -63,6 +63,9 @@ before(async () => {
     SETAYESH_SYNC_FILE: path.join(tmp, 'sync.json'),
     SETAYESH_CHATS_DIR: path.join(tmp, 'chats'),
     SETAYESH_HEALTH_FILE: path.join(tmp, 'engine-health.json'),
+    // Keep any generated TLS material inside the temp dir, never the repo.
+    SETAYESH_TLS_CERT: path.join(tmp, 'tls-cert.pem'),
+    SETAYESH_TLS_KEY: path.join(tmp, 'tls-key.pem'),
   });
   child = spawn(process.execPath, [path.join(ROOT, 'index.js')], { cwd: tmp, env, stdio: 'ignore' });
   child.on('error', (e) => { throw e; });
@@ -78,6 +81,9 @@ after(() => {
     try { fs.rmSync(path.join(ROOT, f), { force: true }); } catch (e) {}
   }
   try { fs.rmSync(path.join(ROOT, 'code-library'), { recursive: true, force: true }); } catch (e) {}
+  for (const f of ['tls-cert.pem', 'tls-key.pem']) {
+    try { fs.rmSync(path.join(ROOT, f), { force: true }); } catch (e) {}
+  }
 });
 
 test('health reports ok', async () => {
@@ -1213,4 +1219,86 @@ test('the shelf is admin-only', async () => {
   const kid = await mkUser(token, 'shelfkid', 'pass12345');
   assert.equal((await api('/api/admin/devlibs', { token: kid })).status, 403);
   assert.equal((await api('/api/admin/devlibs/download', { method: 'POST', token: kid, body: { lang: 'python' } })).status, 403);
+});
+
+// ---- Local HTTPS: the self-signed certificate (selfsign.js) ----
+// The phone's Web Bluetooth / Web Serial need a "secure context" (https or
+// localhost). Over http://192.168.x.x they are simply absent. selfsign.js makes
+// a certificate with pure Node so HTTPS can turn on without OpenSSL or any new
+// dependency. These assert the cert is real: Node parses it, it self-verifies,
+// the key matches, and the LAN IPs are in the SAN.
+test('selfsign builds a cert Node can parse, that self-verifies and matches its key', () => {
+  const crypto = require('node:crypto');
+  const selfsign = require(path.join(ROOT, 'selfsign.js'));
+  const g = selfsign.generate({ hostnames: ['setayesh.local'], ips: ['192.168.1.50'], days: 825 });
+  const x = new crypto.X509Certificate(g.certPem);
+  assert.match(x.subject, /CN=Setayesh/);
+  assert.equal(x.subject, x.issuer, 'self-signed: subject must equal issuer');
+  assert.equal(x.verify(x.publicKey), true, 'the cert must verify against its own key');
+  assert.equal(x.checkPrivateKey(crypto.createPrivateKey(g.keyPem)), true, 'the private key must match the cert');
+  // SANs cover localhost, loopback and the real LAN IP.
+  assert.match(x.subjectAltName, /192\.168\.1\.50/);
+  assert.match(x.subjectAltName, /127\.0\.0\.1/);
+  assert.match(x.subjectAltName, /localhost/);
+  assert.ok(new Date(x.validTo).getTime() > Date.now(), 'cert must not be pre-expired');
+});
+
+test('selfsign.ensure writes files once, then leaves a valid cert alone but renews for a new LAN IP', () => {
+  const crypto = require('node:crypto');
+  const selfsign = require(path.join(ROOT, 'selfsign.js'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'setayesh-tls-'));
+  const certPath = path.join(dir, 'tls-cert.pem');
+  const keyPath = path.join(dir, 'tls-key.pem');
+  try {
+    // first call creates the files
+    const first = selfsign.ensure({ certPath, keyPath, ips: ['10.0.0.5'] });
+    assert.ok(first && first.created, 'first call must generate');
+    assert.equal(first.reason, 'missing');
+    assert.ok(fs.existsSync(certPath) && fs.existsSync(keyPath));
+    const serial1 = new crypto.X509Certificate(fs.readFileSync(certPath)).serialNumber;
+    // second call with the same IPs must NOT regenerate (no churn on every boot)
+    const second = selfsign.ensure({ certPath, keyPath, ips: ['10.0.0.5'] });
+    assert.equal(second, null, 'a still-valid cert that covers the IPs is left untouched');
+    const serial2 = new crypto.X509Certificate(fs.readFileSync(certPath)).serialNumber;
+    assert.equal(serial1, serial2, 'the cert file must be unchanged');
+    // a NEW real LAN ip must trigger a fresh cert that covers it
+    const third = selfsign.ensure({ certPath, keyPath, ips: ['10.0.0.5', '192.168.8.8'] });
+    assert.ok(third && third.created, 'a new address must renew the cert');
+    assert.match(new crypto.X509Certificate(fs.readFileSync(certPath)).subjectAltName, /192\.168\.8\.8/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('selfsign rejects a bogus IP but still emits a usable cert', () => {
+  const crypto = require('node:crypto');
+  const selfsign = require(path.join(ROOT, 'selfsign.js'));
+  const g = selfsign.generate({ ips: ['999.1.1.1', '192.168.2.2'] });
+  const x = new crypto.X509Certificate(g.certPem);
+  assert.doesNotMatch(x.subjectAltName, /999\.1\.1\.1/, 'an invalid IP must not land in the SAN');
+  assert.match(x.subjectAltName, /192\.168\.2\.2/);
+});
+
+test('secure-link: admin can read state and turn on HTTPS, family cannot', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  // admin reads current state
+  const st = await (await api('/api/admin/secure-link', { token })).json();
+  assert.equal(typeof st.on, 'boolean');
+  assert.ok(Array.isArray(st.urls));
+  // family account is refused on both verbs
+  const kid = await mkUser(token, 'securekid', 'pass12345');
+  assert.equal((await api('/api/admin/secure-link', { token: kid })).status, 403);
+  assert.equal((await api('/api/admin/secure-link', { method: 'POST', token: kid, body: { on: true } })).status, 403);
+  // admin turns it on — the cert is generated on the spot, into the temp dir
+  const on = await (await api('/api/admin/secure-link', { method: 'POST', token, body: { on: true } })).json();
+  assert.equal(on.ok, true);
+  assert.equal(on.on, true);
+  assert.equal(on.generated, true, 'enabling must generate the cert immediately');
+  const crypto = require('node:crypto');
+  const x = new crypto.X509Certificate(fs.readFileSync(path.join(tmp, 'tls-cert.pem')));
+  assert.match(x.subject, /CN=Setayesh/);
+  // turning it back off must not throw
+  const off = await (await api('/api/admin/secure-link', { method: 'POST', token, body: { on: false } })).json();
+  assert.equal(off.ok, true);
+  assert.equal(off.on, false);
 });

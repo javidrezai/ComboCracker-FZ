@@ -96,6 +96,7 @@ const express = require('express');
 const tls = require('tls');
 const http = require('http');
 const https = require('https');
+const selfsign = require('./selfsign');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const bcrypt = require('bcryptjs');
@@ -171,24 +172,10 @@ const DATA_DIR = IS_PACKAGED ? path.dirname(process.execPath) : __dirname;
 const PORT = Number(process.env.PORT) || 3000;
 const HOST = process.env.SETAYESH_HOST || '0.0.0.0';
 
-// Optional local HTTPS (charter rule 2.2). Encrypts LAN/Tailscale traffic with
-// NO new dependency: if a cert + key are present the server speaks HTTPS,
-// otherwise it stays on plain HTTP exactly as before. Get a cert from Tailscale
-// (`tailscale cert <machine-name>`) or mkcert, and drop the files next to the
-// app as tls-cert.pem / tls-key.pem — or point SETAYESH_TLS_CERT / SETAYESH_TLS_KEY
-// at them.
-const TLS = (function loadTls() {
-  const certPath = process.env.SETAYESH_TLS_CERT || path.join(DATA_DIR, 'tls-cert.pem');
-  const keyPath = process.env.SETAYESH_TLS_KEY || path.join(DATA_DIR, 'tls-key.pem');
-  try {
-    if (fs.existsSync(certPath) && fs.existsSync(keyPath)) {
-      return { cert: fs.readFileSync(certPath), key: fs.readFileSync(keyPath) };
-    }
-  } catch (e) {
-    console.warn('   ⚠ TLS cert/key found but unreadable — starting on HTTP:', e.message);
-  }
-  return null;
-})();
+// Local HTTPS is set up just below, after the config file is read (it needs the
+// AUTO_TLS preference). The loader lives in loadTls().
+const TLS_CERT_PATH = process.env.SETAYESH_TLS_CERT || path.join(DATA_DIR, 'tls-cert.pem');
+const TLS_KEY_PATH = process.env.SETAYESH_TLS_KEY || path.join(DATA_DIR, 'tls-key.pem');
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 // How long a "remember this device" trust lasts before the password is asked
 // for again. Deliberately the same length as a session: one habit, one rhythm.
@@ -196,7 +183,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.89';
+const APP_VERSION = '9.9.90';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -221,6 +208,77 @@ function readConfigFile() {
 }
 
 const cfg = readConfigFile();
+
+// ---------------- Local HTTPS (charter rule 2.2) ----------------
+// Encrypts LAN/Tailscale traffic with NO new dependency. Three ways in, in
+// order of preference:
+//   1. A real certificate (Tailscale `tailscale cert`, or mkcert) dropped next
+//      to the app as tls-cert.pem / tls-key.pem — no browser warning.
+//   2. AUTO_TLS on: Setayesh makes its OWN certificate (selfsign.js, pure Node)
+//      so the phone gets a "secure context" — the one thing Web Bluetooth and
+//      Web Serial need. Cost: a ONE-TIME "accept this certificate" tap, because
+//      a self-signed cert is not signed by a public CA. This is the path بابا
+//      can actually use — no command line.
+//   3. Neither: plain HTTP, exactly as before. Nothing breaks by default.
+// The admin turns path 2 on/off with the AUTO_TLS setting or the secure-link
+// button; we never silently switch an existing HTTP house over to HTTPS.
+function earlyLanIps() {
+  const out = [];
+  try {
+    for (const addrs of Object.values(os.networkInterfaces())) {
+      for (const a of addrs || []) {
+        if (a.internal) continue;
+        if (a.family === 'IPv4' || a.family === 4) out.push(a.address);
+      }
+    }
+  } catch (_) {}
+  return Array.from(new Set(out));
+}
+const AUTO_TLS_ON = (function () {
+  const v = cfg.AUTO_TLS != null ? cfg.AUTO_TLS : process.env.SETAYESH_AUTO_TLS;
+  return v === '1' || v === 'true' || v === 'on';
+})();
+function loadTls() {
+  // A real cert beats a generated one — if the admin dropped real files in,
+  // honour them and never overwrite them.
+  let haveReal = false;
+  try { haveReal = fs.existsSync(TLS_CERT_PATH) && fs.existsSync(TLS_KEY_PATH); } catch (_) {}
+  if (!haveReal && AUTO_TLS_ON) {
+    try {
+      const made = selfsign.ensure({ certPath: TLS_CERT_PATH, keyPath: TLS_KEY_PATH, ips: earlyLanIps() });
+      if (made) console.log(`   ✓  Generated a self-signed certificate (${made.reason}); valid until ${made.notAfter.toDateString()}.`);
+    } catch (e) {
+      console.warn('   ⚠ Could not generate a self-signed certificate — staying on HTTP:', e.message);
+    }
+  } else if (haveReal && AUTO_TLS_ON) {
+    // Keep an auto-managed cert fresh (renew near expiry / new LAN IP), but
+    // only if it looks like one we generated (EC, CN=Setayesh). Never touch a
+    // real cert the owner installed.
+    try {
+      const x = new crypto.X509Certificate(fs.readFileSync(TLS_CERT_PATH));
+      if (/CN=Setayesh/.test(x.subject) && x.subject === x.issuer) {
+        const made = selfsign.ensure({ certPath: TLS_CERT_PATH, keyPath: TLS_KEY_PATH, ips: earlyLanIps() });
+        if (made) console.log(`   ✓  Refreshed the self-signed certificate (${made.reason}).`);
+      }
+    } catch (_) {}
+  }
+  try {
+    if (fs.existsSync(TLS_CERT_PATH) && fs.existsSync(TLS_KEY_PATH)) {
+      return { cert: fs.readFileSync(TLS_CERT_PATH), key: fs.readFileSync(TLS_KEY_PATH),
+               selfSigned: isSelfSignedCert() };
+    }
+  } catch (e) {
+    console.warn('   ⚠ TLS cert/key present but unreadable — starting on HTTP:', e.message);
+  }
+  return null;
+}
+function isSelfSignedCert() {
+  try {
+    const x = new crypto.X509Certificate(fs.readFileSync(TLS_CERT_PATH));
+    return x.subject === x.issuer && /CN=Setayesh/.test(x.subject);
+  } catch (_) { return false; }
+}
+const TLS = loadTls();
 
 // External connectors (Google: Gmail + Calendar). Tokens live in a local
 // 0600 store next to the app, never committed. Credentials come from cfg.
@@ -8033,6 +8091,7 @@ const EDITABLE_KEYS = {
   ENABLE_LOCAL:  { secret: false, label: 'موتور محلی (Ollama)' },
   ENABLE_PYTHON: { secret: false, label: 'اجرای کد پایتون' },
   ENABLE_SELF_EDIT: { secret: false, label: 'اجازه‌ی تغییر کد خودش (با تأیید تو)' },
+  AUTO_TLS:          { secret: false, label: 'اتصال امن HTTPS برای گوشی (گواهی خودساخته — یک‌بار باید در مرورگر تأیید شود)' },
   LOGIN_ALERTS:      { secret: false, label: 'اعلام ورود از دستگاه جدید در تابلو' },
   AUTO_LOCK_MINUTES: { secret: false, label: 'قفل خودکار بعد از چند دقیقه بی‌کاری (۰ = خاموش)' },
   MAIL_PROVIDER:     { secret: false, label: 'سرویس ایمیل (gmail / outlook / yahoo)' },
@@ -8124,6 +8183,66 @@ app.post('/api/admin/settings', requireAuth, requireAdmin, (req, res) => {
     res.json({ ok: true, applied: true, note: 'ذخیره شد. کلیدها بلافاصله فعال شدند؛ تغییر موتور پیش‌فرض یا فعال‌سازی پایتون بعد از ری‌استارت اعمال می‌شود.' });
   } catch (e) {
     res.status(500).json({ error: 'ذخیره نشد: ' + e.message });
+  }
+});
+
+// Secure link (HTTPS) for the phone. The admin taps one button: we turn on
+// AUTO_TLS, generate a self-signed certificate on the spot (so the files exist
+// before the restart), and hand back the https:// addresses plus an honest
+// note about the one-time browser warning. GET reports current state; POST
+// toggles. This is what finally lets the phone's Web Bluetooth / Web Serial
+// work — those APIs need a "secure context" and refuse plain http on the LAN.
+app.get('/api/admin/secure-link', requireAuth, requireAdmin, (req, res) => {
+  let expires = null, self = false;
+  try {
+    if (fs.existsSync(TLS_CERT_PATH)) {
+      const x = new crypto.X509Certificate(fs.readFileSync(TLS_CERT_PATH));
+      expires = x.validTo; self = (x.subject === x.issuer);
+    }
+  } catch (_) {}
+  res.json({
+    on: AUTO_TLS_ON,
+    running: !!TLS,
+    selfSigned: TLS ? !!TLS.selfSigned : self,
+    certExists: (() => { try { return fs.existsSync(TLS_CERT_PATH); } catch (_) { return false; } })(),
+    certExpires: expires,
+    port: PORT,
+    urls: localLanIps().map((ip) => `https://${ip}:${PORT}`),
+    note: 'گواهی خودساخته است؛ مرورگر بار اول هشدار می‌دهد — «Advanced → Proceed» را بزن. برای حذف کامل هشدار، Tailscale یا mkcert.',
+  });
+});
+app.post('/api/admin/secure-link', requireAuth, requireAdmin, (req, res) => {
+  const want = req.body && (req.body.on === true || req.body.on === '1' || req.body.on === 'on');
+  try {
+    writeConfigFile({ AUTO_TLS: want ? '1' : '' });
+    cfg.AUTO_TLS = want ? '1' : '';
+    let made = null;
+    if (want) {
+      // Generate now so the cert is on disk the instant the server restarts.
+      // Never clobber a real (non-self-signed) cert the owner installed.
+      let clobberReal = false;
+      try {
+        if (fs.existsSync(TLS_CERT_PATH)) {
+          const x = new crypto.X509Certificate(fs.readFileSync(TLS_CERT_PATH));
+          clobberReal = !(x.subject === x.issuer && /CN=Setayesh/.test(x.subject));
+        }
+      } catch (_) {}
+      if (!clobberReal) {
+        made = selfsign.ensure({ certPath: TLS_CERT_PATH, keyPath: TLS_KEY_PATH, ips: localLanIps() });
+      }
+    }
+    res.json({
+      ok: true,
+      on: want,
+      generated: !!made,
+      urls: localLanIps().map((ip) => `https://${ip}:${PORT}`),
+      note: want
+        ? 'اتصال امن روشن شد. ستایش را یک بار ری‌استارت کن، بعد آدرس https بالا را در گوشی باز کن و هشدار گواهی را بپذیر. آن وقت بلوتوث و کابلِ گوشی کار می‌کند.'
+        : 'اتصال امن خاموش شد. بعد از ری‌استارت دوباره روی http برمی‌گردد.',
+      needsRestart: true,
+    });
+  } catch (e) {
+    res.status(500).json({ error: 'نشد: ' + e.message });
   }
 });
 
@@ -8776,10 +8895,15 @@ const server = (TLS ? https.createServer({ cert: TLS.cert, key: TLS.key }, app) 
   }
   if (INSECURE_TLS) warnings.push('TLS certificate verification is DISABLED (SETAYESH_INSECURE_TLS=1).');
   if (!TLS && HOST === '0.0.0.0') {
-    warnings.push('Traffic is over plain HTTP. For encrypted phone/LAN access, add a cert:');
-    warnings.push('  → tls-cert.pem + tls-key.pem next to the app (Tailscale: `tailscale cert <name>`, or mkcert).');
+    warnings.push('Traffic is over plain HTTP — the phone cannot use Bluetooth/Serial (they need a secure link).');
+    warnings.push('  → Turn on "اتصال امن HTTPS" in settings (self-signed, one-time tap), or set SETAYESH_AUTO_TLS=1.');
+    warnings.push('  → Warning-free: a real cert as tls-cert.pem + tls-key.pem (Tailscale `tailscale cert`, or mkcert).');
   }
-  if (TLS) console.log('   ✓  HTTPS on — LAN/Tailscale traffic is encrypted.\n');
+  if (TLS && TLS.selfSigned) {
+    console.log('   ✓  HTTPS on with a self-signed certificate — encrypted; accept the one-time browser warning on each device.\n');
+  } else if (TLS) {
+    console.log('   ✓  HTTPS on — LAN/Tailscale traffic is encrypted.\n');
+  }
   if (!privacy.enabled) warnings.push('Outbound family-privacy filter is switched OFF.');
 
   if (warnings.length) {

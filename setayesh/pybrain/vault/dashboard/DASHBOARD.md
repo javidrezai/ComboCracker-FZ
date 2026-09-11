@@ -1,6 +1,6 @@
 # 🧠 داشبورد زندهٔ مغز ستایش
 
-> آخرین به‌روزرسانی: 2026-09-10 20:28:18
+> آخرین به‌روزرسانی: 2026-09-11 16:48:44
 
 ## وضعیت مغز سرور
 - **مدل محلی:** `qwen2.5:7b` — 🔴 آفلاین (Ollama در دسترس نیست)
@@ -12,40 +12,44 @@
 ## نقشهٔ حافظهٔ دائمی
 | بخش | تعداد فایل |
 |-----|-----------|
-| گراف دانش (`knowledge/`) | 13 |
+| گراف دانش (`knowledge/`) | 15 |
 | درس‌های خودآموخته (`lessons/`) | 1 |
-| لاگ‌ها (`logs/`) | 2 |
+| لاگ‌ها (`logs/`) | 3 |
 
 ## نوت‌های گراف دانش
 - knowledge/Ollama.md
 - knowledge/TF-IDF.md
+- knowledge/about-setayesh.md
+- knowledge/agent-loop.md
 - knowledge/app-memory.md
+- knowledge/brain-architecture.md
+- knowledge/dev-libraries.md
 - knowledge/embeddings.md
-- knowledge/بازیابی-معنایی.md
-- knowledge/حلقه-عامل.md
-- knowledge/خودآموزی.md
-- knowledge/خودمیزبانی.md
-- knowledge/درباره-ستایش.md
-- knowledge/راهنمای-استفاده.md
-- knowledge/زمان‌بند-و-ابزارها.md
-- knowledge/شفافیت-و-خودتعمیری.md
-- knowledge/معماری-مغز.md
+- knowledge/file-formats.md
+- knowledge/scheduler-and-tools.md
+- knowledge/self-hosting.md
+- knowledge/self-learning.md
+- knowledge/semantic-recall.md
+- knowledge/transparency-self-repair.md
+- knowledge/user-guide.md
 
 ## گراف دانش
-(13 گره، 17 یال)
-- **Ollama** → درباره-ستایش، embeddings، خودمیزبانی، راهنمای-استفاده، معماری-مغز
-- **TF-IDF** → بازیابی-معنایی، embeddings
+(15 گره، 8 یال)
+- **Ollama** → about-setayesh، brain-architecture، embeddings، self-hosting، user-guide
+- **TF-IDF** → embeddings، semantic-recall
+- **about-setayesh** → Ollama
+- **agent-loop** → —
 - **app-memory** → —
-- **embeddings** → TF-IDF، Ollama، بازیابی-معنایی
-- **بازیابی-معنایی** → TF-IDF، embeddings، حلقه-عامل
-- **حلقه-عامل** → بازیابی-معنایی، شفافیت-و-خودتعمیری
-- **خودآموزی** → شفافیت-و-خودتعمیری
-- **خودمیزبانی** → Ollama، معماری-مغز
-- **درباره-ستایش** → Ollama، معماری-مغز
-- **راهنمای-استفاده** → معماری-مغز، Ollama، زمان‌بند-و-ابزارها، شفافیت-و-خودتعمیری
-- **زمان‌بند-و-ابزارها** → شفافیت-و-خودتعمیری، راهنمای-استفاده
-- **شفافیت-و-خودتعمیری** → حلقه-عامل، خودآموزی، زمان‌بند-و-ابزارها، راهنمای-استفاده
-- **معماری-مغز** → خودمیزبانی، درباره-ستایش، راهنمای-استفاده، Ollama
+- **brain-architecture** → Ollama
+- **dev-libraries** → —
+- **embeddings** → TF-IDF، Ollama، semantic-recall
+- **file-formats** → —
+- **scheduler-and-tools** → —
+- **self-hosting** → Ollama
+- **self-learning** → —
+- **semantic-recall** → TF-IDF، embeddings
+- **transparency-self-repair** → —
+- **user-guide** → Ollama
 
 ## آخرین درس‌های خودآموخته
 # درس‌های خودآموختهٔ ستایش

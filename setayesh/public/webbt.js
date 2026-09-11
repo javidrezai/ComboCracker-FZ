@@ -368,9 +368,55 @@
     var cap = capabilities();
     host.appendChild(banner(cap));
 
+    // When the page is on plain http (no secure context) and the viewer is the
+    // admin, offer the one-tap fix: turn on a self-signed HTTPS link. Not shown
+    // on iOS (HTTPS won't help there) or when HTTPS is already running.
+    if (!cap.secure && !cap.ios && window.CFG && window.CFG.isAdmin) {
+      host.appendChild(secureLinkButton());
+    }
+
     if (cap.bluetooth) btSection(host, level);
     if (cap.serial) serialSection(host, level);
 
     host.appendChild(keyboardNote());
   };
+
+  // One-tap "turn on the secure link" for the admin. Calls the server to enable
+  // AUTO_TLS + generate the certificate, then tells them to restart and reopen
+  // on https. We are honest: the browser will warn once (self-signed), and
+  // Tailscale/mkcert removes that warning for good.
+  function secureLinkButton() {
+    var wrap = el('div');
+    wrap.style.cssText = 'margin:4px 0 12px;padding:12px 13px;border-radius:12px;background:rgba(34,211,238,.08);border:1px solid rgba(34,211,238,.28)';
+    var btn = el('button');
+    btn.textContent = 'روشن کردن اتصال امن (HTTPS) برای گوشی';
+    btn.style.cssText = 'width:100%;padding:11px;border:0;border-radius:10px;background:#22d3ee;color:#06252b;font-weight:700;font-size:13px;cursor:pointer';
+    var msg = el('div');
+    msg.style.cssText = 'font-size:12px;line-height:1.9;color:#8ea0c8;margin-top:9px';
+    msg.textContent = 'یک گواهی امن برای خانه می‌سازد تا بلوتوث و کابلِ گوشی روشن شود. فقط بابا این دکمه را می‌بیند.';
+    btn.onclick = function () {
+      btn.disabled = true; btn.textContent = 'در حال ساخت گواهی…';
+      fetch('/api/admin/secure-link', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ on: true }),
+      }).then(function (r) { return r.json(); }).then(function (d) {
+        if (d && d.ok) {
+          btn.style.display = 'none';
+          var links = (d.urls || []).map(function (u) { return '<div style="font-family:var(--mono);color:#6ee7b7">' + u + '</div>'; }).join('');
+          msg.innerHTML = '<b style="color:#6ee7b7">آماده شد.</b><br>' +
+            'حالا ستایش را یک بار ری‌استارت کن، بعد روی گوشی این آدرس را باز کن:' + links +
+            '<div style="margin-top:7px">بار اول مرورگر هشدار می‌دهد؛ «Advanced» بعد «Proceed / ادامه» را بزن. ' +
+            'آن وقت همین بخش خودش روشن می‌شود. برای حذف کامل هشدار: Tailscale یا mkcert.</div>';
+        } else {
+          btn.disabled = false; btn.textContent = 'روشن کردن اتصال امن (HTTPS) برای گوشی';
+          msg.textContent = (d && d.error) ? d.error : 'نشد. دوباره امتحان کن.';
+        }
+      }).catch(function () {
+        btn.disabled = false; btn.textContent = 'روشن کردن اتصال امن (HTTPS) برای گوشی';
+        msg.textContent = 'خطای شبکه. دوباره امتحان کن.';
+      });
+    };
+    wrap.appendChild(btn); wrap.appendChild(msg);
+    return wrap;
+  }
 })();

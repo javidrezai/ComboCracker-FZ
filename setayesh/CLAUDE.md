@@ -120,9 +120,28 @@ via the app's own self-editing feature.
 - **`public/webbt.js`** — the phone's own Web Bluetooth / Web Serial client,
   run in the browser (independent of the PC). It is gated by the browser's own
   secure-context + chooser rules; the panel explains honestly when they are not
-  met (http, or iOS) rather than showing a dead button. A web page cannot make
-  the phone a HID *peripheral* (a keyboard to another machine) — that is stated,
-  never faked.
+  met (http, or iOS) rather than showing a dead button. On plain http the admin
+  now sees a one-tap "روشن کردن اتصال امن" button that calls
+  `POST /api/admin/secure-link` (below) — the real fix, not just an explanation.
+  A web page cannot make the phone a HID *peripheral* (a keyboard to another
+  machine) — that is stated, never faked.
+- **`selfsign.js`** — a self-signed TLS certificate built with Node's `crypto`
+  ALONE (no OpenSSL, no new dependency). It exists so HTTPS — and therefore the
+  phone's Web Bluetooth/Serial "secure context" — can turn on without بابا
+  touching a command line. An EC P-256 leaf, ~27-month validity (under the
+  825-day browser cap), SANs for localhost + loopback + every LAN IP. The DER is
+  hand-assembled; `crypto.sign('SHA256', tbs, ecKey)` already yields the DER
+  ECDSA signature the BIT STRING needs. `ensure()` generates only when the cert
+  is missing, unreadable, within 30 days of expiry, or a NEW real LAN IP
+  appeared — never churning on every boot, and it NEVER overwrites a real cert
+  the owner installed (it only refreshes one whose subject==issuer, CN=Setayesh).
+  The cost of self-signed is a one-time per-device browser warning; that is
+  stated plainly in the UI, and a real cert (Tailscale/mkcert) removes it. The
+  loader order in index.js is: real cert > AUTO_TLS self-signed > plain HTTP.
+  `AUTO_TLS` (config/env `SETAYESH_AUTO_TLS`) is opt-in — an existing HTTP house
+  is never silently switched to HTTPS. Enabled via the settings key or the
+  `/api/admin/secure-link` route, which generates the cert on the spot so it is
+  on disk before the restart.
 - **Voice**: `voiceBlock()` in index.js builds the tone rules from each member's
   `tone` and `writeLang` prefs. Children never get the adult "خودمونی" register.
 
@@ -140,5 +159,6 @@ via the app's own self-editing feature.
   python is on PATH; disable with `ENABLE_BRAIN=0`.
 
 ## Open roadmap
-Local HTTPS for LAN/Tailscale (2.2); split server `index.js` (3.4);
-tool-calling for non-Claude engines (3.5).
+Split server `index.js` (3.4); tool-calling for non-Claude engines (3.5).
+(Local HTTPS for LAN/Tailscale, rule 2.2, is done — `selfsign.js` + `AUTO_TLS`,
+with real certs still honoured first.)
