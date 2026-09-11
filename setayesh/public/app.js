@@ -1,4 +1,4 @@
-/* SETAYESH_BUILD 9.9.86 */
+/* SETAYESH_BUILD 9.9.87 */
 (function(){
 'use strict';
 
@@ -4429,7 +4429,18 @@ function tkNetPanel(){
       var b=el('div','tk-card-b');var tbl=el('table','tk-table');
       tbl.innerHTML='<tr><th>'+t('tk_host')+'</th><th>'+t('tk_openports')+'</th></tr>';
       d.hosts.forEach(function(h){
-        var tr=el('tr');tr.innerHTML='<td class="st-open">'+esc(h.host)+'</td><td>'+(h.open.length?h.open.join(', '):'—')+'</td>';
+        /* Say WHAT each host is, not only where it is — a row reading
+           "192.168.2.86 · 62078" tells nobody that it is an iPhone. */
+        var who='';
+        if(h.label&&h.label!=='دستگاه ناشناس'){
+          who='<div style="font-size:11px;color:#8ea0c8;margin-top:2px">'+esc(h.label)+
+              (h.mac?('<span style="direction:ltr"> · '+esc(h.mac)+'</span>'):'')+'</div>';
+        } else if(h.mac){
+          who='<div style="font-size:11px;color:#8ea0c8;margin-top:2px;direction:ltr">'+esc(h.mac)+'</div>';
+        }
+        var tr=el('tr');
+        tr.innerHTML='<td class="st-open">'+esc(h.host)+who+'</td><td>'+(h.open.length?h.open.join(', '):'—')+'</td>';
+        if(h.why&&h.why.length)tr.title=h.why.join('\n');
         tbl.appendChild(tr);
       });
       b.appendChild(tbl);card.appendChild(b);out.innerHTML='';out.appendChild(card);

@@ -213,34 +213,10 @@ function localSubnets() {
 // The ARP cache is how we learn MAC addresses without root: anything the
 // machine has spoken to recently is in there, and a MAC prefix names the
 // manufacturer far more reliably than an open port does.
-function arpTable() {
-  return new Promise((resolve) => {
-    const map = {};
-    let out = '';
-    let child;
-    try {
-      child = spawn(process.platform === 'win32' ? 'arp' : '/usr/sbin/arp', ['-a'],
-                    { shell: false, windowsHide: true });
-    } catch (e) { return resolve(map); }
-    const done = () => {
-      // The separator between the address and the MAC differs per platform:
-      // Windows uses spaces, Linux and macOS write "? (1.2.3.4) at aa:bb:...".
-      // The old pattern excluded the letters a-f from the separator, so it
-      // could not cross the word "at" and found no MAC at all on Linux/macOS.
-      const re = /(\d+\.\d+\.\d+\.\d+)\D{1,12}?([0-9a-f]{1,2}[:-][0-9a-f]{1,2}[:-][0-9a-f]{1,2}[:-][0-9a-f]{1,2}[:-][0-9a-f]{1,2}[:-][0-9a-f]{1,2})/gi;
-      let m;
-      while ((m = re.exec(out))) {
-        map[m[1]] = m[2].replace(/-/g, ':').toLowerCase()
-          .split(':').map((o) => (o.length === 1 ? '0' + o : o)).join(':');
-      }
-      resolve(map);
-    };
-    child.stdout.on('data', (d) => { out += d.toString(); });
-    child.on('error', () => resolve(map));
-    child.on('close', done);
-    setTimeout(() => { try { child.kill(); } catch (e) {} resolve(map); }, 6000);
-  });
-}
+// The ARP cache now lives in identify.js, so every part of the app that needs
+// a MAC address parses it the same way — including the platform differences
+// that made the old copy return nothing on Linux and macOS.
+function arpTable() { return identify.arpTable(); }
 
 // identify.js carries the FULL IEEE manufacturer registry plus the checks for
 // a randomised (privacy) address and the device's own advertised name. The

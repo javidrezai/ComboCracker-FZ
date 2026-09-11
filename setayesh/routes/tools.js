@@ -12,6 +12,11 @@
 // register(app, deps) mounts the routes. deps: requireAuth, toolLimiter,
 // toolkit, tls, localLanIps, PORT.
 
+// identify.js is optional so a trimmed install still serves these routes; when
+// it is there, a scan says WHAT each host is instead of only where it is.
+let identify = null;
+try { identify = require('../identify'); } catch (e) { identify = null; }
+
 function register(app, deps) {
   const { requireAuth, toolLimiter, toolkit, tls, localLanIps, PORT } = deps;
 
@@ -23,6 +28,28 @@ function register(app, deps) {
     try {
       const cidr = (req.body && req.body.cidr) || toolkit.suggestedSubnet();
       const result = await toolkit.networkScan(cidr, { timeout: req.body && req.body.timeout });
+      // A list of bare addresses is not a scan result. Ask each host what it
+      // calls itself and work out what it is from its manufacturer and its
+      // open ports, the same way the device list does — a row saying
+      // "192.168.2.86 · 62078" tells nobody that it is an iPhone.
+      if (identify && Array.isArray(result.hosts)) {
+        await Promise.all(result.hosts.slice(0, 64).map(async (h) => {
+          try {
+            const names = await identify.hostnameOf(h.host, { timeoutMs: 1200 });
+            h.hostname = names.name || '';
+          } catch (e) { h.hostname = ''; }
+        }));
+        const arp = await identify.arpTable().catch(() => ({}));
+        for (const h of result.hosts) {
+          h.mac = arp[h.host] || '';
+          const d = identify.describe({ mac: h.mac, hostname: h.hostname, ports: h.open || [] });
+          h.label = d.label;
+          h.vendor = d.vendor;
+          h.randomised = d.randomised;
+          h.why = d.why;
+          h.identified = d.confident;
+        }
+      }
       res.json(result);
     } catch (err) {
       res.status(400).json({ error: err.message });

@@ -1068,3 +1068,90 @@ test('opening a device still obeys the access levels', async () => {
     }
   }
 });
+
+// ---- The real device names from the household's own machine ----
+// These are the exact strings Windows showed on Javid's Surface. The earlier
+// suffix list handled "Avrcp Transport" but not the short profile names his
+// devices actually use, so "Andrew A2DP SNK" and "BT Receiver Hands-Free AG"
+// kept their profile stuck to the name.
+test('every real Bluetooth name from the screenshots resolves correctly', () => {
+  const discover = require(path.join(ROOT, 'discover.js'));
+  const cases = [
+    ['Andrew A2DP SNK', 'Andrew'],
+    ['Andrew Hands-Free HF Audio', 'Andrew'],
+    ['Andrew Avrcp Transport', 'Andrew'],
+    ['BT Receiver Hands-Free AG', 'BT Receiver'],
+    ['ROCKSTER GO 2 Avrcp Transport', 'ROCKSTER GO 2'],
+    ['Surface Pen', 'Surface Pen'],
+    ['Javid', 'Javid'],
+    // These are pure profile descriptions with no device name in them. They
+    // must resolve to nothing, or the shortest-name rule would call his phone
+    // "GATT" instead of "Javid".
+    ['GATT', ''],
+    ['Generic Attribute Profile', ''],
+    ['Service Discovery Service', ''],
+    ['Device Information Service', ''],
+    ['Bluetooth LE Generic Attribute Service', ''],
+    ['Personal Area Network NAP Service', ''],
+    ['Bluetooth Low Energy GATT compliant HID device', ''],
+    ['Standard Serial over Bluetooth link (COM4)', ''],
+  ];
+  for (const [input, expected] of cases) {
+    assert.equal(discover.winBtBaseName(input), expected, JSON.stringify(input));
+  }
+});
+
+test('a device whose rows are all generic profiles is never named "GATT"', () => {
+  const discover = require(path.join(ROOT, 'discover.js'));
+  const addr = '\\7&2a4e&0&C0288D4A5B6C_C00000000';
+  const g = discover.groupWindowsBluetooth([
+    { FriendlyName: 'GATT', InstanceId: 'BTHENUM\\{1}_LOCALMFG&0002' + addr },
+    { FriendlyName: 'Generic Attribute Profile', InstanceId: 'BTHENUM\\{2}_LOCALMFG&0002' + addr },
+    { FriendlyName: 'Javid', InstanceId: 'BTHENUM\\{3}_LOCALMFG&0002' + addr },
+    { FriendlyName: 'Device Information Service', InstanceId: 'BTHENUM\\{4}_LOCALMFG&0002' + addr },
+  ]);
+  assert.equal(g.devices.length, 1);
+  assert.equal(g.devices[0].name, 'Javid', 'the real name must beat the shorter profile names');
+  assert.equal(g.devices[0].profiles.length, 4);
+});
+
+// ---- Hosts on the network get named, not just listed ----
+test('an open lockdown port identifies an iPhone even with a privacy MAC', () => {
+  const identify = require(path.join(ROOT, 'identify.js'));
+  // Both hosts in the scan had a randomised MAC (so no manufacturer at all)
+  // and port 62078 open — iOS lockdownd, which essentially nothing else uses.
+  const d = identify.describe({ mac: '0e:ab:c3:d9:95:5b', ports: [62078] });
+  assert.equal(d.label, 'آیفون یا آیپد');
+  assert.equal(d.confident, true);
+  assert.ok(d.why.some((w) => /62078/.test(w)), 'the reason should name the port it used');
+
+  // A MAC that IS in the registry still wins on the manufacturer.
+  const x = identify.describe({ mac: 'cc:4d:75:78:6a:11', ports: [] });
+  assert.match(x.label, /Xiaomi/i);
+});
+
+test('the ARP table is parsed the same way everywhere', () => {
+  const identify = require(path.join(ROOT, 'identify.js'));
+  assert.equal(identify.parseArp('? (192.168.2.31) at cc:4d:75:78:6a:11 [ether] on wlan0')['192.168.2.31'],
+    'cc:4d:75:78:6a:11');
+  assert.equal(identify.parseArp('  192.168.2.31   cc-4d-75-78-6a-11  dynamic')['192.168.2.31'],
+    'cc:4d:75:78:6a:11');
+  assert.equal(identify.parseArp('r (192.168.2.1) at e0:28:6d:a:b:c on en0')['192.168.2.1'],
+    'e0:28:6d:0a:0b:0c', 'macOS drops leading zeros');
+});
+
+test('a network scan says what each host is, not only where', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  const r = await api('/api/tool/netscan', { method: 'POST', token, body: { cidr: '127.0.0.0/30', timeout: 150 } });
+  // The subnet may legitimately have nothing in it; what matters is the shape.
+  if (r.status === 200) {
+    const d = await r.json();
+    assert.ok(Array.isArray(d.hosts));
+    for (const h of d.hosts) {
+      assert.equal(typeof h.label, 'string', 'every host must carry a label field');
+      assert.ok('mac' in h, 'every host must carry a mac field, even an empty one');
+    }
+  } else {
+    assert.equal(r.status, 400, 'a refused scan must be a clean 400');
+  }
+});

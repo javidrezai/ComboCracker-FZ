@@ -138,17 +138,48 @@ function winBtKind(instanceId) {
   return 'profile';
 }
 
-// The profile name Windows shows is usually "<device name> <Profile>", e.g.
-// "Andrew Hands-Free HF Audio". Stripping the profile part leaves the name the
-// owner actually gave the device.
-const WIN_BT_PROFILE_WORDS = /\s*(Hands-?Free\s*(HF)?\s*Audio|Avrcp\s*Transport|Stereo|A2DP|AVRCP|Headset|Audio Sink|Audio Source|Generic Attribute (Profile|Service)|Service Discovery Service|Personal Area Network|Phonebook Access\s*\w*\s*Service|Message Access\s*\w*\s*Service|Standard Serial over Bluetooth link\s*\(COM\d+\)|Bluetooth LE Generic Attribute Service|Wireless iAP|GATT|Device|Enumerator|RFCOMM Protocol TDI)\s*$/i;
+// The name Windows shows is usually "<device name> <Profile>", e.g. "Andrew
+// Hands-Free HF Audio" or "ROCKSTER GO 2 Avrcp Transport". Stripping the
+// profile part leaves the name the owner actually gave the device.
+//
+// The suffix list is drawn from what a real Windows machine emits — the
+// Bluetooth profile short names (A2DP SNK, Hands-Free AG, AVRCP CT/TG) matter
+// as much as the long ones, and missing one leaves the profile stuck to the
+// name for ever.
+const WIN_BT_PROFILE_WORDS = new RegExp('\\s*(?:' + [
+  'Hands-?Free\\s*(?:HF|AG|HS)?\\s*(?:Audio)?',
+  'Avrcp\\s*(?:Transport|CT|TG)?',
+  'A2DP\\s*(?:SNK|SRC|Sink|Source)?',
+  'AVRCP', 'HFP', 'HSP', 'Stereo', 'Headset', 'Handsfree',
+  'Audio\\s*(?:Sink|Source|Gateway)',
+  'Generic Attribute (?:Profile|Service)',
+  'Service Discovery Service',
+  'Device Information Service',
+  'Personal Area Network(?:\\s*(?:NAP|PANU|GN))?(?:\\s*Service)?',
+  'Phonebook Access\\s*\\w*\\s*Service',
+  'Message Access\\s*\\w*\\s*Service',
+  'SIM Access\\s*\\w*\\s*Service',
+  'Standard Serial over Bluetooth link\\s*\\(COM\\d+\\)',
+  'Bluetooth LE Generic Attribute Service',
+  'Wireless iAP', 'GATT', 'HID\\s*(?:device)?',
+  'Enumerator', 'RFCOMM Protocol TDI', 'Device',
+].join('|') + ')\\s*$', 'i');
+
+// Some rows are ENTIRELY a profile description with no device name in front of
+// them — "Generic Attribute Profile", "GATT", "Device Information Service".
+// Those must never become a device's name: picking the shortest surviving
+// string would otherwise call his phone "GATT" instead of "Javid".
+const WIN_BT_GENERIC = /^(?:generic attribute (?:profile|service)|gatt|service discovery service|device information service|bluetooth (?:le|low energy)[\s\w]*|personal area network[\s\w]*|standard serial over bluetooth[\s\w()]*|rfcomm[\s\w]*|bluetooth device[\s\w()]*|null|device)$/i;
+
 function winBtBaseName(name) {
   let out = String(name || '').trim();
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < 4; i++) {
     const next = out.replace(WIN_BT_PROFILE_WORDS, '').trim();
     if (next === out) break;
     out = next;
   }
+  // Whatever is left may still be nothing but a profile description.
+  if (!out || WIN_BT_GENERIC.test(out)) return '';
   return out;
 }
 
@@ -173,9 +204,9 @@ function groupWindowsBluetooth(rows) {
     const com = name.match(/\((COM\d+)\)/);
     if (com && !cur.serialPorts.includes(com[1])) cur.serialPorts.push(com[1]);
 
+    // The device's real name is the shortest thing left after the profile
+    // suffix is stripped AND that is not itself a profile description.
     const base = winBtBaseName(name);
-    // The shortest sensible base name is the device; the longer ones are the
-    // device plus a profile suffix we did not recognise.
     if (base && (!cur.name || base.length < cur.name.length)) cur.name = base;
     if (name && !cur.profiles.includes(name)) cur.profiles.push(name);
     if (r.Service && !cur.drivers.includes(String(r.Service))) cur.drivers.push(String(r.Service));
@@ -184,7 +215,9 @@ function groupWindowsBluetooth(rows) {
     byKey.set(mac, cur);
   }
   const devices = [...byKey.values()].map((d) => {
-    if (!d.name) d.name = d.mac;
+    // Every row for this address was a bare profile description, so fall back
+    // to who made it rather than to a meaningless "GATT".
+    if (!d.name) d.name = ouiVendor(d.mac) ? (ouiVendor(d.mac) + ' (بلوتوث)') : d.mac;
     d.capabilities = profilesToCapabilities(d.profiles);
     d.roles = d.capabilities.roles;
     return d;
@@ -985,5 +1018,6 @@ module.exports = {
   parseMdnsPacket, collateMdns, mdnsQuery, readName, encodeName,
   capabilitiesFromServices, ouiVendor, isRandomMac, usbClassName, humanBytes,
   winBtAddress, winBtKind, winBtBaseName, groupWindowsBluetooth, profilesToCapabilities, macFromHex,
+  WIN_BT_GENERIC, WIN_BT_PROFILE_WORDS,
   MDNS_SERVICE_ROLE, SERVICE_CAPABILITIES,
 };

@@ -264,6 +264,44 @@ async function hostnameOf(ip, opts) {
 }
 
 // ---------------------------------------------------------------------------
+// The ARP cache — MAC addresses without needing root
+// ---------------------------------------------------------------------------
+// Anything this machine has spoken to recently is in the ARP table, and a MAC
+// is what unlocks the manufacturer. Lives here rather than inside one feature
+// because every part that identifies a device wants it.
+//
+// The separator between the address and the MAC differs per platform: Windows
+// uses spaces, Linux and macOS write "? (1.2.3.4) at aa:bb:...". A pattern
+// that excludes the letters a-f from the separator cannot cross the word "at"
+// and finds nothing at all on Linux and macOS.
+const ARP_RE = /(\d+\.\d+\.\d+\.\d+)\D{1,12}?([0-9a-f]{1,2}[:-][0-9a-f]{1,2}[:-][0-9a-f]{1,2}[:-][0-9a-f]{1,2}[:-][0-9a-f]{1,2}[:-][0-9a-f]{1,2})/gi;
+
+function parseArp(text) {
+  const map = {};
+  let m;
+  ARP_RE.lastIndex = 0;
+  while ((m = ARP_RE.exec(String(text || '')))) {
+    map[m[1]] = m[2].replace(/-/g, ':').toLowerCase()
+      .split(':').map((o) => (o.length === 1 ? '0' + o : o)).join(':');
+  }
+  return map;
+}
+
+function arpTable() {
+  return new Promise((resolve) => {
+    const { execFile } = require('child_process');
+    const bin = process.platform === 'win32' ? 'arp' : '/usr/sbin/arp';
+    let done = false;
+    const finish = (v) => { if (!done) { done = true; resolve(v); } };
+    try {
+      const child = execFile(bin, ['-a'], { timeout: 6000, windowsHide: true, maxBuffer: 4 << 20 },
+        (err, stdout) => finish(parseArp(stdout || '')));
+      child.on('error', () => finish({}));
+    } catch (e) { finish({}); }
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Put it together
 // ---------------------------------------------------------------------------
 // Returns a label a person can read, plus WHY we think so, so nothing here is
@@ -311,10 +349,15 @@ function describe(input) {
   // Ports still add the role even when the name is already known.
   const ports = input.ports || [];
   const PORT_ROLE = [
+    // 62078 is iOS "lockdownd" — an iPhone or iPad answers on it and almost
+    // nothing else does, which names a device that has no vendor at all
+    // because its MAC is a privacy address.
+    [[62078], 'آیفون یا آیپد'],
     [[9100, 631, 515], 'چاپگر'], [[8009], 'Chromecast'], [[7000, 5000], 'AirPlay'],
     [[1400], 'Sonos'], [[6668], 'وسیله‌ی هوشمند Tuya/LSC'], [[54321], 'دستگاه شیائومی'],
     [[8008, 8443, 8001, 8002], 'تلویزیون هوشمند'], [[445, 139], 'کامپیوتر ویندوز'],
-    [[548, 5009], 'دستگاه اپل'], [[22], 'کامپیوتر/سرور'], [[80, 443], 'دارای پنل وب'],
+    [[548, 5009], 'دستگاه اپل'], [[5353], 'اعلام‌کننده‌ی mDNS'],
+    [[22], 'کامپیوتر/سرور'], [[80, 443], 'دارای پنل وب'],
   ];
   const roles = [];
   for (const [list, role] of PORT_ROLE) {
@@ -322,6 +365,17 @@ function describe(input) {
   }
   if (hint && !roles.includes(hint.label)) roles.unshift(hint.label);
 
+  // A port that identifies the device is a real conclusion, not a shrug — an
+  // iPhone found by its lockdown port is identified even though its
+  // randomised MAC belongs to no manufacturer.
+  const NAMING_PORTS = { 62078: 'آیفون یا آیپد', 8009: 'Chromecast', 1400: 'Sonos',
+    6668: 'وسیله‌ی هوشمند Tuya/LSC', 54321: 'دستگاه شیائومی', 9100: 'چاپگر', 631: 'چاپگر' };
+  const named = ports.map((p) => NAMING_PORTS[Number(p)]).filter(Boolean)[0];
+  if (named) {
+    confident = true;
+    if (!label || randomised) label = named;
+    why.push(`از روی پورت باز ${ports.find((p) => NAMING_PORTS[Number(p)])} فهمیده شد که ${named} است.`);
+  }
   if (!label) {
     label = roles.length ? roles[0] : 'دستگاه ناشناس';
   }
@@ -339,5 +393,5 @@ function describe(input) {
 
 module.exports = {
   describe, vendorOf, macKind, hostnameOf, kindFromName,
-  netbiosName, mdnsReverse, reverseDns, loadOui, cleanMac,
+  netbiosName, mdnsReverse, reverseDns, loadOui, cleanMac, arpTable, parseArp,
 };
