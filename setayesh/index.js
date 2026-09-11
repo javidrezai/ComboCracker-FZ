@@ -181,7 +181,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.78';
+const APP_VERSION = '9.9.79';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -2564,6 +2564,23 @@ async function dispatchTool(name, input, ctx) {
                           verdict, at: new Date().toISOString(),
                           sizeBefore: before.length, sizeAfter: code.length };
         ctx.sideEffects.patch = { id, file: rel, ok: verdict.ok };
+
+        // Autonomous mode: when the owner himself asked for this, in the app,
+        // and the change passed verification, carry it out instead of queuing
+        // it. Never for Telegram/e-mail/background turns (ctx.interactive).
+        if (verdict.ok && ctx.isAdmin && ctx.interactive && autonomy().autoApply) {
+          try {
+            applyProposalNow(proposals[id]);
+            nightLog(`خودمختار: «${rel}» را خودم تغییر دادم — ${String(input.reason || '').slice(0, 120)}`, 'ok');
+            ctx.sideEffects.patch = { id, file: rel, ok: true, applied: true };
+            return {
+              ok: true, id, file: rel, applied: true, verification: verdict,
+              changedLines: diff.filter((d) => d.t !== '!').length,
+              note: 'خودت انجامش دادی و اعمال شد (حالت خودمختار). به کاربر کوتاه بگو چه چیزی را عوض کردی، و اینکه برای فعال شدن باید ری‌استارت کند و در صورت مشکل «برگرداندن» هست.',
+            };
+          } catch (e) { /* fall back to the approval queue below */ }
+        }
+
         return {
           ok: true, id, file: rel,
           verification: verdict,
@@ -3395,7 +3412,10 @@ app.post('/api/chat', requireAuth, chatLimiter, upload.array('files', 8), async 
   const messages = [...safeHistory, { role: 'user', content: userContent }];
   // Declared outside the try so the failover handler in catch can reuse them.
   const safe = safeUsers.has(req.username);
-  const toolCtx = { preferredId: target.id, basePrompt: '', message: outboundMessage, sideEffects: {}, pinned: !!target.pinned, isAdmin: isAdmin(req.username), username: req.username };
+  // `interactive` marks this as the owner typing in the app himself. It is the
+  // gate for autonomous self-editing — Telegram/e-mail/background turns never
+  // set it, so text written by other people can never trigger a code change.
+  const toolCtx = { preferredId: target.id, basePrompt: '', message: outboundMessage, sideEffects: {}, pinned: !!target.pinned, isAdmin: isAdmin(req.username), username: req.username, interactive: true };
 
   try {
     if (useGeminiNative) await ensureGeminiModel();
@@ -4650,23 +4670,48 @@ app.get('/api/admin/patch/:id/diff', requireAuth, requireAdmin, (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ---- Autonomy: let her carry out the owner's own instructions herself ------
+// With this on, a change she proposes is applied straight away instead of
+// waiting in the approvals queue — but ONLY when the instruction came from the
+// owner's own signed-in session inside the app. Telegram, e-mail, the inbox and
+// every background/scheduled run are excluded ON PURPOSE: those carry text
+// written by other people, and a sentence injected into an e-mail must never be
+// able to rewrite her own code. Even then the change is syntax/boot-verified
+// first, a full backup is taken, and the previous file is snapshotted so it can
+// be rolled back.
+const AUTONOMY_FILE = process.env.SETAYESH_AUTONOMY_FILE || path.join(DATA_DIR, '.setayesh-autonomy.json');
+function autonomy() { const d = loadJsonFile(AUTONOMY_FILE, {}); return { autoApply: !!d.autoApply }; }
+app.get('/api/admin/autonomy', requireAuth, requireAdmin, (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json(autonomy());
+});
+app.post('/api/admin/autonomy', requireAuth, requireAdmin, (req, res) => {
+  saveJsonFile(AUTONOMY_FILE, { autoApply: !!(req.body && req.body.autoApply) });
+  nightLog(autonomy().autoApply ? 'حالت خودمختار روشن شد — تغییرها را خودم اعمال می‌کنم (فقط با دستور مستقیم تو).' : 'حالت خودمختار خاموش شد.', 'info');
+  res.json(Object.assign({ ok: true }, autonomy()));
+});
+
+// The one place a verified proposal is actually written to disk.
+function applyProposalNow(p) {
+  const full = sourcePath(p.file);
+  const after = fs.readFileSync(path.join(PATCH_DIR, p.id + '.txt'), 'utf8');
+  // Snapshot the live file BEFORE overwriting — this is the undo.
+  fs.mkdirSync(ROLLBACK_DIR, { recursive: true });
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  const safeName = p.file.replace(/[\/\\]/g, '_');
+  fs.writeFileSync(path.join(ROLLBACK_DIR, `${stamp}__${safeName}`), fs.readFileSync(full));
+  runBackup('before-patch');
+  fs.writeFileSync(full, after, 'utf8');
+  delete proposals[p.id];
+  return p.file;
+}
+
 app.post('/api/admin/patch/:id/apply', requireAuth, requireAdmin, (req, res) => {
   const p = proposals[req.params.id];
   if (!p) return res.status(404).json({ error: 'پیدا نشد' });
   if (!p.verdict.ok) return res.status(400).json({ error: 'این پیشنهاد تست را رد کرده و قابل اعمال نیست: ' + p.verdict.why });
   try {
-    const full = sourcePath(p.file);
-    const after = fs.readFileSync(path.join(PATCH_DIR, p.id + '.txt'), 'utf8');
-
-    // Snapshot the live file BEFORE overwriting — this is the undo.
-    fs.mkdirSync(ROLLBACK_DIR, { recursive: true });
-    const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-    const safeName = p.file.replace(/[\/\\]/g, '_');
-    fs.writeFileSync(path.join(ROLLBACK_DIR, `${stamp}__${safeName}`), fs.readFileSync(full));
-    runBackup('before-patch');
-
-    fs.writeFileSync(full, after, 'utf8');
-    delete proposals[p.id];
+    applyProposalNow(p);
     res.json({ ok: true, applied: p.file,
                note: 'اعمال شد. برای فعال شدن، برنامه را ری‌استارت کن. اگر مشکلی پیش آمد، از «برگرداندن» استفاده کن یا Restore-Last.bat را اجرا کن.' });
   } catch (e) { res.status(500).json({ error: 'اعمال ناموفق: ' + e.message }); }

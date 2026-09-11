@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- SETAYESH_BUILD 9.9.78 -->
+<!-- SETAYESH_BUILD 9.9.79 -->
 <html lang="fa" dir="rtl">
 <head>
 <meta charset="UTF-8">
@@ -190,6 +190,10 @@
         <div class="sub" id="modeSub"></div>
       </div>
       <div class="spacer"></div>
+      <button class="tbtn" id="brainTopBtn" title="مغز ستایش" style="display:none">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a4 4 0 00-4 4 3 3 0 00-2 5.5A3.5 3.5 0 007 18a3 3 0 005 2 3 3 0 005-2 3.5 3.5 0 001-6.5A3 3 0 0016 6a4 4 0 00-4-4z"/><path d="M12 2v20"/></svg>
+        <span data-i18n="brainMap">مغز ستایش</span>
+      </button>
       <button class="tbtn" id="settingsBtnTop" title="Settings">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06A1.65 1.65 0 005 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06A1.65 1.65 0 019 4.6a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
         <span data-i18n="settings">تنظیمات</span>
@@ -496,6 +500,19 @@
     </div>
 
     <div id="ccPower" class="ccpane" style="display:none">
+      <div class="tk-card" style="padding:12px 14px;margin-bottom:14px;border-color:rgba(251,191,36,.4);background:rgba(251,191,36,.07)">
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;cursor:pointer">
+          <input type="checkbox" id="ccAutonomy"> <span>🤖 حالت خودمختار — خودش تغییر را انجام دهد</span>
+        </label>
+        <div class="tk-hint" style="margin-top:8px;line-height:1.9">
+          وقتی روشن باشد، هر تغییری که <b>خودت در همین برنامه</b> از او بخواهی («فلان گزینه را عوض کن»، «این کلید را ببر آنجا») را
+          خودش انجام می‌دهد و اعمال می‌کند — بدون اینکه هر بار منتظر تأیید تو بماند.
+          <br><b style="color:#fbbf24">محافظت:</b> دستورهایی که از تلگرام، ایمیل، اینباکس یا کارهای پس‌زمینه می‌آیند
+          <b>هیچ‌وقت</b> اجازهٔ تغییر کد ندارند — چون متنشان را دیگران نوشته‌اند و یک ایمیل آلوده نباید بتواند مغزش را دستکاری کند.
+          هر تغییر هم اول تست می‌شود، پشتیبان گرفته می‌شود، و قابل «برگرداندن» است.
+        </div>
+        <div id="ccAutonomyNote" style="font-size:12px;margin-top:6px"></div>
+      </div>
       <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:10px;cursor:pointer">
         <input type="checkbox" id="ccPython"> <span>اجرای کد پایتون (فقط حساب تو)</span>
       </label>

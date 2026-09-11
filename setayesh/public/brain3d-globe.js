@@ -1,17 +1,20 @@
-/* SETAYESH_BUILD 9.9.78 */
-/* Setayesh's brain as ONE 3D brain you can spin like a globe.
-   - Blue half  = the main app (Node): every source file is a node on that side.
-   - Orange half = the Python brain: its engine files and its named vault
-     branches sit on that side.
-   - It turns by itself and you can drag it in any direction, or pinch/wheel to
-     zoom. Click any node to open its detail / edit panel.
-   - Real traffic between the parts (memory → engine, python → core, a web
-     search, a chat hitting an engine) is polled from the server and drawn as a
-     pulse of light travelling along the matching link — so what you see moving
-     is what is actually happening, not decoration.
+/* SETAYESH_BUILD 9.9.79 */
+/* Setayesh's brain as ONE crystal 3D brain you can spin like a globe.
+   - Blue lobe  = the main app (Node); orange lobe = the Python brain.
+   - The shell is translucent crystal with deep folds, so you can see the
+     neuron web and the traffic inside it.
+   - Every node is wired to its nearest neighbours (a neuron mesh), not just to
+     the centre, and each node carries a soft halo.
+   - Labels are real HTML positioned over the canvas — canvas text could not
+     shape Persian correctly (letters came out broken and disconnected), so the
+     names are drawn by the browser itself and read properly.
+   - Live traffic: the server records when parts actually talk (chat → engine,
+     python → core, memory → python brain, a web search). The matching link
+     lights up, a pulse runs along it, and a readout names the pair, so you can
+     see which part is working with which, right now.
    Uses the three.js already bundled with the app; no new dependency. */
 (function () {
-  var S = null;   // live scene state, so re-opening cleans up first
+  var S = null;
 
   function tok() {
     try { return localStorage.getItem('setayesh.token') || sessionStorage.getItem('setayesh.token') || ''; }
@@ -22,59 +25,40 @@
     'هستهٔ سرور': 0x38bdf8, 'مسیرها': 0x34d399, 'رابط کاربری': 0xa78bfa,
     'اسناد و ابزار': 0xfbbf24, 'مغز پایتون': 0xf472b6
   };
+  function hex(c) { return '#' + ('000000' + c.toString(16)).slice(-6); }
 
-  /* ---------------------------------------------------------------- labels */
-  // Text is drawn to a canvas and shown as a sprite, so it always faces the
-  // camera and stays readable however the brain is turned.
-  function makeLabel(THREE, text, color) {
-    var pad = 8, font = '600 26px system-ui, sans-serif';
-    var m = document.createElement('canvas').getContext('2d');
-    m.font = font;
-    var w = Math.ceil(m.measureText(text).width) + pad * 2;
-    var h = 40;
-    var c = document.createElement('canvas');
-    c.width = w; c.height = h;
-    var g = c.getContext('2d');
-    g.font = font; g.textBaseline = 'middle';
-    g.fillStyle = 'rgba(4,8,18,.72)';
-    g.fillRect(0, 0, w, h);
-    g.fillStyle = color || '#cbd5f5';
-    g.fillText(text, pad, h / 2);
-    var tex = new THREE.CanvasTexture(c);
-    tex.minFilter = THREE.LinearFilter;
-    var sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
-    sp.scale.set(w / h * 0.26, 0.26, 1);
-    return sp;
-  }
-
-  /* ----------------------------------------------------------- brain shell */
-  // A hemisphere with its vertices nudged outward in a wavy pattern, so it
-  // reads as a brain lobe rather than a plain ball.
-  function hemisphere(THREE, R, flip, color, emissive) {
-    var geo = new THREE.SphereGeometry(R, 64, 48, 0, Math.PI);
+  /* A hemisphere with deep, brain-like folds, rendered as translucent crystal
+     so the inside stays visible. */
+  function lobe(THREE, R, flip, color, emissive) {
+    var geo = new THREE.SphereGeometry(R, 96, 72, 0, Math.PI);
     var pos = geo.attributes.position, v = new THREE.Vector3();
     for (var i = 0; i < pos.count; i++) {
       v.fromBufferAttribute(pos, i);
       var n = v.clone().normalize();
-      var lump = 0.055 * Math.sin(n.y * 11) * Math.cos(n.z * 9)
-               + 0.035 * Math.sin(n.x * 15 + n.z * 7);
-      v.addScaledVector(n, lump * R);
+      // several overlapping waves → gyri and sulci rather than a smooth ball
+      var f = 0.085 * Math.sin(n.y * 13.0) * Math.cos(n.z * 10.0)
+            + 0.060 * Math.sin(n.x * 17.0 + n.z * 8.0)
+            + 0.045 * Math.cos(n.y * 21.0 + n.x * 6.0)
+            + 0.030 * Math.sin(n.z * 26.0);
+      v.addScaledVector(n, f * R);
       pos.setXYZ(i, v.x, v.y, v.z);
     }
     geo.computeVertexNormals();
-    var mesh = new THREE.Mesh(geo, new THREE.MeshPhongMaterial({
-      color: color, emissive: emissive, emissiveIntensity: 0.5,
-      shininess: 42, transparent: true, opacity: 0.96, side: THREE.DoubleSide
-    }));
-    // rotate so the flat face sits on the mid-plane, one lobe each side
-    mesh.rotation.y = flip ? -Math.PI / 2 : Math.PI / 2;
-    mesh.position.x = flip ? -0.04 * R : 0.04 * R;
-    return mesh;
+    var g = new THREE.Group();
+    g.add(new THREE.Mesh(geo, new THREE.MeshPhongMaterial({
+      color: color, emissive: emissive, emissiveIntensity: 0.45, shininess: 90,
+      specular: 0xffffff, transparent: true, opacity: 0.34,
+      side: THREE.DoubleSide, depthWrite: false
+    })));
+    // a faint wireframe gives it the faceted, crystalline read
+    g.add(new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
+      color: color, wireframe: true, transparent: true, opacity: 0.10, depthWrite: false
+    })));
+    g.rotation.y = flip ? -Math.PI / 2 : Math.PI / 2;
+    g.position.x = flip ? -0.04 * R : 0.04 * R;
+    return g;
   }
 
-  /* --------------------------------------------------- node placement */
-  // Evenly spread points over ONE half of the sphere (Fibonacci spiral),
-  // pushed a little outside the surface so they float above the lobe.
   function halfSpherePoint(THREE, R, i, n, side) {
     var t = (i + 0.5) / Math.max(n, 1);
     var y = 1 - 2 * t;
@@ -90,10 +74,11 @@
     try { cancelAnimationFrame(S.raf); } catch (e) {}
     try { clearInterval(S.poll); } catch (e) {}
     try { window.removeEventListener('resize', S.onResize); } catch (e) {}
+    try { window.removeEventListener('mousemove', S.onMove); } catch (e) {}
+    try { window.removeEventListener('mouseup', S.onUp); } catch (e) {}
     try { S.renderer.dispose(); } catch (e) {}
     S = null;
   }
-
   window.closeBrainGlobe = clear;
 
   window.renderBrainGlobe = function (MAP) {
@@ -106,33 +91,39 @@
       return;
     }
 
-    view.innerHTML = '<canvas id="bmGlobe" style="width:100%;height:100%;display:block;cursor:grab"></canvas>' +
-      '<div id="bmHint" style="position:absolute;inset-inline-start:14px;bottom:12px;font-size:11.5px;color:#7e8fb5;pointer-events:none">' +
-      'بکش تا بچرخانی · اسکرول برای بزرگ‌نمایی · روی هر بخش بزن</div>';
+    view.innerHTML =
+      '<canvas id="bmGlobe" style="width:100%;height:100%;display:block;cursor:grab"></canvas>' +
+      '<div id="bmLabels" style="position:absolute;inset:0;pointer-events:none;overflow:hidden"></div>' +
+      '<div id="bmLive" style="position:absolute;top:12px;inset-inline-start:14px;font-size:12px;color:#9be8ff;' +
+        'background:rgba(6,12,26,.72);border:1px solid rgba(123,92,255,.35);border-radius:10px;padding:6px 10px;' +
+        'opacity:0;transition:opacity .3s;pointer-events:none;max-width:60vw"></div>' +
+      '<div style="position:absolute;inset-inline-start:14px;bottom:12px;font-size:11.5px;color:#7e8fb5;pointer-events:none">' +
+        'بکش تا بچرخانی · اسکرول برای بزرگ‌نمایی · روی هر بخش بزن</div>';
     var canvas = document.getElementById('bmGlobe');
+    var labelBox = document.getElementById('bmLabels');
+    var liveBox = document.getElementById('bmLive');
 
     var renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true, alpha: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.6));
     var scene = new THREE.Scene();
     var camera = new THREE.PerspectiveCamera(45, 1, 0.1, 200);
-    scene.add(new THREE.AmbientLight(0x8098d0, 0.85));
-    var lA = new THREE.PointLight(0x66ccff, 1.5, 80); lA.position.set(-8, 6, 10); scene.add(lA);
-    var lB = new THREE.PointLight(0xff8a3d, 1.3, 80); lB.position.set(9, -4, 8); scene.add(lB);
+    scene.add(new THREE.AmbientLight(0x8098d0, 0.9));
+    var lA = new THREE.PointLight(0x66ccff, 1.6, 90); lA.position.set(-8, 6, 10); scene.add(lA);
+    var lB = new THREE.PointLight(0xff8a3d, 1.4, 90); lB.position.set(9, -4, 8); scene.add(lB);
+    var lC = new THREE.PointLight(0xffffff, 0.7, 90); lC.position.set(0, 8, -10); scene.add(lC);
 
     var root = new THREE.Group(); scene.add(root);
     var R = 3.2;
-
-    // the two lobes: blue = the app, orange = the python brain
-    root.add(hemisphere(THREE, R, true, 0x2f7fd4, 0x0d2c55));   // blue  (-x)
-    root.add(hemisphere(THREE, R, false, 0xe06a1f, 0x4a1a00));  // orange (+x)
-    // the fissure between them
+    root.add(lobe(THREE, R, true, 0x49a8ff, 0x0d2c55));    // blue  = app
+    root.add(lobe(THREE, R, false, 0xff8a34, 0x4a1a00));   // orange = python
+    // the fissure between the halves
     var fis = new THREE.Mesh(
-      new THREE.CylinderGeometry(R * 1.002, R * 1.002, 0.05, 64, 1, true),
-      new THREE.MeshBasicMaterial({ color: 0x05070f, transparent: true, opacity: 0.9, side: THREE.DoubleSide })
+      new THREE.CylinderGeometry(R * 1.03, R * 1.03, 0.06, 72, 1, true),
+      new THREE.MeshBasicMaterial({ color: 0x05070f, transparent: true, opacity: 0.55, side: THREE.DoubleSide, depthWrite: false })
     );
     fis.rotation.z = Math.PI / 2; root.add(fis);
 
-    /* ---- gather the parts ---- */
+    /* ---------------- the parts ---------------- */
     var appNodes = [];
     Object.keys(MAP.groups || {}).forEach(function (g) {
       (MAP.groups[g] || []).forEach(function (f) { appNodes.push(Object.assign({ group: g }, f)); });
@@ -146,79 +137,104 @@
       pyNodes.push({ group: 'مغز پایتون', name: b.file, short: b.name, purpose: 'شاخهٔ دانش مغز پایتون', exists: true, editable: false, lines: b.lines, py: true });
     });
 
-    var picks = [];          // clickable meshes
-    var labels = [];         // name sprites (faded when they turn to the back)
-    var byKey = {};          // signal endpoint -> position
+    var picks = [], labels = [], byKey = {}, all = [];
 
     function addNode(n, p, colorHex) {
       var col = new THREE.Color(colorHex);
-      var dot = new THREE.Mesh(
-        new THREE.SphereGeometry(0.11, 16, 12),
-        new THREE.MeshBasicMaterial({ color: col })
-      );
-      dot.position.copy(p);
-      dot.userData.node = n;
+      var dot = new THREE.Mesh(new THREE.SphereGeometry(0.115, 16, 12),
+        new THREE.MeshBasicMaterial({ color: col }));
+      dot.position.copy(p); dot.userData.node = n;
       root.add(dot); picks.push(dot);
-      // halo
-      var halo = new THREE.Mesh(
-        new THREE.SphereGeometry(0.2, 16, 12),
-        new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.22 })
-      );
+      // glowing halo around each node
+      var halo = new THREE.Mesh(new THREE.SphereGeometry(0.26, 16, 12),
+        new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.18, depthWrite: false }));
       halo.position.copy(p); root.add(halo);
-      // link from the centre out to the node
-      var lg = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), p.clone()]);
-      root.add(new THREE.Line(lg, new THREE.LineBasicMaterial({
-        color: col, transparent: true, opacity: n.exists === false ? 0.5 : 0.28
-      })));
-      // label
+      // link to the core
+      root.add(new THREE.Line(
+        new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), p.clone()]),
+        new THREE.LineBasicMaterial({ color: col, transparent: true, opacity: n.exists === false ? 0.45 : 0.18, depthWrite: false })
+      ));
+      // HTML label — the browser shapes Persian correctly, canvas text did not
       var short = n.short || String(n.name).replace(/^public\//, '').replace(/^routes\//, '').replace(/^pybrain\/.*\//, '');
-      if (short.length > 18) short = short.slice(0, 17) + '…';
-      var lab = makeLabel(THREE, short, n.exists === false ? '#fb7185' : '#dbe4f7');
-      lab.position.copy(p).multiplyScalar(1.14);
-      root.add(lab); labels.push(lab);
+      var d = document.createElement('div');
+      d.textContent = short.length > 20 ? short.slice(0, 19) + '…' : short;
+      d.style.cssText = 'position:absolute;left:0;top:0;transform:translate(-50%,-50%);white-space:nowrap;font:600 11.5px system-ui,sans-serif;' +
+        'color:' + (n.exists === false ? '#fb7185' : '#e6eeff') + ';background:rgba(4,8,18,.62);padding:1px 6px;border-radius:6px;' +
+        'text-shadow:0 1px 3px #000;will-change:transform,opacity';
+      labelBox.appendChild(d);
+      labels.push({ el: d, pos: p.clone() });
+
       byKey[String(n.name)] = p.clone();
       if (n.short) byKey[n.short] = p.clone();
+      all.push({ n: n, p: p.clone(), col: col });
     }
 
     appNodes.forEach(function (n, i) {
-      addNode(n, halfSpherePoint(THREE, R * 1.32, i, appNodes.length, -1), GROUP_COLORS[n.group] || 0x8ea0c8);
+      addNode(n, halfSpherePoint(THREE, R * 1.34, i, appNodes.length, -1), GROUP_COLORS[n.group] || 0x8ea0c8);
     });
     pyNodes.forEach(function (n, i) {
-      addNode(n, halfSpherePoint(THREE, R * 1.32, i, pyNodes.length, 1), 0xf472b6);
+      addNode(n, halfSpherePoint(THREE, R * 1.34, i, pyNodes.length, 1), 0xf472b6);
     });
 
-    // side captions
-    var capA = makeLabel(THREE, 'مغز اصلی (نود)', '#9fd0ff');
-    capA.position.set(-R * 1.25, -R * 1.35, 0); capA.scale.multiplyScalar(1.25); root.add(capA);
-    var capB = makeLabel(THREE, 'مغز پایتون', '#ffc79a');
-    capB.position.set(R * 1.25, -R * 1.35, 0); capB.scale.multiplyScalar(1.25); root.add(capB);
+    /* ---- neuron web: wire each node to its nearest neighbours ---- */
+    var webMat = new THREE.LineBasicMaterial({ color: 0x86b7ff, transparent: true, opacity: 0.13, depthWrite: false });
+    for (var i = 0; i < all.length; i++) {
+      var mine = all[i];
+      var near = all.slice().filter(function (o) { return o !== mine; })
+        .sort(function (a, b) { return a.p.distanceTo(mine.p) - b.p.distanceTo(mine.p); })
+        .slice(0, 2);
+      near.forEach(function (o) {
+        // bow the strand outward a little so the web looks organic
+        var mid = mine.p.clone().add(o.p).multiplyScalar(0.5).multiplyScalar(1.07);
+        var curve = new THREE.QuadraticBezierCurve3(mine.p, mid, o.p);
+        root.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(curve.getPoints(12)), webMat));
+      });
+    }
 
-    // where signal endpoints live
+    // captions for the two halves
+    function sideCaption(text, x, color) {
+      var d = document.createElement('div');
+      d.textContent = text;
+      d.style.cssText = 'position:absolute;left:0;top:0;transform:translate(-50%,-50%);white-space:nowrap;font:800 13px system-ui,sans-serif;' +
+        'color:' + color + ';text-shadow:0 1px 4px #000;will-change:transform,opacity';
+      labelBox.appendChild(d);
+      labels.push({ el: d, pos: new THREE.Vector3(x, -R * 1.45, 0) });
+    }
+    sideCaption('مغز اصلی (نود)', -R * 1.15, '#9fd0ff');
+    sideCaption('مغز پایتون', R * 1.15, '#ffc79a');
+
     byKey['core'] = new THREE.Vector3(0, 0, 0);
     byKey['chat'] = new THREE.Vector3(0, 0, 0);
     byKey['pybrain'] = byKey['main.py'] || new THREE.Vector3(R * 1.1, 0, 0);
     byKey['memory'] = byKey['memory.js'] || new THREE.Vector3(-R * 1.1, 0, 0);
-    byKey['web'] = new THREE.Vector3(0, R * 1.5, 0);
+    byKey['web'] = new THREE.Vector3(0, R * 1.6, 0);
     function endpoint(k) {
       if (byKey[k]) return byKey[k];
       var hit = Object.keys(byKey).find(function (n) { return n.indexOf(k) >= 0; });
       return hit ? byKey[hit] : new THREE.Vector3(0, 0, 0);
     }
+    var NICE = { core: 'هسته', chat: 'گفت‌وگو', pybrain: 'مغز پایتون', memory: 'حافظه', web: 'اینترنت' };
+    function nice(k) { return NICE[k] || k; }
 
-    /* ---- live traffic: a pulse of light per real event ---- */
+    /* ---- live traffic: light the exact link that is busy ---- */
     var pulses = [];
-    function addPulse(from, to, colorHex) {
+    function addPulse(from, to, label) {
       var a = endpoint(from).clone(), b = endpoint(to).clone();
-      var m = new THREE.Mesh(
-        new THREE.SphereGeometry(0.13, 12, 10),
-        new THREE.MeshBasicMaterial({ color: colorHex || 0xffffff })
-      );
-      m.position.copy(a); root.add(m);
-      // the line it rides along, briefly lit
-      var lg = new THREE.BufferGeometry().setFromPoints([a, b]);
-      var ln = new THREE.Line(lg, new THREE.LineBasicMaterial({ color: colorHex || 0xffffff, transparent: true, opacity: 0.8 }));
+      var mid = a.clone().add(b).multiplyScalar(0.5).multiplyScalar(1.12);
+      var curve = new THREE.QuadraticBezierCurve3(a, mid, b);
+      var pts = curve.getPoints(40);
+      var ln = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),
+        new THREE.LineBasicMaterial({ color: 0x9be8ff, transparent: true, opacity: 0.95, depthWrite: false }));
       root.add(ln);
-      pulses.push({ m: m, ln: ln, a: a, b: b, t: 0 });
+      var m = new THREE.Mesh(new THREE.SphereGeometry(0.16, 12, 10),
+        new THREE.MeshBasicMaterial({ color: 0xdffaff }));
+      m.position.copy(pts[0]); root.add(m);
+      pulses.push({ m: m, ln: ln, pts: pts, t: 0 });
+      // name the pair on screen, so you can read what just talked to what
+      liveBox.textContent = '⚡ ' + nice(from) + '  →  ' + nice(to) + (label ? '   ·  ' + label : '');
+      liveBox.style.opacity = '1';
+      clearTimeout(liveBox._t);
+      liveBox._t = setTimeout(function () { liveBox.style.opacity = '0'; }, 4000);
     }
 
     var lastSig = 0, firstPoll = true;
@@ -228,18 +244,17 @@
         .then(function (d) {
           if (!d) return;
           lastSig = d.last || lastSig;
-          // on the first poll just catch up silently, then animate what's new
           if (firstPoll) { firstPoll = false; return; }
-          (d.signals || []).slice(-6).forEach(function (s, i) {
-            setTimeout(function () { addPulse(s.from, s.to, 0x9be8ff); }, i * 180);
+          (d.signals || []).slice(-5).forEach(function (s, i) {
+            setTimeout(function () { addPulse(s.from, s.to, s.label); }, i * 260);
           });
         }).catch(function () {});
     }
     pollSignals();
     var poll = setInterval(pollSignals, 2500);
 
-    /* ---- interaction: spin it like a globe ---- */
-    var rotX = 0.2, rotY = 0.4, velX = 0, velY = 0, dragging = false, auto = true;
+    /* ---- spin it like a globe ---- */
+    var rotX = 0.2, rotY = 0.4, dragging = false, auto = true;
     var last = { x: 0, y: 0 }, moved = 0, dist = 17;
     function onDown(e) {
       dragging = true; moved = 0; auto = false; canvas.style.cursor = 'grabbing';
@@ -251,8 +266,7 @@
       var dx = p.clientX - last.x, dy = p.clientY - last.y;
       last.x = p.clientX; last.y = p.clientY;
       moved += Math.abs(dx) + Math.abs(dy);
-      velY = dx * 0.005; velX = dy * 0.005;
-      rotY += velY; rotX += velX;
+      rotY += dx * 0.005; rotX += dy * 0.005;
       if (e.cancelable) e.preventDefault();
     }
     function onUp() { dragging = false; canvas.style.cursor = 'grab'; setTimeout(function () { auto = true; }, 2500); }
@@ -267,7 +281,6 @@
       e.preventDefault();
     }, { passive: false });
 
-    // click a node -> its panel (only when it wasn't a drag)
     var ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
     canvas.addEventListener('click', function (e) {
       if (moved > 6) return;
@@ -281,7 +294,7 @@
         var n = hit.object.userData.node;
         if (n.py && P.pybrain && /main\.py|autolibs/.test(n.name)) P.pybrain();
         else if (P.node) P.node(n);
-      } else if (P.core) P.core();   // clicking the brain body = the core panel
+      } else if (P.core) P.core();
     });
 
     function onResize() {
@@ -293,6 +306,7 @@
     window.addEventListener('resize', onResize);
     onResize();
 
+    var tmp = new THREE.Vector3();
     function frame() {
       S.raf = requestAnimationFrame(frame);
       if (document.hidden) return;
@@ -300,29 +314,37 @@
       rotX = Math.max(-1.2, Math.min(1.2, rotX));
       root.rotation.y = rotY; root.rotation.x = rotX;
       camera.position.set(0, 0, dist); camera.lookAt(0, 0, 0);
-      // only the names on the side facing you stay bright — otherwise ~40
-      // labels pile on top of each other and nothing is readable
+      root.updateMatrixWorld();
+
+      // place the HTML labels over their nodes; fade the ones facing away
+      var w = canvas.clientWidth, h = canvas.clientHeight;
       for (var L = 0; L < labels.length; L++) {
-        var lp = labels[L].position.clone().applyMatrix4(root.matrixWorld);
-        var f = Math.max(0, Math.min(1, (lp.z + 1.2) / 4));
-        labels[L].material.opacity = 0.06 + 0.94 * f * f;
+        var it = labels[L];
+        tmp.copy(it.pos).applyMatrix4(root.matrixWorld);
+        var depth = tmp.z;
+        tmp.project(camera);
+        var x = (tmp.x * 0.5 + 0.5) * w, y = (-tmp.y * 0.5 + 0.5) * h;
+        var f = Math.max(0, Math.min(1, (depth + 1.2) / 4));
+        it.el.style.transform = 'translate(-50%,-50%) translate(' + x.toFixed(1) + 'px,' + y.toFixed(1) + 'px)';
+        it.el.style.opacity = (0.05 + 0.95 * f * f).toFixed(3);
       }
-      // advance the light pulses
+
       for (var i = pulses.length - 1; i >= 0; i--) {
         var p = pulses[i];
-        p.t += 0.022;
+        p.t += 0.02;
         if (p.t >= 1) {
           root.remove(p.m); root.remove(p.ln);
           p.m.geometry.dispose(); p.ln.geometry.dispose();
           pulses.splice(i, 1); continue;
         }
-        p.m.position.lerpVectors(p.a, p.b, p.t);
-        p.ln.material.opacity = 0.8 * (1 - p.t);
+        var idx = Math.min(p.pts.length - 1, Math.floor(p.t * (p.pts.length - 1)));
+        p.m.position.copy(p.pts[idx]);
+        p.ln.material.opacity = 0.95 * (1 - p.t);
       }
       renderer.render(scene, camera);
     }
 
-    S = { renderer: renderer, raf: 0, poll: poll, onResize: onResize };
+    S = { renderer: renderer, raf: 0, poll: poll, onResize: onResize, onMove: onMove, onUp: onUp };
     frame();
   };
 })();

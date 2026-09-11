@@ -1,4 +1,4 @@
-/* SETAYESH_BUILD 9.9.78 */
+/* SETAYESH_BUILD 9.9.79 */
 (function(){
 'use strict';
 
@@ -1286,7 +1286,9 @@ async function enterApp(){
       // icon, so their separate sidebar buttons are hidden to reduce clutter.
       { var _cb=$('commsBtn'); if(_cb)_cb.style.display='none'; }
       { var _sb=$('settingsBtn'); if(_sb)_sb.style.display='none'; }
-      { var _bm=$('brainMapBtn'); if(_bm)_bm.style.display=CFG.isAdmin?'flex':'none'; }
+      // One brain button, on the main page (topbar) — the sidebar copy is gone.
+      { var _bm=$('brainMapBtn'); if(_bm)_bm.style.display='none'; }
+      { var _bt=$('brainTopBtn'); if(_bt)_bt.style.display=CFG.isAdmin?'inline-flex':'none'; }
       $('learnBtn').style.display=CFG.isAdmin?'grid':'none';
       $('ccBtn').style.display=CFG.isAdmin?'grid':'none';
       // The admin keeps the full interface — every tool where it was. Only
@@ -1784,7 +1786,7 @@ function ccTab(which){
     b.style.padding='7px 14px'; b.style.fontSize='12.5px';
   });
   if(which==='users')loadCCUsers();
-  if(which==='power'){loadCCBrainLibs();loadCCLocalModels();loadCCSearchEngines();}
+  if(which==='power'){loadCCBrainLibs();loadCCLocalModels();loadCCSearchEngines();loadAutonomy();}
   if(which==='look'){renderFaceGrid();renderFacePreview(window.SETAYESH_FACE);}
   if(which==='privacy')loadCCPrivacy();
   if(which==='devices')loadCCDevices();
@@ -2303,6 +2305,18 @@ function refreshConfig(){
     if(!CFG.providers.some(function(p){return p.id===provider;})){ provider=CFG.defaultProvider; model=CFG.defaultModel; }
     try{ buildModelPicker(); buildCompareChips(); }catch(e){}
   }).catch(function(){});
+}
+/* Autonomous mode: she applies the owner's own in-app instructions herself. */
+function loadAutonomy(){
+  var cb=$('ccAutonomy'); if(!cb)return;
+  adminFetch('/api/admin/autonomy').then(function(d){ cb.checked=!!d.autoApply; }).catch(function(){});
+  if(cb._wired)return; cb._wired=true;
+  cb.addEventListener('change',function(){
+    var n=$('ccAutonomyNote'); if(n){n.style.color='';n.textContent='در حال ذخیره…';}
+    adminFetch('/api/admin/autonomy',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({autoApply:cb.checked})})
+      .then(function(d){ if(n){n.style.color='#34d399';n.textContent=d.autoApply?'روشن شد — تغییرهایی که خودت بخواهی، خودش انجام می‌دهد.':'خاموش شد — هر تغییر منتظر تأیید تو می‌ماند.';} })
+      .catch(function(e){ cb.checked=!cb.checked; if(n){n.style.color='#fb7185';n.textContent=e.message;} });
+  });
 }
 /* Hide/show a built-in engine, then delete/add a custom one. Persists at once. */
 function toggleEngineHidden(id,hide){
@@ -3923,6 +3937,7 @@ $('langBtnLogin').addEventListener('click',switchLang);
 
 // ===== Brain wiring =====
 $('shBrain').addEventListener('click',function(){ sheetGo(openBrain); });
+(function(){ var b=$('brainTopBtn'); if(b)b.addEventListener('click',openBrain); })();
 // FIX: these elements are defined further down the page (lines 6101-6132),
 // so they do not exist yet while this script runs. Wiring them here threw
 // "Cannot read properties of null" and killed everything below it -
