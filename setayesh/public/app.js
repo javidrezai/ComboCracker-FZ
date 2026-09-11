@@ -1,4 +1,4 @@
-/* SETAYESH_BUILD 9.9.83 */
+/* SETAYESH_BUILD 9.9.84 */
 (function(){
 'use strict';
 
@@ -5503,14 +5503,38 @@ function devShowFound(found){
   var box = $('devScanOut'); if(!box) return;
   if(!found.length){ box.innerHTML = '<div class="tk-hint">چیزی پیدا نشد. مطمئن شوید دستگاه‌ها روشن‌اند.</div>'; return; }
   var h = '';
-  for(var i=0;i<found.length;i++){
-    var f = found[i];
-    h += '<div class="tk-row" style="border-top:1px solid var(--border);padding:9px 0;gap:8px;align-items:center">'+
-         '<div style="flex:1;min-width:0"><b>'+esc(f.name)+'</b><div class="tk-hint" style="padding:0">'+
-         esc(f.ip)+(f.mac?' · '+esc(f.mac):'')+' · پورت '+f.open.join(',')+'</div></div>'+
-         (f.known ? '<span class="tk-hint" style="padding:0">اضافه شده</span>'
-                  : (f.driver ? '<button class="btn" data-devact="addfound" data-i="'+i+'">افزودن</button>'
-                              : '<span class="tk-hint" style="padding:0">ناشناس</span>'))+'</div>';
+  /* Sort so the ones we could actually name come first — a list that opens
+     with five "unknown" rows reads as a failure even when the rest worked. */
+  var list = found.slice().sort(function(a,b){
+    return (b.identified?1:0)-(a.identified?1:0);
+  });
+  for(var i=0;i<list.length;i++){
+    var f = list[i];
+    var idx = found.indexOf(f);
+    /* The second line is what the device IS, not just where it is: its own
+       name, the real manufacturer, what its ports say it does. */
+    var bits = [];
+    if(f.vendor && f.name.indexOf(f.vendor)<0) bits.push(f.vendor);
+    if(f.roles && f.roles.length) bits.push(f.roles.slice(0,2).join(' · '));
+    if(f.open && f.open.length) bits.push('پورت '+f.open.join(','));
+    var line2 = esc(f.ip)+(bits.length?' · '+esc(bits.join(' · ')):'');
+    var line3 = esc(f.mac||'')+(f.randomised?' · آدرس تصادفی (حریم خصوصی)':'');
+
+    var right;
+    if(f.known) right = '<span class="tk-hint" style="padding:0">اضافه شده</span>';
+    else if(f.driver) right = '<button class="btn" data-devact="addfound" data-i="'+idx+'">افزودن</button>';
+    else if(f.identified) right = '<span class="tk-hint" style="padding:0;color:#34d399">شناخته شد</span>';
+    else right = '<span class="tk-hint" style="padding:0">ناشناس</span>';
+
+    h += '<div class="tk-row" style="border-top:1px solid var(--border);padding:9px 0;gap:8px;align-items:flex-start">'+
+         '<div style="flex:1;min-width:0">'+
+           '<b>'+esc(f.name)+'</b>'+
+           '<div class="tk-hint" style="padding:0">'+line2+'</div>'+
+           (line3?'<div class="tk-hint" style="padding:0;direction:ltr;text-align:right;opacity:.75">'+line3+'</div>':'')+
+           ((f.why&&f.why.length)
+             ? '<div class="tk-hint" style="padding:0;margin-top:3px;opacity:.85">'+esc(f.why[f.why.length-1])+'</div>'
+             : '')+
+         '</div>'+right+'</div>';
   }
   box.innerHTML = h;
 }

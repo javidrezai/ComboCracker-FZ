@@ -223,9 +223,16 @@ function arpTable() {
                     { shell: false, windowsHide: true });
     } catch (e) { return resolve(map); }
     const done = () => {
-      const re = /(\d+\.\d+\.\d+\.\d+)[^\da-f]+([0-9a-f]{2}[:-][0-9a-f]{2}[:-][0-9a-f]{2}[:-][0-9a-f]{2}[:-][0-9a-f]{2}[:-][0-9a-f]{2})/gi;
+      // The separator between the address and the MAC differs per platform:
+      // Windows uses spaces, Linux and macOS write "? (1.2.3.4) at aa:bb:...".
+      // The old pattern excluded the letters a-f from the separator, so it
+      // could not cross the word "at" and found no MAC at all on Linux/macOS.
+      const re = /(\d+\.\d+\.\d+\.\d+)\D{1,12}?([0-9a-f]{1,2}[:-][0-9a-f]{1,2}[:-][0-9a-f]{1,2}[:-][0-9a-f]{1,2}[:-][0-9a-f]{1,2}[:-][0-9a-f]{1,2})/gi;
       let m;
-      while ((m = re.exec(out))) map[m[1]] = m[2].replace(/-/g, ':').toLowerCase();
+      while ((m = re.exec(out))) {
+        map[m[1]] = m[2].replace(/-/g, ':').toLowerCase()
+          .split(':').map((o) => (o.length === 1 ? '0' + o : o)).join(':');
+      }
       resolve(map);
     };
     child.stdout.on('data', (d) => { out += d.toString(); });
@@ -235,9 +242,12 @@ function arpTable() {
   });
 }
 
-// Manufacturer prefixes for the hardware this house actually owns. Short on
-// purpose: a guess that names the right brand is useful, a guess that names
-// the wrong one is worse than no guess.
+// identify.js carries the FULL IEEE manufacturer registry plus the checks for
+// a randomised (privacy) address and the device's own advertised name. The
+// short table below stays because the drivers key off these four families by
+// name, but it is no longer what decides whether a device is "unknown".
+const identify = require('./identify');
+
 const OUI = {
   samsung: ['00:12:fb', '00:15:b9', '00:16:32', '00:17:c9', '00:1a:8a', '00:1d:25', '00:21:19',
             '00:23:39', '00:24:54', '08:08:c2', '10:1d:c0', '18:3f:47', '1c:5a:3e', '24:4b:03',
@@ -616,6 +626,16 @@ async function scanNetwork() {
   // and the order below puts the specific families ahead of the generic ones.
   const order = ['samsung_tv', 'canon_printer', 'tuya_device', 'xiaomi_device'];
   const found = [];
+
+  // Ask every candidate what it calls itself, all at once. Three small UDP
+  // questions per device with a short timeout, so a whole subnet costs about
+  // as long as one device does.
+  const hostnames = {};
+  await Promise.all(candidates.map(async (c) => {
+    try { hostnames[c.ip] = (await identify.hostnameOf(c.ip, { timeoutMs: 1400 })).name; }
+    catch (e) { hostnames[c.ip] = ''; }
+  }));
+
   for (const c of candidates) {
     let claimed = null;
     for (const key of order) {
@@ -624,10 +644,20 @@ async function scanNetwork() {
         if (hit) { claimed = Object.assign({ driver: key }, hit); break; }
       } catch (e) { /* a driver that throws simply does not claim it */ }
     }
+    // Everything we could work out about this box: its own name, the real
+    // manufacturer from the full IEEE registry, whether the address is a
+    // privacy address, and what its open ports say it does.
+    const id = identify.describe({ mac: c.mac, hostname: hostnames[c.ip], ports: c.open });
     found.push({
-      ip: c.ip, mac: c.mac, open: c.open, vendor: c.vendor,
+      ip: c.ip, mac: c.mac, open: c.open,
+      vendor: c.vendor || id.vendor,
+      hostname: id.hostname,
+      randomised: id.randomised,
+      roles: id.roles,
+      why: id.why,
+      identified: !!(claimed || id.confident),
       driver: claimed ? claimed.driver : null,
-      name: claimed ? claimed.name : (c.vendor ? c.vendor + ' device' : 'دستگاه ناشناس'),
+      name: claimed ? claimed.name : id.label,
       model: claimed ? claimed.model : '',
       extra: claimed ? claimed.extra : {},
       known: !!Object.values(homedev.devices).find((d) => d.mac === c.mac || d.ip === c.ip),

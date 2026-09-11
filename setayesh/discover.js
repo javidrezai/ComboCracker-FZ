@@ -626,9 +626,14 @@ const OUI = {
   'ac:84:c6': 'TP-Link', '50:c7:bf': 'TP-Link', 'd8:07:b6': 'TP-Link',
   '00:1d:0f': 'TP-Link', '74:da:88': 'TP-Link', 'b0:be:76': 'TP-Link',
 };
+// The short table above is a fast path for the handful of brands that turn up
+// in every house. Anything it misses goes to identify.js, which carries the
+// whole IEEE registry (52 085 prefixes) — so a device is only ever called
+// "unknown" when it genuinely is one.
 function ouiVendor(mac) {
   const m = String(mac || '').toLowerCase().replace(/-/g, ':');
-  return OUI[m.slice(0, 8)] || '';
+  if (OUI[m.slice(0, 8)]) return OUI[m.slice(0, 8)];
+  try { return require('./identify').vendorOf(mac) || ''; } catch (e) { return ''; }
 }
 // A locally-administered MAC (bit 1 of the first octet) is either a privacy
 // address from a phone or something deliberately spoofing. Worth saying.
@@ -706,9 +711,28 @@ async function scanAll(opts) {
     } else devices.push(u);
   }
 
+  const identify = require('./identify');
+  // Ask anything with an address what it calls itself. This is what turns a
+  // row of numbers into "Javid-iPhone" or "DESKTOP-A1B2".
+  await Promise.all(devices
+    .filter((d) => d.address && !d.name)
+    .slice(0, 60)
+    .map(async (d) => {
+      try {
+        const h = await identify.hostnameOf(d.address, { timeoutMs: 1400 });
+        if (h.name) d.name = h.name;
+        d.hostname = h.name;
+      } catch (e) { /* a silent device is not an error */ }
+    }));
   for (const d of devices) {
     if (d.mac && !d.vendor) d.vendor = ouiVendor(d.mac);
-    if (d.mac) d.randomMac = isRandomMac(d.mac);
+    if (d.mac) {
+      d.randomMac = isRandomMac(d.mac);
+      const id = identify.describe({ mac: d.mac, hostname: d.hostname || d.name, ports: d.openPorts || [] });
+      if (!d.name || /^\d+\.\d+\.\d+\.\d+$/.test(d.name)) d.name = id.label;
+      d.why = id.why;
+      d.identified = id.confident;
+    }
   }
 
   return {

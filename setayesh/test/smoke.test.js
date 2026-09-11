@@ -724,3 +724,65 @@ test('the encrypted envelope round-trips and rejects tampering', () => {
   const other = netguard.newKeypair();
   assert.throws(() => netguard.unseal(env, other.privateKey), 'the wrong key must fail');
 });
+
+// ---- Device identification ----
+// The complaint this answers: the home scan listed five devices as
+// "دستگاه ناشناس" with nothing but a MAC next to them. Four of those five were
+// phones using a privacy address and one was a Xiaomi — all knowable.
+test('the full IEEE registry names real manufacturers', () => {
+  const identify = require(path.join(ROOT, 'identify.js'));
+  assert.ok(identify.loadOui().size > 50000, 'the OUI registry did not load');
+  const cases = [
+    ['cc:4d:75:78:6a:11', /Xiaomi/i],     // the one real device in the screenshot
+    ['5c:49:7d:aa:bb:cc', /Samsung/i],
+    ['b8:27:eb:11:22:33', /Raspberry/i],
+    ['a4:83:e7:00:00:01', /Apple/i],
+    ['00:1f:3f:11:22:33', /AVM|FRITZ/i],
+  ];
+  for (const [mac, re] of cases) {
+    assert.match(identify.vendorOf(mac), re, mac + ' was not identified');
+  }
+});
+
+test('a randomised MAC is explained as a phone, not reported as unknown', () => {
+  const identify = require(path.join(ROOT, 'identify.js'));
+  for (const mac of ['0e:ab:c3:d9:95:5b', '16:47:6a:23:43:3e', 'e2:43:78:2b:89:d1']) {
+    const k = identify.macKind(mac);
+    assert.equal(k.local, true, mac + ' should be locally administered');
+    const d = identify.describe({ mac });
+    assert.equal(d.randomised, true);
+    assert.equal(d.confident, true, 'a privacy address is a conclusion, not a shrug');
+    assert.ok(!/ناشناس/.test(d.label), 'still labelled unknown: ' + d.label);
+    assert.ok(d.why.join(' ').includes('حریم خصوصی'), 'the reason must be explained');
+  }
+  // A factory MAC is NOT a privacy address.
+  assert.equal(identify.macKind('cc:4d:75:78:6a:11').local, false);
+});
+
+test("a device's own name wins over every guess", () => {
+  const identify = require(path.join(ROOT, 'identify.js'));
+  const d = identify.describe({ mac: '0e:ab:c3:d9:95:5b', hostname: 'Javid-iPhone' });
+  assert.equal(d.label, 'Javid-iPhone');
+  assert.ok(d.roles.includes('دستگاه اپل'), 'the name should also settle what kind of thing it is');
+});
+
+test('the ARP table parses on Linux and macOS, not only Windows', () => {
+  // The old pattern excluded a-f from the separator, so it could not cross the
+  // word "at" and returned NOTHING on Linux/macOS — the bug this locks down.
+  const re = /(\d+\.\d+\.\d+\.\d+)\D{1,12}?([0-9a-f]{1,2}[:-][0-9a-f]{1,2}[:-][0-9a-f]{1,2}[:-][0-9a-f]{1,2}[:-][0-9a-f]{1,2}[:-][0-9a-f]{1,2})/gi;
+  const parse = (txt) => {
+    const map = {}; let m; re.lastIndex = 0;
+    while ((m = re.exec(txt))) {
+      map[m[1]] = m[2].replace(/-/g, ':').toLowerCase()
+        .split(':').map((o) => (o.length === 1 ? '0' + o : o)).join(':');
+    }
+    return map;
+  };
+  assert.equal(parse('? (192.168.2.31) at cc:4d:75:78:6a:11 [ether] on wlan0')['192.168.2.31'],
+    'cc:4d:75:78:6a:11', 'Linux arp output');
+  assert.equal(parse('  192.168.2.31          cc-4d-75-78-6a-11     dynamic')['192.168.2.31'],
+    'cc:4d:75:78:6a:11', 'Windows arp output');
+  // macOS drops leading zeros in each octet.
+  assert.equal(parse('router (192.168.2.1) at e0:28:6d:a:b:c on en0')['192.168.2.1'],
+    'e0:28:6d:0a:0b:0c', 'macOS arp output');
+});
