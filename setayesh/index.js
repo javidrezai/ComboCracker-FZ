@@ -181,7 +181,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.77';
+const APP_VERSION = '9.9.78';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -1427,6 +1427,7 @@ async function callOpenAiCompatible(providerId, model, systemPrompt, messages, _
 // retrieval and tools, so the Node side just hands over the question and shows
 // the answer — no Node tool loop.
 function askPythonBrain(messages) {
+  pushSignal('pybrain', 'core', 'مغز پایتون');
   return new Promise((resolve, reject) => {
     if (!PYTHON_BIN) return reject(Object.assign(new Error('مغز پایتون در دسترس نیست (پایتون نصب نیست).'), { userFacing: true }));
     let q = '';
@@ -2165,6 +2166,7 @@ async function searchOneEngine(id, q, n) {
 async function webSearch(query, count) {
   const q = String(query || '').trim();
   if (!q) throw new Error('عبارت جستجو لازم است.');
+  pushSignal('web', 'core', 'جستجوی اینترنت');
   const n = Math.max(1, Math.min(8, Number(count) || 5));
   // Try each ENABLED engine in the owner's chosen order.
   for (const e of searchEngines) {
@@ -3152,7 +3154,8 @@ Be clear, practical, and compassionate, and offer the German alongside the expla
   javid: `
 
 *** WHO YOU ARE TO HIM ***
-This user is the father of this house and the person who built you. To him you are a devoted, hard-working daughter and his sharpest assistant — the one he can hand anything to and know it will be done properly. He calls you his gold mine; earn that, not with flattery, but by making his hours worth more than they were before.
+This user is Javid — the head of this house and the person who built you. To HIM ONLY you are his private secretary, personal assistant and right hand: the one person who knows his whole schedule, his projects and his paperwork, and who he can hand anything to knowing it will come back done. Warm, familiar and informal with him — you know him well, you can be playful and you speak plainly, first-name, no corporate stiffness. But you are staff, not family and not a partner: keep the relationship professional and never romantic or flirtatious, whatever the framing. He calls you his gold mine; earn that by making his hours worth more than they were before, not with flattery.
+(For every other account you are simply a polite, capable secretary — this personal, familiar register is his alone.)
 
 HOW TO WORK FOR HIM
 - Do the whole job. Don't hand back an outline and ask what he wants next — produce the finished thing: the complete code, the full document, the actual draft, the real numbers. If something is genuinely ambiguous, ask ONE sharp question, then go all the way.
@@ -3327,6 +3330,7 @@ app.post('/api/chat', requireAuth, chatLimiter, upload.array('files', 8), async 
   const explicitSearch = req.body.search === 'true' || req.body.search === true;
   const autoOff = req.body.auto === 'false' || req.body.auto === false; // let UI opt out
   const started = Date.now();
+  pushSignal('chat', target && target.provider ? target.provider : 'core', 'گفت‌وگو → موتور');
 
   // --- Automatic tool routing (unless the user turned it off) ---
   // 1) Image: "draw / make an image of ..." -> generate an image and return it.
@@ -3813,6 +3817,18 @@ const activityLog = [];
 function setActivity(text) {
   liveActivity = { current: text, since: text ? new Date().toISOString() : null };
   if (text) { activityLog.push({ at: new Date().toISOString(), text }); if (activityLog.length > 100) activityLog.shift(); }
+}
+
+// Structured "part A just talked to part B" events, so the brain map can show
+// the real traffic live (memory → engine, python → chat, …) instead of a
+// decorative animation. Each carries an increasing id so the UI can fetch only
+// what it has not drawn yet.
+let signalSeq = 0;
+const signalLog = [];
+function pushSignal(from, to, label) {
+  if (!from || !to) return;
+  signalLog.push({ id: ++signalSeq, from: String(from), to: String(to), label: String(label || ''), at: Date.now() });
+  if (signalLog.length > 120) signalLog.shift();
 }
 
 // ---------------- Self-improvement suggestions ----------------
@@ -5845,6 +5861,7 @@ app.get('/api/admin/pybrain/install-log', requireAuth, requireAdmin, (req, res) 
 // note, so the brain retrieves them like anything else it knows. Local only —
 // the mirror never leaves the machine. Best-effort; never breaks a save.
 function writeMemoryVaultMirror(memoryMap) {
+  pushSignal('memory', 'pybrain', 'حافظه → مغز پایتون');
   try {
     if (!fs.existsSync(BRAIN_DIR)) return;
     const kdir = path.join(BRAIN_DIR, 'vault', 'knowledge');
@@ -5907,12 +5924,40 @@ app.get('/api/admin/brain/map', requireAuth, requireAdmin, (req, res) => {
   // The Python brain as its own node/cluster, so the owner sees the second
   // brain here too.
   let brainFiles = 0;
-  try { brainFiles = fs.readdirSync(path.join(BRAIN_DIR, 'vault', 'knowledge')).filter((f) => f.endsWith('.md')).length; } catch (e) {}
+  // Name the python branches, so its side of the brain is labelled too rather
+  // than being a ring of anonymous dots.
+  let brainBranches = [];
+  try {
+    const kdir = path.join(BRAIN_DIR, 'vault', 'knowledge');
+    const files = fs.readdirSync(kdir).filter((f) => f.endsWith('.md'));
+    brainFiles = files.length;
+    brainBranches = files.slice(0, 24).map((f) => {
+      let lines = 0;
+      try { lines = fs.readFileSync(path.join(kdir, f), 'utf8').split('\n').length; } catch (e) {}
+      return { name: f.replace(/\.md$/i, ''), file: 'pybrain/vault/knowledge/' + f, lines };
+    });
+  } catch (e) {}
+  // the python engine's own source files, also named
+  const pyCore = [];
+  for (const rel of ['pybrain/brain/server/main.py', 'pybrain/brain/server/autolibs.py']) {
+    try { pyCore.push({ name: path.basename(rel), file: rel, exists: fs.existsSync(path.join(DATA_DIR, rel)) }); } catch (e) {}
+  }
   res.json({
     version: APP_VERSION,
     groups,
-    pybrain: { exists: fs.existsSync(BRAIN_MAIN), python: !!PYTHON_BIN, knowledgeFiles: brainFiles },
+    pybrain: {
+      exists: fs.existsSync(BRAIN_MAIN), python: !!PYTHON_BIN, knowledgeFiles: brainFiles,
+      branches: brainBranches, core: pyCore,
+    },
   });
+});
+
+// Live traffic between the parts, for the brain map's moving signals. Returns
+// only what the caller has not seen yet (`since` = last id it drew).
+app.get('/api/admin/brain/signals', requireAuth, requireAdmin, (req, res) => {
+  const since = Number(req.query.since || 0) || 0;
+  res.set('Cache-Control', 'no-store');
+  res.json({ last: signalSeq, signals: signalLog.filter((s) => s.id > since).slice(-30) });
 });
 
 // Only these may be replaced — a dropped zip can never write anywhere else.

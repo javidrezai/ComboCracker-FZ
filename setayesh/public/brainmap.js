@@ -1,4 +1,4 @@
-/* SETAYESH_BUILD 9.9.77 */
+/* SETAYESH_BUILD 9.9.78 */
 /* Brain map — a living picture of Setayesh's whole self: a central hexagon
    core with every file as a node around it, colour-coded by area, green when
    healthy / red when missing. Click a node to see what it does and edit it.
@@ -325,11 +325,22 @@
     el('brainMapView').innerHTML='<div style="color:#8ea0c8;text-align:center;padding:40px">در حال ساخت نقشه…</div>';
     fetch('/api/admin/brain/map',{headers:authH()}).then(function(r){return r.json();}).then(function(d){
       if(d&&d.error){ el('brainMapView').innerHTML='<div style="color:#fb7185;text-align:center;padding:40px">'+d.error+'</div>'; return; }
-      MAP=d; cover();
+      MAP=d;
+      // The brain is now a real 3D globe (brain3d-globe.js). No cover image —
+      // opening the brain goes straight in. The flat map stays as a fallback.
+      var p=panel(); if(p)p.style.display='none';
+      if(typeof window.renderBrainGlobe==='function') window.renderBrainGlobe(d);
+      else build();
     }).catch(function(e){ el('brainMapView').innerHTML='<div style="color:#fb7185;text-align:center;padding:40px">خطا: '+e.message+'</div>'; });
   }
-  function close(){ var ov=el('brainMapOverlay'); if(ov)ov.style.display='none'; }
+  function close(){
+    var ov=el('brainMapOverlay'); if(ov)ov.style.display='none';
+    // stop the 3D scene so a closed brain costs nothing
+    if(typeof window.closeBrainGlobe==='function')window.closeBrainGlobe();
+  }
   window.openBrainMap=open; window.closeBrainMap=close;
+  // the 3D globe renderer drives the same detail/edit panels
+  window.__bmPanel={ node:selectNode, pybrain:selectPybrain, core:selectCore };
   document.addEventListener('DOMContentLoaded',function(){
     var c=el('brainMapClose'); if(c)c.addEventListener('click',close);
     var b=el('brainMapBtn'); if(b)b.addEventListener('click',open);

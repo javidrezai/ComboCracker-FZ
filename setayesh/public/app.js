@@ -1,4 +1,4 @@
-/* SETAYESH_BUILD 9.9.77 */
+/* SETAYESH_BUILD 9.9.78 */
 (function(){
 'use strict';
 
@@ -592,7 +592,9 @@ var FACE_STYLES=[
   {k:'هولوگرام',p:'holographic female AI, iridescent translucent skin, glowing circuit patterns, floating light particles, dark background, ultra detailed'}
 ];
 var FACE_SEED=7, FACE_PICK='';
-function faceUrl(prompt,seed){ return 'https://image.pollinations.ai/prompt/'+encodeURIComponent(prompt)+'?width=512&height=512&nologo=true&seed='+seed; }
+// Thumbnails are generated small (256px) so the gallery appears quickly; the
+// face that actually gets saved is requested at full size.
+function faceUrl(prompt,seed,size){ return 'https://image.pollinations.ai/prompt/'+encodeURIComponent(prompt)+'?width='+(size||512)+'&height='+(size||512)+'&nologo=true&seed='+seed; }
 function renderFacePreview(url){
   var box=$('faceCurrent'); if(!box)return;
   box.innerHTML='';
@@ -605,15 +607,20 @@ function renderFacePreview(url){
 function renderFaceGrid(){
   var g=$('faceGrid'); if(!g)return; g.innerHTML='';
   FACE_STYLES.forEach(function(st,i){
-    var url=faceUrl(st.p,FACE_SEED+i*13);
-    var c=el('div'); c.style.cssText='position:relative;border-radius:12px;overflow:hidden;cursor:pointer;border:2px solid '+(FACE_PICK===url?'#22d3ee':'rgba(255,255,255,.12)')+';aspect-ratio:1;background:#0a0f1e';
-    var im=document.createElement('img'); im.src=url; im.loading='lazy';
-    im.style.cssText='width:100%;height:100%;object-fit:cover;display:block';
+    var seed=FACE_SEED+i*13;
+    var thumb=faceUrl(st.p,seed,256), full=faceUrl(st.p,seed,512);
+    var c=el('div'); c.style.cssText='position:relative;border-radius:12px;overflow:hidden;cursor:pointer;border:2px solid '+(FACE_PICK===full?'#22d3ee':'rgba(255,255,255,.12)')+';aspect-ratio:1;background:#0a0f1e';
+    var spin=el('div'); spin.textContent='…';
+    spin.style.cssText='position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#7e8fb5;font-size:18px';
+    var im=document.createElement('img'); im.loading='lazy'; im.decoding='async';
+    im.style.cssText='width:100%;height:100%;object-fit:cover;display:block;opacity:0;transition:opacity .3s';
+    im.onload=function(){ im.style.opacity='1'; if(spin.parentNode)spin.remove(); };
     im.onerror=function(){ c.innerHTML='<div style="padding:6px;font-size:9.5px;color:#7e8fb5;text-align:center">بدون اینترنت</div>'; };
+    im.src=thumb;
     var cap=el('div'); cap.textContent=st.k;
     cap.style.cssText='position:absolute;inset-inline:0;bottom:0;background:rgba(4,8,18,.72);color:#dbe4f7;font-size:10px;text-align:center;padding:3px';
-    c.appendChild(im); c.appendChild(cap);
-    c.addEventListener('click',function(){ FACE_PICK=url; renderFacePreview(url); renderFaceGrid(); var n=$('faceNote'); if(n){n.style.color='';n.textContent='«'+st.k+'» انتخاب شد — «ذخیرهٔ چهره» را بزن.';} });
+    c.appendChild(im); c.appendChild(spin); c.appendChild(cap);
+    c.addEventListener('click',function(){ FACE_PICK=full; renderFacePreview(thumb); renderFaceGrid(); var n=$('faceNote'); if(n){n.style.color='';n.textContent='«'+st.k+'» انتخاب شد — «ذخیرهٔ چهره» را بزن.';} });
     g.appendChild(c);
   });
 }
