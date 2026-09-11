@@ -1,4 +1,4 @@
-/* SETAYESH_BUILD 9.9.74 */
+/* SETAYESH_BUILD 9.9.75 */
 /* Brain map — a living picture of Setayesh's whole self: a central hexagon
    core with every file as a node around it, colour-coded by area, green when
    healthy / red when missing. Click a node to see what it does and edit it.
@@ -73,15 +73,20 @@
   }
   function cover(){
     var view=el('brainMapView'); if(!view)return;
+    var face=window.SETAYESH_FACE||'';
+    // The cover is Setayesh's face (a real 3D digital-woman image). No "enter"
+    // text — clicking the picture goes inside. If the image can't load
+    // (offline), fall back to the built-in SVG face, still clickable.
     view.innerHTML=''+
-    '<div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:12px">'+
-      '<div style="width:min(64vh,360px);max-width:86vw;aspect-ratio:700/760">'+faceSVG()+'</div>'+
-      '<div style="font-weight:900;font-size:26px;letter-spacing:1px;color:#eaf2ff;margin-top:6px">ستایش</div>'+
-      '<div style="font-size:13px;color:#9db4e0;margin-top:4px">مغزِ خانواده · نسخه '+(MAP&&MAP.version||'')+'</div>'+
-      '<button id="bmEnter" style="margin-top:18px;padding:12px 26px;border-radius:14px;border:0;background:linear-gradient(135deg,#7b5cff,#22d3ee);color:#04121e;font-weight:800;font-size:15px;cursor:pointer;box-shadow:0 10px 30px rgba(34,211,238,.35)">ورود به مغز ↵</button>'+
-      '<div style="font-size:11.5px;color:#7e8fb5;margin-top:10px">داخل، هر دو مغز را با هم می‌بینی</div>'+
+    '<div id="bmCover" style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:12px;cursor:pointer">'+
+      '<div id="bmFaceWrap" style="width:min(60vh,340px);max-width:86vw;aspect-ratio:1;border-radius:24px;overflow:hidden;box-shadow:0 20px 60px rgba(34,211,238,.25);border:1px solid rgba(123,92,255,.35)">'+
+        '<img id="bmFaceImg" src="'+face+'" alt="ستایش" style="width:100%;height:100%;object-fit:cover;display:block"/>'+
+      '</div>'+
+      '<div style="font-weight:900;font-size:24px;letter-spacing:1px;color:#eaf2ff;margin-top:12px">ستایش</div>'+
     '</div>';
-    var b=el('bmEnter'); if(b)b.addEventListener('click',enterMap);
+    var cov=el('bmCover'); if(cov)cov.addEventListener('click',enterMap);
+    var img=el('bmFaceImg');
+    if(img)img.onerror=function(){ var w=el('bmFaceWrap'); if(w){ w.style.aspectRatio='700/760'; w.style.borderRadius='24px'; w.innerHTML=faceSVG(); } };
     var leg=el('brainMapLegend'); if(leg)leg.innerHTML='';
   }
   function enterMap(){ build(); selectCore(); }

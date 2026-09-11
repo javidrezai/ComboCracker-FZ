@@ -1,4 +1,4 @@
-/* SETAYESH_BUILD 9.9.74 */
+/* SETAYESH_BUILD 9.9.75 */
 (function(){
 'use strict';
 
@@ -557,6 +557,26 @@ function avatarFrame(){
 }
 requestAnimationFrame(avatarFrame);
 function setAvatarInto(elm,username,size){ if(!elm)return; elm.textContent=''; elm.style.background='transparent'; elm.style.border='none'; elm.appendChild(makeAvatar(username,size)); }
+
+// Setayesh's own face — an elegant 3D digital woman, generated on the fly by
+// the same keyless AI image service the app already uses (no stock/copyright),
+// pinned with a fixed seed so it stays the same every load. Used for the brand
+// logos here and for the brain cover in brainmap.js. If it can't load (offline)
+// callers fall back to the built-in star / SVG face.
+window.SETAYESH_FACE='https://image.pollinations.ai/prompt/'+encodeURIComponent('elegant 3d render portrait of a digital woman, futuristic android, glowing cyan and violet circuit lines on skin, dark studio background, symmetrical, high detail, cinematic')+'?width=512&height=512&nologo=true&seed=42';
+window.__brandStar='<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l2.4 6.2L21 10l-5.2 4 1.5 6.6L12 17l-5.3 3.6L8.2 14 3 10l6.6-1.8z"/></svg>';
+function setBrandFace(){
+  ['.logo','.logo-sm'].forEach(function(sel){
+    var elm=document.querySelector(sel); if(!elm)return;
+    elm.style.overflow='hidden';
+    var img=document.createElement('img');
+    img.src=window.SETAYESH_FACE; img.alt='ستایش';
+    img.style.cssText='width:100%;height:100%;object-fit:cover;display:block';
+    img.onerror=function(){ elm.innerHTML=window.__brandStar; };
+    elm.innerHTML=''; elm.appendChild(img);
+  });
+}
+document.addEventListener('DOMContentLoaded',setBrandFace);
 
 // Age-appropriate motivational + learning lines (English). Younger set for Fardin (~8),
 // older set for Setayesh (~11–12). A fresh one shows each time, never repeating twice in a row.
