@@ -1,4 +1,4 @@
-/* SETAYESH_BUILD 9.9.91 */
+/* SETAYESH_BUILD 9.9.92 */
 /* Brain map — a living picture of Setayesh's whole self: a central hexagon
    core with every file as a node around it, colour-coded by area, green when
    healthy / red when missing. Click a node to see what it does and edit it.

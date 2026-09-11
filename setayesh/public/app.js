@@ -1,4 +1,4 @@
-/* SETAYESH_BUILD 9.9.91 */
+/* SETAYESH_BUILD 9.9.92 */
 (function(){
 'use strict';
 
@@ -599,6 +599,24 @@ function avatarFrame(){
 requestAnimationFrame(avatarFrame);
 function setAvatarInto(elm,username,size){ if(!elm)return; elm.textContent=''; elm.style.background='transparent'; elm.style.border='none'; elm.appendChild(makeAvatar(username,size)); }
 
+/* ONE face everywhere. بابا asked that Setayesh's icon be the same in every
+   place — chat, logo, greeting — and be his chosen picture, not a star and not
+   the coloured "orbiting dot" (which came out red for "javid" and read as a
+   stray red button). This renders the chosen face (window.SETAYESH_FACE, kept
+   in sync with the server's /icon endpoints) with the brand star as the only
+   fallback if the image can't load. */
+function faceAvatarEl(size){
+  var box=el('div');
+  box.style.cssText='width:'+size+'px;height:'+size+'px;border-radius:30%;overflow:hidden;flex-shrink:0;background:linear-gradient(135deg,#22d3ee,#6366f1);display:flex;align-items:center;justify-content:center';
+  var img=document.createElement('img');
+  img.src=window.SETAYESH_FACE||window.SETAYESH_FACE_DEFAULT; img.alt='ستایش';
+  img.style.cssText='width:100%;height:100%;object-fit:cover;display:block';
+  img.onerror=function(){ box.innerHTML=window.__brandStar; var s=box.querySelector('svg'); if(s){s.style.width='62%';s.style.height='62%';} };
+  box.appendChild(img);
+  return box;
+}
+function setFaceInto(elm,size){ if(!elm)return; elm.textContent=''; elm.style.background='transparent'; elm.style.border='none'; elm.appendChild(faceAvatarEl(size)); }
+
 // Setayesh's own face — an elegant 3D digital woman, generated on the fly by
 // the same keyless AI image service the app already uses (no stock/copyright),
 // pinned with a fixed seed so it stays the same every load. Used for the brand
@@ -781,11 +799,13 @@ function welcomeNode(){
   var note=dadNote();
   var dad=note?'<div class="dadnote">'+esc(note)+'</div>':'';
   var kid=isKidUser()?'<div class="kidquote">🌟 '+esc(kidQuote())+'</div>':'';
-  w.innerHTML='<div class="halo"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'+
-    '<path d="M12 2l2.4 6.2L21 10l-5.2 4 1.5 6.6L12 17l-5.3 3.6L8.2 14 3 10l6.6-1.8z"/></svg></div>'+
-    '<div class="greet"><span class="gav"></span><span class="gtext">'+esc(greetingText())+'</span></div>'+
+  w.innerHTML='<div class="halo"></div>'+
+    '<div class="greet"><span class="gtext">'+esc(greetingText())+'</span></div>'+
     '<p class="wsub">'+esc(t('w_ask'))+'</p>'+dad+kid;
-  setAvatarInto(w.querySelector('.gav'), currentUsername, 50);
+  // The one face — the same icon as the logo and the chat, no red orbiting dot.
+  var halo=w.querySelector('.halo');
+  halo.style.cssText='display:flex;align-items:center;justify-content:center;background:transparent;border:none';
+  halo.appendChild(faceAvatarEl(64));
   return w;
 }
 
@@ -801,7 +821,7 @@ function messageNode(m){
   var wrap=el('div','msg '+(m.role==='user'?'user':'ai'));
   var ava=el('div','ava');
   if(m.role==='user')ava.textContent=(currentUsername||'?').slice(0,1).toUpperCase();
-  else ava.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l2.4 6.2L21 10l-5.2 4 1.5 6.6L12 17l-5.3 3.6L8.2 14 3 10l6.6-1.8z"/></svg>';
+  else { ava.style.cssText='background:transparent;border:none;padding:0'; ava.appendChild(faceAvatarEl(30)); }
   wrap.appendChild(ava);
 
   var body=el('div','body');
@@ -932,6 +952,22 @@ async function send(){
   }
   if(compareOn&&!compareTargets.length){
     pushMessage({role:'assistant',error:t('pickCompare')});return;
+  }
+  // "برو با جمنای جواب بده" — an engine-switch order, handled here so it takes
+  // effect immediately (and sticks) instead of being sent to the AI, which used
+  // to just say it couldn't. Only when there are no files attached.
+  if(!compareOn && !pendingFiles.length){
+    var sw=detectEngineSwitch(text);
+    if(sw){
+      provider=sw.provider; model=sw.model;
+      var picker=$('modelPicker'); if(picker)picker.value=provider+'|'+model;
+      updateEngineTag(); saveEngineChoice();
+      if(!activeChat)newChat();
+      pushMessage({role:'user',text:text});
+      pushMessage({role:'assistant',text:'باشه، از این به بعد با **'+sw.label+'** جواب می‌دم. ✅'});
+      $('msgBox').value='';autoGrow();
+      return;
+    }
   }
   if(!activeChat)newChat();
   if(!activeChat.title)
@@ -1346,7 +1382,7 @@ async function enterApp(){
 
   $('loginView').style.display='none';
   $('appView').classList.add('on');
-  setAvatarInto($('avatar'),currentUsername,29);
+  setFaceInto($('avatar'),29);
   $('whoLine').textContent=currentUsername;
   loadTheme();
   try{
@@ -1357,6 +1393,9 @@ async function enterApp(){
       var pref=allModelOptions().filter(function(o){return o.provider==='groq'&&/gpt-oss/i.test(o.model);})[0]
              ||allModelOptions().filter(function(o){return o.provider==='groq';})[0];
       if(pref){provider=pref.provider;model=pref.model;}
+      // The engine بابا last CHOSE wins over any default — his pick was being
+      // thrown away on every load, so it "kept going back to the broken one".
+      restoreSavedEngine();
       if(!CFG.modes.some(function(m){return m.id===mode;}))mode=CFG.modes[0].id;
       // Kids always start in English (helps them practice)
       if(isKidUser()&&lang!=='en'){lang='en';applyLang();}
@@ -3071,9 +3110,46 @@ Array.prototype.forEach.call(document.querySelectorAll('#textSizeRow .seg'),func
   b.addEventListener('click',function(){applyTextSize(b.getAttribute('data-size'));});
 });
 
+function engineKey(){ return 'setayesh.engine.'+(currentUsername||'x'); }
+function saveEngineChoice(){ try{ localStorage.setItem(engineKey(), provider+'|'+model); }catch(e){} }
+function restoreSavedEngine(){
+  var saved=''; try{ saved=localStorage.getItem(engineKey())||''; }catch(e){}
+  if(!saved)return;
+  var v=saved.split('|');
+  // only restore if that engine is still available (configured) on this server
+  if(allModelOptions().some(function(o){return o.provider===v[0]&&o.model===v[1];})){ provider=v[0]; model=v[1]; }
+}
 $('modelPicker').addEventListener('change',function(){
   var v=$('modelPicker').value.split('|');provider=v[0];model=v[1];updateEngineTag();
+  saveEngineChoice();   // his choice sticks across reloads now
 });
+
+/* "برو با جمنای جواب بده" — switch engine from the chat itself.
+   Maps the spoken/written engine name to a configured provider, flips the
+   picker, and persists it. Returns the provider id if it recognised a switch
+   command, else null (so the message is treated as a normal question). */
+function detectEngineSwitch(text){
+  var s=String(text||'').toLowerCase();
+  // must look like an instruction to switch, not a question that merely mentions a name
+  if(!/(استفاده|عوض|بردار|برو|switch|use|با)\b/i.test(s) && !/موتور/.test(s)) return null;
+  var MAP=[
+    {id:'gemini',  re:/جمنای|جمینای|gemini|گوگل|google/i},
+    {id:'anthropic',re:/کلود|claude|آنتروپیک|anthropic/i},
+    {id:'openai',  re:/gpt|چت ?جی ?پی ?تی|openai|جی پی تی/i},
+    {id:'groq',    re:/groq|گروک|gpt-?oss/i},
+    {id:'mistral', re:/mistral|میسترال|codestral|کدسترال/i},
+    {id:'openrouter',re:/openrouter|اوپن ?روتر|llama|لاما|qwen|deepseek/i},
+    {id:'cerebras',re:/cerebras|سربراس/i},
+    {id:'local',   re:/محلی|local|ollama|اولاما/i},
+  ];
+  for(var i=0;i<MAP.length;i++){
+    if(MAP[i].re.test(s)){
+      var opt=allModelOptions().filter(function(o){return o.provider===MAP[i].id;})[0];
+      if(opt){ return {provider:opt.provider, model:opt.model, label:opt.providerLabel}; }
+    }
+  }
+  return null;
+}
 
 $('cmpBtn').addEventListener('click',function(){
   compareOn=!compareOn;
