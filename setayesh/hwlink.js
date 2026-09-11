@@ -37,6 +37,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { execFile, spawn } = require('child_process');
+const discover = require('./discover');
 
 const IS_WIN = process.platform === 'win32';
 const IS_MAC = process.platform === 'darwin';
@@ -266,25 +267,15 @@ async function btDevices(opts) {
     let rows = [];
     try { rows = JSON.parse(r.out || '[]'); } catch (e) { rows = []; }
     if (!Array.isArray(rows)) rows = [rows];
-    const byMac = new Map();
-    for (const x of rows) {
-      if (!x) continue;
-      const id = String(x.InstanceId || '');
-      const mac = (id.match(/([0-9A-F]{12})(?:_|$|&)/i) || [])[1];
-      const key = mac ? mac.toLowerCase().match(/../g).join(':') : id;
-      const prev = byMac.get(key) || { mac: mac ? key : '', name: '', paired: true, services: [] };
-      // Windows lists one entry per Bluetooth PROFILE, so the shortest name is
-      // the device and the rest are its services ("… Avrcp Transport").
-      const nm = String(x.FriendlyName || '');
-      if (!prev.name || nm.length < prev.name.length) prev.name = nm;
-      if (x.Service) prev.services.push(String(x.Service));
-      prev.status = x.Status;
-      prev.vendor = prev.vendor || x.Manufacturer || '';
-      byMac.set(key, prev);
-    }
-    return { supported: true, devices: [...byMac.values()], scanned: false,
-      note: 'ویندوز فقط دستگاه‌های جفت‌شده را این‌طور نشان می‌دهد. برای جفت کردن یک دستگاه تازه، '
-        + 'تنظیمات بلوتوث ویندوز را باز کن — ستایش نمی‌تواند از طرف تو جفت‌سازی را تأیید کند.' };
+    // Windows lists one row per PROFILE, not per device — see the long note in
+    // discover.js. Grouping by the Bluetooth address turns seventy rows back
+    // into the three things that are actually in the room, and the profiles
+    // become what they really are: that device's list of abilities.
+    const grouped = discover.groupWindowsBluetooth(rows);
+    return { supported: true, devices: grouped.devices, scanned: false,
+      rawRows: rows.length,
+      note: 'ویندوز فقط دستگاه‌های جفت‌شده را نشان می‌دهد. برای جفت کردن یک دستگاه تازه، '
+        + 'تنظیمات بلوتوث ویندوز را باز کن — تأیید جفت‌سازی کاری است که باید خودِ آدم انجام بدهد.' };
   }
   if (!sup.ok) return { supported: false, devices: [], note: sup.note };
 
@@ -433,6 +424,19 @@ function parseSysfsDetail(dir, read) {
   };
 }
 
+// A USB tree is mostly plumbing: root hubs, generic hubs, "Standard system
+// devices". They are real and worth being able to look at, but they are not
+// what a person means by "what is plugged in", so they get marked rather than
+// hidden — the interface can fold them away and still let you open them.
+const USB_PLUMBING = /root hub|generic (superspeed )?usb hub|usb hub|composite device|host controller|usb input device|standard system|billboard/i;
+function markPlumbing(list) {
+  for (const d of list) {
+    const text = [d.name, d.product, d.manufacturer, d.busDescription].filter(Boolean).join(' ');
+    d.plumbing = USB_PLUMBING.test(text) || d.usbClass === '09';
+  }
+  return list;
+}
+
 async function usbDetailed() {
   if (IS_WIN) {
     // Get-PnpDeviceProperty gives the real descriptor fields Windows keeps —
@@ -456,7 +460,7 @@ Get-PnpDevice -PresentOnly | Where-Object {$_.InstanceId -like 'USB*'} | ForEach
     let rows = [];
     try { rows = JSON.parse(r.out || '[]'); } catch (e) { rows = []; }
     if (!Array.isArray(rows)) rows = [rows];
-    return rows.filter(Boolean).map((x) => {
+    return markPlumbing(rows.filter(Boolean).map((x) => {
       const id = String(x.InstanceId || '');
       const p = x.Props || {};
       return {
@@ -471,7 +475,7 @@ Get-PnpDevice -PresentOnly | Where-Object {$_.InstanceId -like 'USB*'} | ForEach
         location: p.LocationInfo || '', busDescription: p.BusReportedDeviceDesc || '',
         status: x.Status || '', instanceId: id,
       };
-    });
+    }));
   }
   if (IS_MAC) {
     const r = await run('system_profiler', ['-json', 'SPUSBDataType'], 20000);
@@ -491,7 +495,7 @@ Get-PnpDevice -PresentOnly | Where-Object {$_.InstanceId -like 'USB*'} | ForEach
       }
     };
     walk(data.SPUSBDataType || []);
-    return out;
+    return markPlumbing(out);
   }
   const base = '/sys/bus/usb/devices';
   const out = [];
@@ -502,7 +506,7 @@ Get-PnpDevice -PresentOnly | Where-Object {$_.InstanceId -like 'USB*'} | ForEach
     const d = parseSysfsDetail(path.join(base, n), (f) => (fs.existsSync(f) ? fs.readFileSync(f, 'utf8') : ''));
     if (d) out.push(Object.assign({ transport: 'usb', name: d.product || ('USB ' + d.id) }, d));
   }
-  return out;
+  return markPlumbing(out);
 }
 
 // ---------------------------------------------------------------------------
@@ -677,14 +681,153 @@ async function watch() {
   return { first: false, attached, removed, total: now.length };
 }
 
+// ---------------------------------------------------------------------------
+// Going INTO one device
+// ---------------------------------------------------------------------------
+// The list answers "what is there". This answers "what IS this, and what can I
+// do with it" — every property the system will give up, plus the actions that
+// actually apply to this particular thing. A row in a list with no way in is
+// just a label; this is what makes each one a door.
+async function deviceDetail(key) {
+  const k = String(key || '');
+  const all = await everything();
+
+  // Bluetooth --------------------------------------------------------------
+  if (/^bt:/.test(k) || /^([0-9a-f]{2}:){5}[0-9a-f]{2}$/i.test(k)) {
+    const mac = k.replace(/^bt:/, '').toLowerCase();
+    const listed = (all.bluetooth || []).find((d) => (d.mac || '').toLowerCase() === mac) || {};
+    const deep = await btInfo(mac).catch(() => ({}));
+    const info = Object.assign({}, listed, deep.error ? {} : deep);
+    const actions = [];
+    // Only offer what this device can really do.
+    if (info.connected) actions.push({ id: 'disconnect', label: 'قطع کن', level: 2 });
+    else actions.push({ id: 'connect', label: 'وصل شو', level: 2 });
+    if (!info.paired) actions.push({ id: 'pair', label: 'جفت کن', level: 2 });
+    else actions.push({ id: 'forget', label: 'فراموش کن', level: 2, confirm: true });
+    if (!info.trusted) actions.push({ id: 'trust', label: 'مورد اعتماد کن', level: 2 });
+    const caps = (listed.capabilities && listed.capabilities.list) || [];
+    if (caps.includes('gatt') || (info.uuids || []).some((u) => /^0000(18|2a)/.test(u.uuid))) {
+      actions.push({ id: 'gatt', label: 'مقدارهای داخلی', level: 1 });
+    }
+    for (const com of listed.serialPorts || []) {
+      actions.push({ id: 'serial:' + com, label: 'کنسول سریال ' + com, level: 2 });
+    }
+    return {
+      key: 'bt:' + mac, transport: 'bluetooth',
+      title: info.name || info.alias || mac,
+      subtitle: [info.kind, info.vendor, mac].filter(Boolean).join(' · '),
+      properties: prettyProps([
+        ['نام', info.name || info.alias], ['نوع', info.kind], ['سازنده', info.vendor],
+        ['آدرس', mac], ['جفت‌شده', boolFa(info.paired)], ['وصل', boolFa(info.connected)],
+        ['مورد اعتماد', boolFa(info.trusted)], ['مسدود', boolFa(info.blocked)],
+        ['باتری', info.battery], ['سیگنال', info.rssi != null ? info.rssi + ' dBm' : ''],
+        ['توان فرستنده', info.txPower != null ? info.txPower + ' dBm' : ''],
+        ['کلاس', info.class], ['مدل داخلی', info.modalias], ['وضعیت', info.status],
+        ['پورت سریال', (listed.serialPorts || []).join('، ')],
+      ]),
+      abilities: (listed.roles || []).concat(
+        (info.uuids || []).map((u) => u.name).filter(Boolean)).filter((v, i, a) => a.indexOf(v) === i),
+      profiles: listed.profiles || [],
+      actions,
+    };
+  }
+
+  // Serial port ------------------------------------------------------------
+  if (/^(COM\d+|\/dev\/)/i.test(k)) {
+    const sp = (all.serial || []).find((x) => x.port === k) || { port: k };
+    return {
+      key: sp.port, transport: 'serial',
+      title: sp.port,
+      subtitle: [sp.description, sp.vendor].filter(Boolean).join(' · '),
+      properties: prettyProps([
+        ['پورت', sp.port], ['نام', sp.name], ['توضیح', sp.description],
+        ['سازنده', sp.vendor], ['شماره سریال', sp.serial], ['شناسه USB', sp.usbId],
+        ['شناسه ویندوز', sp.instanceId],
+      ]),
+      abilities: ['گفتگوی دوطرفه (ارسال دستور و خواندن جواب)'],
+      actions: [{ id: 'serial:' + sp.port, label: 'باز کن و حرف بزن', level: 2 }],
+    };
+  }
+
+  // Drive ------------------------------------------------------------------
+  if (/^drive:/.test(k)) {
+    const dr = (all.drives || []).find((d) => d.id === k);
+    if (dr) {
+      return {
+        key: k, transport: 'drive',
+        title: dr.name || dr.device,
+        subtitle: [dr.kind, dr.size, dr.fs].filter(Boolean).join(' · '),
+        properties: prettyProps([
+          ['نام', dr.name], ['مسیر', dr.device], ['نوع', dr.kind],
+          ['سیستم فایل', dr.fs], ['اندازه', dr.size], ['فضای آزاد', dr.free],
+          ['وصل‌شده در', dr.mounted], ['جداشدنی', boolFa(dr.removable)],
+          ['سازنده', dr.vendor], ['شماره سریال', dr.serial],
+        ]),
+        abilities: dr.mounted ? ['خواندن فایل‌ها از ' + dr.mounted] : [],
+        actions: [],
+      };
+    }
+  }
+
+  // USB --------------------------------------------------------------------
+  // Keys are built from what a device IS, but the same device reached through
+  // a different scan can present a slightly different identity string, so an
+  // exact match is tried first and then the parts that really identify it.
+  const usb = (all.usb || []).find((u) => usbKey(u) === k)
+    || (all.usb || []).find((u) => u.instanceId && k.includes(u.instanceId))
+    || (all.usb || []).find((u) => {
+      const m = k.match(/^usb:([0-9a-f]{0,4}):([0-9a-f]{0,4}):(.*)$/i);
+      if (!m || !m[1]) return false;
+      return (u.vendorId || '').toLowerCase() === m[1].toLowerCase()
+        && (u.productId || '').toLowerCase() === m[2].toLowerCase()
+        && (!m[3] || (u.serial || '') === m[3] || (u.instanceId || '').includes(m[3]));
+    });
+  if (usb) {
+    return {
+      key: k, transport: 'usb',
+      title: usb.name || usb.product || 'USB',
+      subtitle: [usb.manufacturer, [usb.vendorId, usb.productId].filter(Boolean).join(':')].filter(Boolean).join(' · '),
+      properties: prettyProps([
+        ['نام', usb.name || usb.product], ['سازنده', usb.manufacturer],
+        ['شناسه سازنده', usb.vendorId], ['شناسه محصول', usb.productId],
+        ['شماره سریال', usb.serial], ['کلاس USB', usb.usbClass],
+        ['زیرکلاس', usb.usbSubClass], ['پروتکل', usb.usbProtocol],
+        ['نسخه USB', usb.usbVersion], ['سرعت', usb.speed],
+        ['بیشترین مصرف', usb.maxPower], ['تعداد رابط', usb.interfaces],
+        ['درایور', usb.driver], ['نسخه درایور', usb.driverVersion],
+        ['سازنده درایور', usb.driverProvider], ['تاریخ درایور', usb.driverDate],
+        ['محل روی پورت', usb.location], ['توضیح گذرگاه', usb.busDescription],
+        ['وضعیت', usb.status], ['شناسه ویندوز', usb.instanceId],
+        ['شناسه پورت', usb.port], ['گذرگاه/شماره', [usb.busnum, usb.devnum].filter(Boolean).join('/')],
+      ]),
+      abilities: usb.plumbing ? ['هاب/زیرساخت USB — خودش کاری نمی‌کند، چیزهای دیگر را وصل می‌کند.'] : [],
+      actions: [],
+      plumbing: !!usb.plumbing,
+    };
+  }
+  return { error: 'این دستگاه در آخرین خواندن نبود. یک بار دوباره «بخوان» را بزن.' };
+}
+
+function boolFa(v) { return v === true ? 'بله' : (v === false ? 'خیر' : ''); }
+function prettyProps(pairs) {
+  return pairs.filter(([, v]) => v !== undefined && v !== null && String(v).trim() !== '')
+    .map(([k, v]) => ({ key: k, value: String(v) }));
+}
+// A stable identity for a USB device across scans: what it IS, not where it
+// happens to sit in the tree this time.
+function usbKey(u) {
+  return 'usb:' + [u.vendorId || '', u.productId || '', u.serial || u.instanceId || u.port || u.name || ''].join(':');
+}
+
 // Everything about everything, in one call — the "nothing unknown" answer.
 async function everything() {
   const identify = (() => { try { return require('./identify'); } catch (e) { return null; } })();
-  const [usb, serial, bt, adapters] = await Promise.all([
+  const [usb, serial, bt, adapters, drives] = await Promise.all([
     usbDetailed().catch(() => []),
     serialPorts().catch(() => ({ ports: [] })),
     btDevices({}).catch(() => ({ devices: [], supported: false })),
     btAdapters().catch(() => ({ adapters: [] })),
+    discover.driveDevices().catch(() => []),
   ]);
   // Give every Bluetooth device its manufacturer from the full IEEE registry
   // too — a Bluetooth MAC comes out of the same allocation.
@@ -693,12 +836,18 @@ async function everything() {
       if (d.mac && !d.vendor) d.vendor = identify.vendorOf(d.mac) || '';
     }
   }
+  for (const u of usb) u.key = usbKey(u);
+  for (const b of bt.devices || []) b.key = 'bt:' + (b.mac || b.id || '');
+  for (const sp of serial.ports || []) sp.key = sp.port;
+  for (const dr of drives) dr.key = dr.id;
   return {
     at: new Date().toISOString(),
+    drives,
     usb, serial: serial.ports || [], serialNote: serial.note || '',
     bluetooth: bt.devices || [], bluetoothSupported: bt.supported !== false,
     bluetoothNote: bt.note || '', adapters: adapters.adapters || [],
-    counts: { usb: usb.length, serial: (serial.ports || []).length, bluetooth: (bt.devices || []).length },
+    counts: { usb: usb.length, serial: (serial.ports || []).length,
+              bluetooth: (bt.devices || []).length, drive: drives.length },
     platform: process.platform,
   };
 }
@@ -707,7 +856,7 @@ module.exports = {
   btSupport, btAdapters, btDevices, btInfo, btAction,
   gattList, gattRead, gattWrite,
   usbDetailed, serialPorts, serialTalk, assertKnownPort,
-  watch, everything, gattLabel,
+  watch, everything, gattLabel, deviceDetail, usbKey, markPlumbing,
   // exported for tests
   parseBtDevices, parseBtInfo, parseBtAdapters, parseGattAttributes, parseGattValue,
   parseWinSerial, parseSysfsDetail, btKindFromIcon, formatSerialReply, snapshotKey,

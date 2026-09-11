@@ -99,6 +99,116 @@ function usbClassName(hexClass) {
   return map[String(hexClass || '').toLowerCase()] || 'unknown';
 }
 
+// ---------------------------------------------------------------------------
+// Windows Bluetooth: one DEVICE, not seventy rows
+// ---------------------------------------------------------------------------
+// Windows does not list Bluetooth devices. It lists one PnP entry per PROFILE
+// each device speaks, so a single pair of headphones turns up six or seven
+// times — "Hands-Free HF Audio", "Avrcp Transport", "Generic Attribute
+// Profile", "Service Discovery Service", and so on. Reporting those as
+// separate devices is what turned three real things into a list of seventy.
+//
+// They all carry the same Bluetooth address inside the InstanceId, in one of
+// four shapes, so grouping by address puts the device back together and turns
+// the profiles into what they actually are: the list of things it can do.
+function winBtAddress(instanceId) {
+  const id = String(instanceId || '').toUpperCase();
+  // BTHLE\DEV_C0288D4A5B6C   |   ..._DEV_C0288D4A5B6C\...
+  const dev = id.match(/DEV_([0-9A-F]{12})/);
+  if (dev) return dev[1];
+  // BTHENUM\{uuid}_LOCALMFG&0002\7&xxxx&0&C0288D4A5B6C_C00000000
+  const tail = id.match(/&([0-9A-F]{12})(?:_|\\|$)/);
+  if (tail) return tail[1];
+  const any = id.match(/(?:^|[\\&_])([0-9A-F]{12})(?:[\\&_]|$)/);
+  return any ? any[1] : '';
+}
+function macFromHex(hex) {
+  return hex && hex.length === 12 ? hex.toLowerCase().match(/../g).join(':') : '';
+}
+// What KIND of Bluetooth row this is: the radio in the machine, the bus, a
+// device, or one of a device's profiles.
+function winBtKind(instanceId) {
+  const id = String(instanceId || '').toUpperCase();
+  if (/^BTH\\MS_BTH|^BTH\\MS_RFCOMM/.test(id)) return 'bus';
+  if (/^USB\\/.test(id)) return 'radio';
+  if (/^BTHLEDEVICE\\/.test(id)) return 'profile';
+  if (/^BTHENUM\\/.test(id)) return 'profile';
+  if (/^BTHLE\\DEV_/.test(id)) return 'device';
+  if (/^BTH\\/.test(id)) return 'device';
+  return 'profile';
+}
+
+// The profile name Windows shows is usually "<device name> <Profile>", e.g.
+// "Andrew Hands-Free HF Audio". Stripping the profile part leaves the name the
+// owner actually gave the device.
+const WIN_BT_PROFILE_WORDS = /\s*(Hands-?Free\s*(HF)?\s*Audio|Avrcp\s*Transport|Stereo|A2DP|AVRCP|Headset|Audio Sink|Audio Source|Generic Attribute (Profile|Service)|Service Discovery Service|Personal Area Network|Phonebook Access\s*\w*\s*Service|Message Access\s*\w*\s*Service|Standard Serial over Bluetooth link\s*\(COM\d+\)|Bluetooth LE Generic Attribute Service|Wireless iAP|GATT|Device|Enumerator|RFCOMM Protocol TDI)\s*$/i;
+function winBtBaseName(name) {
+  let out = String(name || '').trim();
+  for (let i = 0; i < 3; i++) {
+    const next = out.replace(WIN_BT_PROFILE_WORDS, '').trim();
+    if (next === out) break;
+    out = next;
+  }
+  return out;
+}
+
+function groupWindowsBluetooth(rows) {
+  const byKey = new Map();
+  const loose = [];
+  for (const r of rows || []) {
+    if (!r) continue;
+    const id = String(r.InstanceId || r.DeviceID || '');
+    const kind = winBtKind(id);
+    if (kind === 'bus' || kind === 'radio') continue;      // the adapter, not a device
+    const hex = winBtAddress(id);
+    const mac = macFromHex(hex);
+    const name = String(r.FriendlyName || r.Name || '');
+    if (!mac) { loose.push({ name, id }); continue; }
+
+    const cur = byKey.get(mac) || {
+      transport: 'bluetooth', id: 'bt:' + mac, mac, name: '', paired: true,
+      profiles: [], drivers: [], serialPorts: [], vendor: String(r.Manufacturer || ''),
+    };
+    // A COM port bound to a Bluetooth device is a real serial link to it.
+    const com = name.match(/\((COM\d+)\)/);
+    if (com && !cur.serialPorts.includes(com[1])) cur.serialPorts.push(com[1]);
+
+    const base = winBtBaseName(name);
+    // The shortest sensible base name is the device; the longer ones are the
+    // device plus a profile suffix we did not recognise.
+    if (base && (!cur.name || base.length < cur.name.length)) cur.name = base;
+    if (name && !cur.profiles.includes(name)) cur.profiles.push(name);
+    if (r.Service && !cur.drivers.includes(String(r.Service))) cur.drivers.push(String(r.Service));
+    if (!cur.vendor && r.Manufacturer) cur.vendor = String(r.Manufacturer);
+    if (r.Status) cur.status = String(r.Status);
+    byKey.set(mac, cur);
+  }
+  const devices = [...byKey.values()].map((d) => {
+    if (!d.name) d.name = d.mac;
+    d.capabilities = profilesToCapabilities(d.profiles);
+    d.roles = d.capabilities.roles;
+    return d;
+  });
+  return { devices, unaddressed: loose };
+}
+
+// Turn Windows profile names into what a person can ask the device to do.
+function profilesToCapabilities(profiles) {
+  const text = (profiles || []).join(' | ');
+  const roles = new Set();
+  const caps = new Set();
+  if (/Hands-?Free|Headset|HF Audio/i.test(text)) { roles.add('هدست / میکروفون'); caps.add('audio'); }
+  if (/A2DP|Stereo|Audio Sink|Avrcp/i.test(text)) { roles.add('پخش صدا'); caps.add('audio'); caps.add('media_keys'); }
+  if (/Phonebook Access/i.test(text)) roles.add('دفترچه تلفن');
+  if (/Message Access/i.test(text)) roles.add('پیام‌ها');
+  if (/Personal Area Network/i.test(text)) { roles.add('اشتراک اینترنت'); caps.add('network'); }
+  if (/Serial over Bluetooth|RFCOMM/i.test(text)) { roles.add('پورت سریال'); caps.add('serial'); }
+  if (/Generic Attribute|GATT|LE /i.test(text)) { roles.add('BLE'); caps.add('gatt'); }
+  if (/Wireless iAP/i.test(text)) roles.add('اپل (iAP)');
+  if (/Keyboard|Mouse|HID/i.test(text)) { roles.add('کیبورد/موس'); caps.add('hid'); }
+  return { roles: [...roles], list: [...caps] };
+}
+
 // Windows: Get-PnpDevice covers USB, Bluetooth and everything else, with the
 // driver/service name — which is how we learn what SOFTWARE is driving it.
 function parseWindowsPnp(json) {
@@ -109,7 +219,10 @@ function parseWindowsPnp(json) {
     const id = String(r.InstanceId || r.DeviceID || '');
     const vid = (id.match(/VID_([0-9A-F]{4})/i) || [])[1] || '';
     const pid = (id.match(/PID_([0-9A-F]{4})/i) || [])[1] || '';
-    const bt = /^BTHENUM|BTHLE/i.test(id);
+    // Anything under the Bluetooth bus is Bluetooth, not USB. Matching only
+    // BTHENUM/BTHLE left `BTH\MS_BTHBRB` and friends in the USB list, which is
+    // why the USB card counted more devices than the USB scan found.
+    const bt = /^BTH/i.test(id);
     return {
       transport: bt ? 'bluetooth' : 'usb',
       id: (bt ? 'bt:' : 'usb:') + id,
@@ -214,7 +327,13 @@ async function bluetoothDevices() {
     const r = await powershell(
       "Get-PnpDevice -PresentOnly | Where-Object {$_.InstanceId -like 'BTH*'} | "
       + 'Select-Object FriendlyName,Manufacturer,Class,Service,Status,InstanceId | ConvertTo-Json -Compress');
-    return r.ok ? parseWindowsPnp(r.out) : [];
+    if (!r.ok) return [];
+    let rows = [];
+    try { rows = JSON.parse(r.out || '[]'); } catch (e) { rows = []; }
+    if (!Array.isArray(rows)) rows = [rows];
+    // Group the profile rows back into the devices they belong to, or a pair
+    // of headphones shows up seven times.
+    return groupWindowsBluetooth(rows).devices;
   }
   if (IS_MAC) {
     const r = await run('system_profiler', ['-json', 'SPBluetoothDataType'], 15000);
@@ -865,5 +984,6 @@ module.exports = {
   parseLsblk, parseWindowsDrives, parseDiskutil, parseSsdpResponse, parseUpnpDescription,
   parseMdnsPacket, collateMdns, mdnsQuery, readName, encodeName,
   capabilitiesFromServices, ouiVendor, isRandomMac, usbClassName, humanBytes,
+  winBtAddress, winBtKind, winBtBaseName, groupWindowsBluetooth, profilesToCapabilities, macFromHex,
   MDNS_SERVICE_ROLE, SERVICE_CAPABILITIES,
 };

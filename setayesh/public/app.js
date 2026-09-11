@@ -1,4 +1,4 @@
-/* SETAYESH_BUILD 9.9.85 */
+/* SETAYESH_BUILD 9.9.86 */
 (function(){
 'use strict';
 
@@ -5002,6 +5002,208 @@ function hwRow(main,sub,extra){
 }
 
 /* ---- Bluetooth ---------------------------------------------------------- */
+/* Open one device: every property the system will give up, the name the
+   household gave it, and only the actions that really apply to this thing.
+   Every row in the hardware lists uses this — a row you cannot open is just a
+   label, and the whole point was to be able to go inside each one. */
+function hwOpenDevice(key,host,onChanged){
+  host.innerHTML='<div class="tk-hint"><span class="spin"></span> باز کردن…</div>';
+  tkFetch('/api/hw/device?key='+encodeURIComponent(key)).then(function(d){
+    host.innerHTML='';
+    if(d.error){host.innerHTML='<div class="tk-hint" style="color:#fbbf24">'+esc(d.error)+'</div>';return;}
+    var box=el('div');
+    box.style.cssText='margin-top:6px;padding:10px 12px;border-radius:11px;'+
+      'background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.09)';
+
+    /* --- the name we call it -------------------------------------------- */
+    var nameRow=el('div');nameRow.style.cssText='display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px';
+    var nameIn=el('input','input');
+    nameIn.placeholder='اسمی که تو صدایش می‌کنی';
+    nameIn.value=(d.note&&d.note.label)||'';
+    nameIn.style.cssText='flex:1;min-width:130px;font-size:12px;padding:5px 9px';
+    var ownerIn=el('input','input');
+    ownerIn.placeholder='مال کیست؟';
+    ownerIn.value=(d.note&&d.note.owner)||'';
+    ownerIn.style.cssText='width:110px;font-size:12px;padding:5px 9px';
+    var saveB=el('button','btn ghost');saveB.style.cssText='font-size:11px;padding:5px 10px';saveB.textContent='ذخیره';
+    nameRow.appendChild(nameIn);nameRow.appendChild(ownerIn);nameRow.appendChild(saveB);
+    box.appendChild(nameRow);
+
+    var noteIn=el('textarea','input');
+    noteIn.rows=2;noteIn.placeholder='یادداشت — مثلاً رمزش، کجا استفاده می‌شود، چه مشکلی داشت';
+    noteIn.value=(d.note&&d.note.note)||'';
+    noteIn.style.cssText='width:100%;font-size:12px;resize:vertical;margin-bottom:8px';
+    box.appendChild(noteIn);
+
+    var saved=el('div');saved.style.cssText='font-size:11.5px;min-height:15px;margin-bottom:6px';
+    box.appendChild(saved);
+    saveB.addEventListener('click',function(){
+      saveB.disabled=true;
+      tkFetch('/api/hw/device/note',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({key:d.key,label:nameIn.value,owner:ownerIn.value,note:noteIn.value})})
+        .then(function(r){
+          saveB.disabled=false;saved.style.color='#34d399';saved.textContent='ذخیره شد ✓';
+          /* Hand the saved note back so the row above can show the new name.
+             Reloading the whole list instead would close this sheet and wipe
+             the confirmation the moment it appeared. */
+          if(onChanged)onChanged(r&&r.note,d.key);
+        })
+        .catch(function(e){saveB.disabled=false;saved.style.color='#fb7185';saved.textContent=e.message;});
+    });
+
+    /* --- what it can do ------------------------------------------------- */
+    if(d.abilities&&d.abilities.length){
+      var ab=el('div');ab.style.cssText='font-size:11.5px;margin-bottom:8px';
+      ab.innerHTML='<span style="color:#8ea0c8">بلد است:</span> '+esc(d.abilities.join('، '));
+      box.appendChild(ab);
+    }
+    if(d.profiles&&d.profiles.length>1){
+      var pr=el('details');pr.style.cssText='font-size:11px;margin-bottom:8px;color:#8ea0c8';
+      pr.innerHTML='<summary style="cursor:pointer">'+d.profiles.length+' سرویس ویندوزی</summary>'+
+        '<div style="margin-top:4px;line-height:1.8">'+d.profiles.map(esc).join('<br>')+'</div>';
+      box.appendChild(pr);
+    }
+
+    /* --- every property -------------------------------------------------- */
+    var tbl=el('div');
+    tbl.style.cssText='display:grid;grid-template-columns:auto 1fr;gap:3px 10px;font-size:11.5px;margin-bottom:8px';
+    (d.properties||[]).forEach(function(pp){
+      var k=el('div');k.style.cssText='color:#8ea0c8;white-space:nowrap';k.textContent=pp.key;
+      var v=el('div');v.style.cssText='direction:ltr;text-align:right;word-break:break-all';v.textContent=pp.value;
+      tbl.appendChild(k);tbl.appendChild(v);
+    });
+    box.appendChild(tbl);
+
+    /* --- the actions that apply ------------------------------------------ */
+    var act=el('div');act.style.cssText='display:flex;gap:6px;flex-wrap:wrap';
+    var actNote=el('div');actNote.style.cssText='font-size:11.5px;min-height:15px;margin-top:6px;flex-basis:100%';
+    (d.actions||[]).forEach(function(a){
+      var b=el('button','btn ghost');b.style.cssText='font-size:11px;padding:5px 10px';
+      b.textContent=a.label;
+      if(!a.allowed){
+        b.disabled=true;
+        b.title='این کار درجه‌ی ۲ لازم دارد.';
+        b.style.opacity='.45';
+      }
+      b.addEventListener('click',function(){
+        if(a.id.indexOf('serial:')===0){
+          var port=a.id.slice(7);
+          var c=box.querySelector('.hwconsole');
+          if(c){c.remove();return;}
+          var con=hwSerialConsole(port);con.className='hwconsole';con.style.flexBasis='100%';
+          act.appendChild(con);
+          return;
+        }
+        if(a.id==='gatt'){
+          var g=box.querySelector('.hwgatt');
+          if(g){g.remove();return;}
+          var gh=el('div','hwgatt');gh.style.cssText='flex-basis:100%;margin-top:6px';
+          act.appendChild(gh);
+          hwShowGatt(d.key.replace(/^bt:/,''),gh,actNote);
+          return;
+        }
+        if(a.confirm&&!confirm('«'+d.title+'» — مطمئنی؟'))return;
+        b.disabled=true;actNote.style.color='';actNote.textContent='…';
+        tkFetch('/api/hw/bluetooth/action',{method:'POST',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({mac:d.key.replace(/^bt:/,''),action:a.id})})
+          .then(function(r){b.disabled=false;
+            actNote.style.color=r.ok?'#34d399':'#fb7185';
+            actNote.textContent=r.ok?'انجام شد ✓':((r.error||r.detail||'انجام نشد')+(r.hint?(' — '+r.hint):''));
+            if(r.ok&&onChanged)onChanged();})
+          .catch(function(e){b.disabled=false;actNote.style.color='#fb7185';actNote.textContent=e.message;});
+      });
+      act.appendChild(b);
+    });
+    act.appendChild(actNote);
+    if((d.actions||[]).length)box.appendChild(act);
+    else if(d.plumbing){
+      var pl=el('div','tk-hint');pl.style.padding='0';
+      pl.textContent='این یک هاب/زیرساخت USB است — چیزی برای کنترل ندارد.';
+      box.appendChild(pl);
+    }
+    host.appendChild(box);
+  }).catch(function(e){host.innerHTML='<div class="tk-hint" style="color:#fb7185">'+esc(e.message)+'</div>';});
+}
+
+/* The GATT value list for a BLE device, read and (at level 2) written. */
+function hwShowGatt(mac,host,note){
+  host.innerHTML='<div class="tk-hint"><span class="spin"></span> خواندن مشخصه‌ها…</div>';
+  tkFetch('/api/hw/gatt?mac='+encodeURIComponent(mac)).then(function(d){
+    host.innerHTML='';
+    if(d.error){host.innerHTML='<div class="tk-hint" style="color:#fbbf24">'+esc(d.error)+'</div>';return;}
+    if(!d.attributes||!d.attributes.length){
+      host.innerHTML='<div class="tk-hint">'+esc(d.note||'چیزی پیدا نشد.')+'</div>';return;}
+    d.attributes.forEach(function(a){
+      if(a.kind==='service')return;
+      var r=el('div');
+      r.style.cssText='display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:4px 0;font-size:11.5px';
+      var lbl=el('span');lbl.style.cssText='flex:1;min-width:120px';
+      lbl.innerHTML=esc(a.label||a.uuid.slice(0,8))+'<span style="color:#8ea0c8;direction:ltr"> '+esc(a.uuid.slice(0,8))+'</span>';
+      var val=el('span');val.style.cssText='color:#6ee7b7;min-width:60px';
+      var rd=el('button','btn ghost');rd.style.cssText='font-size:10.5px;padding:3px 8px';rd.textContent='بخوان';
+      rd.addEventListener('click',function(){
+        rd.disabled=true;
+        tkFetch('/api/hw/gatt/read',{method:'POST',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({mac:mac,path:a.path})})
+          .then(function(v){rd.disabled=false;
+            val.textContent=v.error?('— '+v.error):(v.text||v.hex||'')+(v.number!=null?(' ('+v.number+')'):'');})
+          .catch(function(e){rd.disabled=false;val.textContent=e.message;});
+      });
+      r.appendChild(lbl);r.appendChild(val);r.appendChild(rd);
+      if(deviceLevel()>=2){
+        var inp=el('input','input');inp.placeholder='هگز';
+        inp.style.cssText='font-size:10.5px;width:74px;padding:3px 6px;direction:ltr';
+        var wr=el('button','btn ghost');wr.style.cssText='font-size:10.5px;padding:3px 8px';wr.textContent='بنویس';
+        wr.addEventListener('click',function(){
+          if(!inp.value.trim())return;
+          if(!confirm('روی «'+(a.label||a.uuid)+'» مقدار '+inp.value+' نوشته شود؟ نوشتن اشتباه می‌تواند دستگاه را خراب کند.'))return;
+          wr.disabled=true;
+          tkFetch('/api/hw/gatt/write',{method:'POST',headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({mac:mac,path:a.path,hex:inp.value})})
+            .then(function(v){wr.disabled=false;if(note){note.style.color=v.ok?'#34d399':'#fb7185';
+              note.textContent=v.ok?'نوشته شد ✓':(v.error||'نوشته نشد');}})
+            .catch(function(e){wr.disabled=false;if(note)note.textContent=e.message;});
+        });
+        r.appendChild(inp);r.appendChild(wr);
+      }
+      host.appendChild(r);
+    });
+  }).catch(function(e){host.innerHTML='<div class="tk-hint" style="color:#fb7185">'+esc(e.message)+'</div>';});
+}
+
+/* A serial console, usable from any device that exposes a port. */
+function hwSerialConsole(port){
+  var wrap=el('div');
+  wrap.style.cssText='margin-top:8px;padding:9px 10px;border-radius:10px;background:rgba(0,0,0,.22)';
+  var line=el('div');line.style.cssText='display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:7px';
+  var cmd=el('input','input');cmd.placeholder='دستور، مثل AT';
+  cmd.style.cssText='flex:1;min-width:120px;font-size:12px;direction:ltr;text-align:left;padding:5px 9px';
+  var baud=el('select','input');baud.style.cssText='font-size:11px;width:auto;padding:5px 8px';
+  [9600,19200,38400,57600,115200,230400,921600].forEach(function(b){
+    var o=el('option');o.value=b;o.textContent=b;if(b===115200)o.selected=true;baud.appendChild(o);});
+  var send=el('button','btn');send.textContent='بفرست';send.style.cssText='font-size:11.5px;padding:5px 11px';
+  line.appendChild(cmd);line.appendChild(baud);line.appendChild(send);
+  wrap.appendChild(line);
+  var log=el('div');
+  log.style.cssText='font-size:11.5px;line-height:1.75;direction:ltr;text-align:left;white-space:pre-wrap;'+
+    'max-height:190px;overflow:auto';
+  log.textContent='— '+port+' —\n';
+  wrap.appendChild(log);
+  function push(t){log.textContent+=t+'\n';log.scrollTop=log.scrollHeight;}
+  send.addEventListener('click',function(){
+    var v=cmd.value;send.disabled=true;push('> '+v);
+    tkFetch('/api/hw/serial/talk',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({port:port,send:v,baud:Number(baud.value),waitMs:1500})})
+      .then(function(d){send.disabled=false;cmd.value='';
+        if(d.error){push('! '+d.error);return;}
+        push(d.text?d.text.replace(/\r/g,''):(d.hex?('[hex] '+d.hex):'(چیزی نیامد)'));
+        if(d.note)push('# '+d.note);})
+      .catch(function(e){send.disabled=false;push('! '+e.message);});
+  });
+  cmd.addEventListener('keydown',function(e){if(e.key==='Enter')send.click();});
+  return wrap;
+}
+
 function tkBtPanel(){
   var p=el('div','tk-panel');
   var lvl=deviceLevel();
@@ -5020,61 +5222,6 @@ function tkBtPanel(){
   var out=el('div');p.appendChild(out);
 
   function say(t,ok){note.style.color=ok?'#34d399':'#fb7185';note.textContent=t;}
-
-  function act(mac,action,btn){
-    btn.disabled=true;say('در حال '+action+'…',true);
-    tkFetch('/api/hw/bluetooth/action',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({mac:mac,action:action})})
-      .then(function(d){
-        btn.disabled=false;
-        say(d.ok?('انجام شد ✓'):((d.error||d.detail||'انجام نشد')+(d.hint?(' — '+d.hint):'')),d.ok);
-        if(d.ok)load(false);
-      })
-      .catch(function(e){btn.disabled=false;say(e.message);});
-  }
-
-  function showGatt(mac,host){
-    host.innerHTML='<div class="tk-hint"><span class="spin"></span> خواندن مشخصه‌ها…</div>';
-    tkFetch('/api/hw/gatt?mac='+encodeURIComponent(mac)).then(function(d){
-      host.innerHTML='';
-      if(d.error){host.innerHTML='<div class="tk-hint" style="color:#fbbf24">'+esc(d.error)+'</div>';return;}
-      if(!d.attributes||!d.attributes.length){host.innerHTML='<div class="tk-hint">'+esc(d.note||'چیزی پیدا نشد.')+'</div>';return;}
-      d.attributes.forEach(function(a){
-        if(a.kind==='service')return;
-        var r=el('div');
-        r.style.cssText='display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:5px 0;font-size:11.5px';
-        var lbl=el('span');lbl.style.cssText='flex:1;min-width:130px';
-        lbl.innerHTML=esc(a.label||a.uuid.slice(0,8))+'<span style="color:#8ea0c8;direction:ltr"> '+esc(a.uuid.slice(0,8))+'</span>';
-        var val=el('span');val.style.cssText='color:#6ee7b7;min-width:70px';
-        var rd=el('button','btn ghost');rd.style.cssText='font-size:10.5px;padding:3px 8px';rd.textContent='خواندن';
-        rd.addEventListener('click',function(){
-          rd.disabled=true;
-          tkFetch('/api/hw/gatt/read',{method:'POST',headers:{'Content-Type':'application/json'},
-            body:JSON.stringify({mac:mac,path:a.path})})
-            .then(function(v){rd.disabled=false;
-              val.textContent=v.error?('— '+v.error):(v.text||v.hex||('')+(v.number!=null?(' ('+v.number+')'):''));})
-            .catch(function(e){rd.disabled=false;val.textContent=e.message;});
-        });
-        r.appendChild(lbl);r.appendChild(val);r.appendChild(rd);
-        if(deviceLevel()>=2){
-          var inp=el('input','input');inp.placeholder='هگز مثل 01';
-          inp.style.cssText='font-size:10.5px;width:88px;padding:3px 6px;direction:ltr';
-          var wr=el('button','btn ghost');wr.style.cssText='font-size:10.5px;padding:3px 8px';wr.textContent='نوشتن';
-          wr.addEventListener('click',function(){
-            if(!inp.value.trim())return;
-            if(!confirm('روی «'+(a.label||a.uuid)+'» مقدار '+inp.value+' نوشته شود؟ نوشتن اشتباه می‌تواند دستگاه را خراب کند.'))return;
-            wr.disabled=true;
-            tkFetch('/api/hw/gatt/write',{method:'POST',headers:{'Content-Type':'application/json'},
-              body:JSON.stringify({mac:mac,path:a.path,hex:inp.value})})
-              .then(function(v){wr.disabled=false;say(v.ok?'نوشته شد ✓':(v.error||'نوشته نشد'),v.ok);})
-              .catch(function(e){wr.disabled=false;say(e.message);});
-          });
-          r.appendChild(inp);r.appendChild(wr);
-        }
-        host.appendChild(r);
-      });
-    }).catch(function(e){host.innerHTML='<div class="tk-hint" style="color:#fb7185">'+esc(e.message)+'</div>';});
-  }
 
   function render(d){
     out.innerHTML='';
@@ -5099,41 +5246,26 @@ function tkBtPanel(){
       var btns=el('div');btns.style.cssText='display:flex;gap:5px;flex-wrap:wrap';
       var detailHost=el('div');detailHost.style.cssText='flex-basis:100%;margin-top:5px';
 
-      var infoB=el('button','btn ghost');infoB.style.cssText='font-size:11px;padding:4px 9px';infoB.textContent='مشخصات';
-      infoB.addEventListener('click',function(){
-        detailHost.innerHTML='<div class="tk-hint"><span class="spin"></span> …</div>';
-        tkFetch('/api/hw/bluetooth/'+encodeURIComponent(dev.mac)).then(function(i){
-          if(i.error){detailHost.innerHTML='<div class="tk-hint" style="color:#fbbf24">'+esc(i.error)+'</div>';return;}
-          var rows=[];
-          [['نام',i.name||i.alias],['نوع',i.kind],['سازنده',dev.vendor],['کلاس',i.class],
-           ['جفت‌شده',i.paired?'بله':'خیر'],['وصل',i.connected?'بله':'خیر'],
-           ['مورد اعتماد',i.trusted?'بله':'خیر'],['باتری',i.battery],['سیگنال',i.rssi!=null?(i.rssi+' dBm'):''],
-           ['مدل',i.modalias]].forEach(function(kv){
-             if(kv[1]!=null&&kv[1]!=='')rows.push('<div style="font-size:11.5px"><span style="color:#8ea0c8">'+esc(kv[0])+':</span> '+esc(String(kv[1]))+'</div>');
-           });
-          var svc=(i.services||[]).map(function(x){return esc(x.label||x.name||x.uuid);});
-          if(svc.length)rows.push('<div style="font-size:11.5px;margin-top:4px"><span style="color:#8ea0c8">کارهایی که بلد است:</span> '+svc.join('، ')+'</div>');
-          detailHost.innerHTML=rows.join('');
-        }).catch(function(e){detailHost.innerHTML='<div class="tk-hint" style="color:#fb7185">'+esc(e.message)+'</div>';});
-      });
-      btns.appendChild(infoB);
+      // The whole row opens the device now, so it carries one hint instead of
+      // a strip of buttons that duplicate what is inside.
+      var openHint=el('span');
+      openHint.style.cssText='font-size:11px;color:#8ea0c8';
+      openHint.textContent='باز کن ›';
+      btns.appendChild(openHint);
 
-      var gattB=el('button','btn ghost');gattB.style.cssText='font-size:11px;padding:4px 9px';gattB.textContent='مقدارها';
-      gattB.addEventListener('click',function(){showGatt(dev.mac,detailHost);});
-      btns.appendChild(gattB);
-
-      if(deviceLevel()>=2){
-        [['connect','وصل شو'],['pair','جفت کن'],['disconnect','قطع کن'],['forget','فراموش کن']].forEach(function(a){
-          var b=el('button','btn ghost');b.style.cssText='font-size:11px;padding:4px 9px';b.textContent=a[1];
-          b.addEventListener('click',function(){
-            if(a[0]==='forget'&&!confirm('«'+(dev.name||dev.mac)+'» فراموش شود؟'))return;
-            act(dev.mac,a[0],b);
-          });
-          btns.appendChild(b);
-        });
-      }
       var row=hwRow(main,esc(dev.mac||''),btns);
       row.appendChild(detailHost);
+      row.style.cursor='pointer';
+      row.addEventListener('click',function(ev){
+        if(ev.target.closest('button')||ev.target.closest('input'))return;
+        if(detailHost._open){detailHost.innerHTML='';detailHost._open=false;return;}
+        detailHost._open=true;
+        hwOpenDevice(dev.key||('bt:'+dev.mac),detailHost,function(note,key){
+          // A rename only changes the label; a pair/connect changes the state
+          // the list shows, so only that reloads.
+          if(note===undefined)load(false);
+        });
+      });
       c.body.appendChild(row);
     });
     out.appendChild(c.card);
@@ -5167,35 +5299,20 @@ function tkCablePanel(){
   var note=el('div');note.style.cssText='font-size:12px;min-height:16px;margin-bottom:6px';p.appendChild(note);
   var out=el('div');p.appendChild(out);
 
-  function serialConsole(port){
-    var c=hwCard('گفتگو با '+port);
-    var line=el('div');line.style.cssText='display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px';
-    var cmd=el('input','input');cmd.placeholder='دستور، مثل AT';
-    cmd.style.cssText='flex:1;min-width:130px;font-size:12px;direction:ltr;text-align:left';
-    var baud=el('select','input');baud.style.cssText='font-size:11.5px;width:auto;padding:5px 8px';
-    [9600,19200,38400,57600,115200,230400,921600].forEach(function(b){
-      var o=el('option');o.value=b;o.textContent=b;if(b===115200)o.selected=true;baud.appendChild(o);});
-    var send=el('button','btn');send.textContent='بفرست';send.style.cssText='font-size:12px';
-    line.appendChild(cmd);line.appendChild(baud);line.appendChild(send);
-    c.body.appendChild(line);
-    var log=el('div');
-    log.style.cssText='font-size:11.5px;line-height:1.8;direction:ltr;text-align:left;white-space:pre-wrap;'+
-      'max-height:220px;overflow:auto;background:rgba(0,0,0,.22);border-radius:9px;padding:8px 10px';
-    c.body.appendChild(log);
-    function push(t){log.textContent+=t+'\n';log.scrollTop=log.scrollHeight;}
-    send.addEventListener('click',function(){
-      var v=cmd.value;
-      send.disabled=true;push('> '+v);
-      tkFetch('/api/hw/serial/talk',{method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({port:port,send:v,baud:Number(baud.value),waitMs:1500})})
-        .then(function(d){send.disabled=false;cmd.value='';
-          if(d.error){push('! '+d.error);return;}
-          push(d.text?d.text.replace(/\r/g,''):(d.hex?('[hex] '+d.hex):'(چیزی نیامد)'));
-          if(d.note)push('# '+d.note);})
-        .catch(function(e){send.disabled=false;push('! '+e.message);});
-    });
-    cmd.addEventListener('keydown',function(e){if(e.key==='Enter')send.click();});
-    return c.card;
+  /* Names the household gave devices, so a renamed thing shows ITS name in the
+     list and not the manufacturer's. */
+  var NOTES={};
+  function noteFor(key){ var n=NOTES[key]; return (n&&n.label)||''; }
+  /* A device the household renamed shows ITS name, with the manufacturer's in
+     brackets so it is still findable. */
+  function titleFor(key,fallback){
+    var given=noteFor(key);
+    return '<b>'+esc(given||fallback)+'</b>'+
+      (given?(' <span style="color:#8ea0c8;font-size:11px">('+esc(fallback)+')</span>'):'');
+  }
+  function retitle(row,key,fallback){
+    var b=row.querySelector('div > div');
+    if(b)b.innerHTML=titleFor(key,fallback);
   }
 
   function render(d){
@@ -5208,18 +5325,18 @@ function tkCablePanel(){
       var sc=hwCard('پورت‌های سریال / کابل داده');
       d.serial.forEach(function(sp){
         var sub=[sp.description,sp.vendor,sp.serial,sp.usbId].filter(Boolean).join(' · ');
-        var btn=null;
-        if(deviceLevel()>=2){
-          btn=el('button','btn ghost');btn.style.cssText='font-size:11px;padding:4px 9px';
-          btn.textContent='وصل شو و حرف بزن';
-          btn.addEventListener('click',function(){
-            var host=btn.parentNode.parentNode;
-            if(host._console){host._console.remove();host._console=null;return;}
-            host._console=serialConsole(sp.port);
-            host.appendChild(host._console);
-          });
-        }
-        sc.body.appendChild(hwRow('<b>'+esc(sp.port)+'</b>',esc(sub),btn));
+        var hint=el('span');hint.style.cssText='font-size:11px;color:#8ea0c8';hint.textContent='باز کن ›';
+        var key=sp.key||sp.port;
+        var row=hwRow(titleFor(key,sp.port),esc(sub),hint);
+        var host=el('div');host.style.flexBasis='100%';row.appendChild(host);
+        row.style.cursor='pointer';
+        row.addEventListener('click',function(ev){
+          if(ev.target.closest('button')||ev.target.closest('input')||ev.target.closest('select'))return;
+          if(host._open){host.innerHTML='';host._open=false;return;}
+          host._open=true;
+          hwOpenDevice(key,host,function(note){ NOTES[key]=note||{}; retitle(row,key,sp.port); });
+        });
+        sc.body.appendChild(row);
       });
       out.appendChild(sc.card);
     } else if(d.serialNote){
@@ -5227,14 +5344,39 @@ function tkCablePanel(){
     }
 
     if(d.usb&&d.usb.length){
-      var uc=hwCard('دستگاه‌های USB ('+d.usb.length+')');
-      d.usb.forEach(function(u){
+      /* Real devices first; hubs and root hubs are real but they are plumbing,
+         so they go behind a fold instead of burying the things that matter. */
+      var real=d.usb.filter(function(u){return !u.plumbing;});
+      var plumb=d.usb.filter(function(u){return u.plumbing;});
+      function usbRow(u,into){
         var id=[u.vendorId,u.productId].filter(Boolean).join(':');
         var facts=[u.manufacturer,id?('ID '+id):'',u.serial?('سریال '+u.serial):'',
                    u.usbClass,u.speed,u.driver?('درایور '+u.driver+(u.driverVersion?(' '+u.driverVersion):'')):'',
                    u.location,u.maxPower].filter(Boolean).join(' · ');
-        uc.body.appendChild(hwRow('<b>'+esc(u.name||u.product||'USB')+'</b>',esc(facts)));
-      });
+        var hint=el('span');hint.style.cssText='font-size:11px;color:#8ea0c8';hint.textContent='باز کن ›';
+        var row=hwRow(titleFor(u.key,u.name||u.product||'USB'),esc(facts),hint);
+        var host=el('div');host.style.flexBasis='100%';row.appendChild(host);
+        row.style.cursor='pointer';
+        row.addEventListener('click',function(ev){
+          if(ev.target.closest('button')||ev.target.closest('input')||ev.target.closest('select'))return;
+          if(host._open){host.innerHTML='';host._open=false;return;}
+          host._open=true;
+          hwOpenDevice(u.key,host,function(note){ NOTES[u.key]=note||{}; retitle(row,u.key,u.name||u.product||'USB'); });
+        });
+        into.appendChild(row);
+      }
+      var uc=hwCard('دستگاه‌های USB ('+real.length+')');
+      real.forEach(function(u){usbRow(u,uc.body);});
+      if(plumb.length){
+        var fold=el('details');
+        fold.style.cssText='margin-top:6px;font-size:12px;color:#8ea0c8';
+        var sm=el('summary');sm.style.cursor='pointer';
+        sm.textContent=plumb.length+' هاب و زیرساخت USB';
+        fold.appendChild(sm);
+        var fb=el('div');fold.appendChild(fb);
+        plumb.forEach(function(u){usbRow(u,fb);});
+        uc.body.appendChild(fold);
+      }
       out.appendChild(uc.card);
     }
     if(d.bluetoothNote){var bn=el('div','tk-hint');bn.textContent=d.bluetoothNote;out.appendChild(bn);}
@@ -5242,7 +5384,8 @@ function tkCablePanel(){
 
   go.addEventListener('click',function(){
     out.innerHTML='<div class="tk-hint"><span class="spin"></span> خواندن همه‌ی درگاه‌ها…</div>';
-    tkFetch('/api/hw/all').then(render)
+    Promise.all([tkFetch('/api/hw/all'),tkFetch('/api/hw/notes').catch(function(){return {notes:{}};})])
+      .then(function(r){ NOTES=(r[1]&&r[1].notes)||{}; render(r[0]); })
       .catch(function(e){out.innerHTML='<div class="tk-hint" style="color:#fb7185">'+esc(e.message)+'</div>';});
   });
   watchB.addEventListener('click',function(){
@@ -5371,6 +5514,21 @@ function tkDevicesPanel(){
           (sub?('<div style="font-size:11px;color:#8ea0c8;margin-top:2px;direction:ltr;text-align:right">'+esc(sub)+'</div>'):'');
         row.appendChild(main);
         if((dev.capabilities||[]).length)row.appendChild(allowToggle(dev,row));
+        /* Bluetooth, USB and drives found here are the same things the cable
+           and Bluetooth tabs know about, so tapping the row opens the very
+           same detail sheet — one way in, from wherever you happen to be. */
+        if(['bluetooth','usb','drive'].indexOf(dev.transport)>=0){
+          var hint=el('span');hint.style.cssText='font-size:11px;color:#8ea0c8';hint.textContent='باز کن ›';
+          row.appendChild(hint);
+          var host=el('div');host.style.flexBasis='100%';row.appendChild(host);
+          row.style.cursor='pointer';
+          row.addEventListener('click',function(ev){
+            if(ev.target.closest('button')||ev.target.closest('input'))return;
+            if(host._open){host.innerHTML='';host._open=false;return;}
+            host._open=true;
+            hwOpenDevice(dev.key||dev.id,host,null);
+          });
+        }
         c.body.appendChild(row);
         renderControls(dev,row);
       });

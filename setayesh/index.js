@@ -194,7 +194,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.85';
+const APP_VERSION = '9.9.86';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -4885,6 +4885,63 @@ app.get('/api/hw/usb', requireAuth, requireDeviceLevel(1), async (req, res) => {
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ---- going INTO one device ------------------------------------------------
+// Everything the system will say about it, plus the actions that really apply
+// to that particular thing, plus whatever the household has written about it.
+// A row in a list with no way in is just a label; this is what makes each one
+// a door.
+const HW_NOTES_FILE = process.env.SETAYESH_HW_NOTES_FILE
+  || path.join(DATA_DIR, '.setayesh-device-notes.json');
+function hwNotes() {
+  try { return JSON.parse(fs.readFileSync(HW_NOTES_FILE, 'utf8')) || {}; }
+  catch (e) { return {}; }
+}
+function saveHwNotes(obj) {
+  try { fs.writeFileSync(HW_NOTES_FILE, JSON.stringify(obj), { mode: 0o600 }); } catch (e) {}
+}
+
+app.get('/api/hw/device', requireAuth, requireDeviceLevel(1), async (req, res) => {
+  try {
+    const detail = await hwlink.deviceDetail(String(req.query.key || ''));
+    if (detail.error) return res.status(404).json(detail);
+    const note = hwNotes()[detail.key] || {};
+    detail.note = note;
+    // The name the household gave it wins over the one the manufacturer did.
+    if (note.label) { detail.givenName = note.label; detail.title = note.label; }
+    detail.yourLevel = deviceLevelOf(req.username);
+    // Say up front which of the listed actions this account may actually use,
+    // so the interface never offers a button that will be refused.
+    detail.actions = (detail.actions || []).map((a) =>
+      Object.assign({}, a, { allowed: deviceLevelOf(req.username) >= (a.level || 1) }));
+    res.json(detail);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// The part that is genuinely OURS to edit: what we call the thing, whose it
+// is, and anything worth remembering about it. Editing the device's own
+// firmware is a different, deliberate action (GATT write / serial), not this.
+app.post('/api/hw/device/note', requireAuth, requireDeviceLevel(1), (req, res) => {
+  const b = req.body || {};
+  const key = String(b.key || '').slice(0, 200);
+  if (!key) return res.status(400).json({ error: 'شناسه‌ی دستگاه لازم است.' });
+  const all = hwNotes();
+  const cur = all[key] || {};
+  if (b.label !== undefined) cur.label = String(b.label).slice(0, 60);
+  if (b.note !== undefined) cur.note = String(b.note).slice(0, 600);
+  if (b.owner !== undefined) cur.owner = String(b.owner).slice(0, 60);
+  if (b.favourite !== undefined) cur.favourite = !!b.favourite;
+  cur.updatedBy = req.username;
+  cur.updatedAt = new Date().toISOString();
+  if (!cur.label && !cur.note && !cur.owner && !cur.favourite) delete all[key];
+  else all[key] = cur;
+  saveHwNotes(all);
+  res.json({ ok: true, key, note: all[key] || null });
+});
+
+app.get('/api/hw/notes', requireAuth, requireDeviceLevel(1), (req, res) => {
+  res.json({ notes: hwNotes() });
+});
+
 // ---------------- Language: grammar and letters ----------------
 // Open to every member, not just the admin: the children's German homework is
 // the main reason this exists. It touches no files and no network.
@@ -8732,7 +8789,7 @@ const server = (TLS ? https.createServer({ cert: TLS.cert, key: TLS.key }, app) 
       process.env.SETAYESH_HOMEDEV_FILE || path.join(DATA_DIR, '.setayesh-homedevices.json'),
       process.env.SETAYESH_NOTIFY_FILE || path.join(DATA_DIR, '.setayesh-notify.json'),
       process.env.SETAYESH_BACKUP_DIR || path.join(DATA_DIR, 'backups'),
-      ALLOWED_DEVICES_FILE,
+      ALLOWED_DEVICES_FILE, HW_NOTES_FILE,
     ]);
   } catch (e) {}
 

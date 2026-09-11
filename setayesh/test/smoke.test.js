@@ -929,3 +929,142 @@ test('Windows COM ports are parsed, and non-ports ignored', () => {
   assert.equal(ports[0].port, 'COM3');
   assert.equal(ports[0].vendor, 'wch.cn');
 });
+
+// ---- Windows Bluetooth: one device, not one row per profile ----
+// The screenshot showed 70 "Bluetooth devices" on a machine that has three.
+// Windows lists one PnP entry per PROFILE, and they all carry the same
+// address, so grouping by address puts each device back together.
+test('Windows Bluetooth profile rows group into real devices', () => {
+  const discover = require(path.join(ROOT, 'discover.js'));
+  const rows = [
+    { FriendlyName: 'Andrew Hands-Free HF Audio', Service: 'BthHFEnum', Status: 'OK',
+      InstanceId: 'BTHENUM\\{0000111e-0000-1000-8000-00805f9b34fb}_LOCALMFG&000a\\7&2a4e&0&C0288D4A5B6C_C00000000' },
+    { FriendlyName: 'Andrew Avrcp Transport', Service: 'BthAvrcpTg', Status: 'OK',
+      InstanceId: 'BTHENUM\\{0000110c-0000-1000-8000-00805f9b34fb}_LOCALMFG&000a\\7&2a4e&0&C0288D4A5B6C_C00000000' },
+    { FriendlyName: 'Standard Serial over Bluetooth link (COM4)', Service: 'BthModem', Status: 'OK',
+      InstanceId: 'BTHENUM\\{00001101-0000-1000-8000-00805f9b34fb}_LOCALMFG&0000\\7&2a4e&0&C0288D4A5B6C_C00000000' },
+    { FriendlyName: 'Generic Attribute Profile', Status: 'OK',
+      InstanceId: 'BTHLEDEVICE\\{00001801-0000-1000-8000-00805f9b34fb}_DEV_AABBCCDDEEFF\\9&abc&0&0001' },
+    { FriendlyName: 'Xbox Wireless Controller', Status: 'OK',
+      InstanceId: 'BTHLE\\DEV_AABBCCDDEEFF\\8&31b2&0&AABBCCDDEEFF' },
+    { FriendlyName: 'Bluetooth Device (Personal Area Network)', Status: 'OK',
+      InstanceId: 'BTH\\MS_BTHPAN\\6&1a2b&0&2' },
+  ];
+  const g = discover.groupWindowsBluetooth(rows);
+  assert.equal(g.devices.length, 2, 'six rows are two devices, not six');
+
+  const andrew = g.devices.find((d) => d.mac === 'c0:28:8d:4a:5b:6c');
+  assert.ok(andrew, 'the address was not extracted from the BTHENUM shape');
+  assert.equal(andrew.name, 'Andrew', 'the profile suffix should be stripped off the name');
+  assert.equal(andrew.profiles.length, 3);
+  // A Bluetooth device that exposes a COM port is a real serial link to it.
+  assert.deepEqual(andrew.serialPorts, ['COM4']);
+  assert.ok(andrew.roles.includes('پخش صدا'));
+  assert.ok(andrew.capabilities.list.includes('serial'));
+
+  const xbox = g.devices.find((d) => d.mac === 'aa:bb:cc:dd:ee:ff');
+  assert.ok(xbox, 'the address was not extracted from the DEV_ shape');
+  assert.ok(xbox.capabilities.list.includes('gatt'));
+});
+
+test('everything under the Bluetooth bus counts as Bluetooth, not USB', () => {
+  const discover = require(path.join(ROOT, 'discover.js'));
+  // The USB card used to show more devices than the USB scan found, because
+  // BTH\\... rows that are not BTHENUM/BTHLE landed in the USB bucket.
+  const rows = discover.parseWindowsPnp(JSON.stringify([
+    { FriendlyName: 'PAN', InstanceId: 'BTH\\MS_BTHPAN\\6&1a&0&2' },
+    { FriendlyName: 'LE dev', InstanceId: 'BTHLE\\DEV_AABBCCDDEEFF\\8&31&0&AA' },
+    { FriendlyName: 'Intel Wireless Bluetooth', InstanceId: 'USB\\VID_8087&PID_0026\\5&1e&0&10' },
+  ]));
+  assert.equal(rows[0].transport, 'bluetooth');
+  assert.equal(rows[1].transport, 'bluetooth');
+  assert.equal(rows[2].transport, 'usb', 'the radio itself really is a USB device');
+});
+
+test('hubs are marked as plumbing so they do not bury the real devices', () => {
+  const hwlink = require(path.join(ROOT, 'hwlink.js'));
+  const marked = hwlink.markPlumbing([
+    { name: 'Generic SuperSpeed USB Hub' },
+    { name: 'USB Root Hub (USB 3.0)' },
+    { name: 'USB Input Device' },
+    { name: 'Xbox Wireless Adapter for Windows' },
+    { name: 'SanDisk Ultra', usbClass: '08' },
+  ]);
+  assert.deepEqual(marked.map((m) => !!m.plumbing), [true, true, true, false, false]);
+});
+
+// ---- Going into a device ----
+test('every device can be opened, and the actions match what it is', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  const all = await (await api('/api/hw/all', { token })).json();
+
+  // Whatever this machine has, each listed thing must open.
+  const keys = []
+    .concat((all.serial || []).map((x) => x.key))
+    .concat((all.drives || []).map((x) => x.key))
+    .concat((all.usb || []).map((x) => x.key))
+    .filter(Boolean).slice(0, 6);
+  assert.ok(keys.length, 'nothing at all was listed to open');
+
+  for (const key of keys) {
+    const r = await api('/api/hw/device?key=' + encodeURIComponent(key), { token });
+    assert.equal(r.status, 200, 'could not open ' + key);
+    const d = await r.json();
+    assert.ok(d.title, 'no title for ' + key);
+    assert.ok(Array.isArray(d.properties) && d.properties.length, 'no properties for ' + key);
+    for (const a of d.actions || []) assert.equal(typeof a.allowed, 'boolean');
+  }
+
+  // A serial port offers a console; a drive does not pretend to.
+  if ((all.serial || []).length) {
+    const d = await (await api('/api/hw/device?key=' + encodeURIComponent(all.serial[0].key), { token })).json();
+    assert.ok((d.actions || []).some((a) => a.id.startsWith('serial:')), 'a serial port must offer its console');
+  }
+  const unknown = await api('/api/hw/device?key=usb:dead:beef:nothing', { token });
+  assert.equal(unknown.status, 404);
+});
+
+test('a device can be renamed and the name comes back with it', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  const all = await (await api('/api/hw/all', { token })).json();
+  const key = ((all.drives || [])[0] || (all.serial || [])[0] || {}).key;
+  assert.ok(key, 'no device to rename');
+
+  const saved = await api('/api/hw/device/note', { method: 'POST', token,
+    body: { key, label: 'هارد بابا', owner: 'javid', note: 'پشتیبان هفتگی' } });
+  assert.equal(saved.status, 200);
+
+  const opened = await (await api('/api/hw/device?key=' + encodeURIComponent(key), { token })).json();
+  assert.equal(opened.givenName, 'هارد بابا');
+  assert.equal(opened.title, 'هارد بابا', 'the name we gave it must win over the manufacturer name');
+  assert.equal(opened.note.owner, 'javid');
+  assert.equal(opened.note.updatedBy, 'admin', 'who wrote it is recorded');
+
+  // Clearing every field removes the record rather than leaving an empty one.
+  await api('/api/hw/device/note', { method: 'POST', token,
+    body: { key, label: '', owner: '', note: '', favourite: false } });
+  const notes = await (await api('/api/hw/notes', { token })).json();
+  assert.ok(!notes.notes[key], 'an emptied note should be deleted, not kept');
+});
+
+test('opening a device still obeys the access levels', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  const closed = await mkUser(token, 'openlvl0', 'pass12345');
+  assert.equal((await api('/api/hw/device?key=drive:whatever', { token: closed })).status, 403);
+  assert.equal((await api('/api/hw/device/note', { method: 'POST', token: closed,
+    body: { key: 'x', label: 'y' } })).status, 403);
+
+  const looker = await mkUser(token, 'openlvl1', 'pass12345');
+  await api('/api/admin/device-level', { method: 'POST', token, body: { username: 'openlvl1', level: 1 } });
+  const all = await (await api('/api/hw/all', { token: looker })).json();
+  const key = ((all.serial || [])[0] || (all.drives || [])[0] || {}).key;
+  if (key) {
+    const d = await (await api('/api/hw/device?key=' + encodeURIComponent(key), { token: looker })).json();
+    assert.equal(d.yourLevel, 1);
+    // It may look, so level-2 actions come back marked as not allowed rather
+    // than being offered as buttons that would be refused.
+    for (const a of d.actions || []) {
+      if ((a.level || 1) >= 2) assert.equal(a.allowed, false, a.id + ' should be closed at level 1');
+    }
+  }
+});
