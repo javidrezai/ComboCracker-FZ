@@ -123,6 +123,13 @@
     );
     fis.rotation.z = Math.PI / 2; root.add(fis);
 
+    // A calm halo around the whole brain. It breathes gently all the time and
+    // brightens for a moment whenever she is actually working (a signal lands).
+    var auraMat = new THREE.MeshBasicMaterial({ color: 0x7fd4ff, transparent: true, opacity: 0.07, side: THREE.BackSide, depthWrite: false });
+    var aura = new THREE.Mesh(new THREE.SphereGeometry(R * 1.5, 48, 36), auraMat);
+    scene.add(aura);
+    var busy = 0;   // decays back to the resting glow
+
     /* ---------------- the parts ---------------- */
     var appNodes = [];
     Object.keys(MAP.groups || {}).forEach(function (g) {
@@ -136,6 +143,10 @@
     (pb.branches || []).forEach(function (b) {
       pyNodes.push({ group: 'مغز پایتون', name: b.file, short: b.name, purpose: 'شاخهٔ دانش مغز پایتون', exists: true, editable: false, lines: b.lines, py: true });
     });
+    // the downloaded libraries — you can see which ones are on the machine
+    (pb.libs || []).forEach(function (l) {
+      pyNodes.push({ group: 'کتابخانه‌ها', name: l.file, short: '📦 ' + l.name, purpose: 'کتابخانهٔ پایتون — نصب‌شده در pybrain/libs/' + l.name, exists: true, editable: false, py: true, lib: true });
+    });
 
     var picks = [], labels = [], byKey = {}, all = [];
 
@@ -145,14 +156,17 @@
         new THREE.MeshBasicMaterial({ color: col }));
       dot.position.copy(p); dot.userData.node = n;
       root.add(dot); picks.push(dot);
-      // glowing halo around each node
+      // glowing halo around each node — two shells so the glow reads clearly
       var halo = new THREE.Mesh(new THREE.SphereGeometry(0.26, 16, 12),
-        new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.18, depthWrite: false }));
+        new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.42, depthWrite: false }));
       halo.position.copy(p); root.add(halo);
+      var halo2 = new THREE.Mesh(new THREE.SphereGeometry(0.42, 16, 12),
+        new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.14, depthWrite: false }));
+      halo2.position.copy(p); root.add(halo2);
       // link to the core
       root.add(new THREE.Line(
         new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), p.clone()]),
-        new THREE.LineBasicMaterial({ color: col, transparent: true, opacity: n.exists === false ? 0.45 : 0.18, depthWrite: false })
+        new THREE.LineBasicMaterial({ color: col, transparent: true, opacity: n.exists === false ? 0.8 : 0.55, depthWrite: false })
       ));
       // HTML label — the browser shapes Persian correctly, canvas text did not
       var short = n.short || String(n.name).replace(/^public\//, '').replace(/^routes\//, '').replace(/^pybrain\/.*\//, '');
@@ -177,7 +191,7 @@
     });
 
     /* ---- neuron web: wire each node to its nearest neighbours ---- */
-    var webMat = new THREE.LineBasicMaterial({ color: 0x86b7ff, transparent: true, opacity: 0.13, depthWrite: false });
+    var webMat = new THREE.LineBasicMaterial({ color: 0xa9d4ff, transparent: true, opacity: 0.45, depthWrite: false });
     for (var i = 0; i < all.length; i++) {
       var mine = all[i];
       var near = all.slice().filter(function (o) { return o !== mine; })
@@ -230,6 +244,7 @@
         new THREE.MeshBasicMaterial({ color: 0xdffaff }));
       m.position.copy(pts[0]); root.add(m);
       pulses.push({ m: m, ln: ln, pts: pts, t: 0 });
+      busy = 1;   // she is working → the halo brightens
       // name the pair on screen, so you can read what just talked to what
       liveBox.textContent = '⚡ ' + nice(from) + '  →  ' + nice(to) + (label ? '   ·  ' + label : '');
       liveBox.style.opacity = '1';
@@ -306,10 +321,16 @@
     window.addEventListener('resize', onResize);
     onResize();
 
-    var tmp = new THREE.Vector3();
+    var tmp = new THREE.Vector3(), clock = 0;
     function frame() {
       S.raf = requestAnimationFrame(frame);
       if (document.hidden) return;
+      clock += 0.016;
+      // the calm breathing halo, brighter while she is busy
+      busy = Math.max(0, busy - 0.006);
+      var breathe = 0.055 + 0.02 * Math.sin(clock * 1.1);
+      auraMat.opacity = breathe + 0.16 * busy;
+      aura.scale.setScalar(1 + 0.015 * Math.sin(clock * 1.1) + 0.05 * busy);
       if (auto && !dragging) { rotY += 0.0026; rotX += 0.0006; }
       rotX = Math.max(-1.2, Math.min(1.2, rotX));
       root.rotation.y = rotY; root.rotation.x = rotX;

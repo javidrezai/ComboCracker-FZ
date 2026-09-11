@@ -181,7 +181,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.79';
+const APP_VERSION = '9.9.80';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -5880,10 +5880,10 @@ app.get('/api/admin/pybrain/libs', requireAuth, requireAdmin, (req, res) => {
   } catch (e) {}
   res.json({ python: !!PYTHON_BIN, brain: fs.existsSync(BRAIN_MAIN), installed, running: _libInstallRunning });
 });
-app.post('/api/admin/pybrain/install-libs', requireAuth, requireAdmin, (req, res) => {
-  if (!PYTHON_BIN) return res.status(400).json({ error: 'پایتون نصب نیست — اول Python را نصب کن.' });
-  if (!fs.existsSync(BRAIN_MAIN)) return res.status(400).json({ error: 'مغز پایتون (pybrain) پیدا نشد.' });
-  if (_libInstallRunning) return res.json({ ok: true, running: true });
+function startLibInstall() {
+  if (!PYTHON_BIN) return { error: 'پایتون نصب نیست — اول Python را نصب کن.' };
+  if (!fs.existsSync(BRAIN_MAIN)) return { error: 'مغز پایتون (pybrain) پیدا نشد.' };
+  if (_libInstallRunning) return { ok: true, running: true };
   _libInstallRunning = true; _libInstallLog = '';
   const { spawn } = require('child_process');
   const libsDir = path.join(BRAIN_DIR, 'libs');
@@ -5893,10 +5893,41 @@ app.post('/api/admin/pybrain/install-libs', requireAuth, requireAdmin, (req, res
   const cap = (d) => { _libInstallLog = (_libInstallLog + d.toString('utf8')).slice(-4000); };
   child.stdout.on('data', cap); child.stderr.on('data', cap);
   const timer = setTimeout(() => { try { child.kill('SIGKILL'); } catch (e) {} }, 300000);
-  child.on('close', (code) => { clearTimeout(timer); _libInstallRunning = false; _libInstallLog += `\n[پایان · کد ${code}]`; });
+  child.on('close', (code) => {
+    clearTimeout(timer); _libInstallRunning = false; _libInstallLog += `\n[پایان · کد ${code}]`;
+    nightLog(code === 0 ? 'کتابخانه‌های مهم پایتون نصب شدند.' : `نصب کتابخانه‌ها با کد ${code} تمام شد.`, code === 0 ? 'ok' : 'info');
+  });
   child.on('error', (e) => { clearTimeout(timer); _libInstallRunning = false; _libInstallLog += '\nخطا: ' + e.message; });
-  res.json({ ok: true, started: true });
+  return { ok: true, started: true };
+}
+
+app.post('/api/admin/pybrain/install-libs', requireAuth, requireAdmin, (req, res) => {
+  const r = startLibInstall();
+  if (r.error) return res.status(400).json(r);
+  res.json(r);
 });
+
+// Auto-install the important libraries once, shortly after boot, if the store
+// is still empty — so the brain arrives ready instead of waiting to be told.
+// Skipped when python is missing or they are already there. ENABLE_AUTOLIBS=0
+// turns it off.
+if (process.env.ENABLE_AUTOLIBS !== '0') {
+  setTimeout(() => {
+    try {
+      if (!PYTHON_BIN || !fs.existsSync(BRAIN_MAIN)) return;
+      const libsDir = path.join(BRAIN_DIR, 'libs');
+      let have = [];
+      try {
+        have = fs.readdirSync(libsDir, { withFileTypes: true })
+          .filter((e) => e.isDirectory() && !e.name.startsWith('_') && !/\.dist-info$/.test(e.name));
+      } catch (e) {}
+      if (have.length) return;                       // already stocked
+      if (!fs.existsSync(path.join(BRAIN_DIR, 'requirements-libs.txt'))) return;
+      nightLog('کتابخانه‌های مهم پایتون پیدا نشدند — خودم دارم نصبشان می‌کنم…', 'info');
+      startLibInstall();
+    } catch (e) {}
+  }, 20000).unref();
+}
 app.get('/api/admin/pybrain/install-log', requireAuth, requireAdmin, (req, res) => {
   res.json({ running: _libInstallRunning, log: _libInstallLog });
 });
@@ -5977,9 +6008,18 @@ app.get('/api/admin/brain/map', requireAuth, requireAdmin, (req, res) => {
     const files = fs.readdirSync(kdir).filter((f) => f.endsWith('.md'));
     brainFiles = files.length;
     brainBranches = files.slice(0, 24).map((f) => {
-      let lines = 0;
-      try { lines = fs.readFileSync(path.join(kdir, f), 'utf8').split('\n').length; } catch (e) {}
-      return { name: f.replace(/\.md$/i, ''), file: 'pybrain/vault/knowledge/' + f, lines };
+      // Show the Persian title from INSIDE the file, never the filename.
+      // File NAMES survive zip/OS encoding badly (Windows mangled the Persian
+      // ones into mojibake); file CONTENT is always read as UTF-8, so the title
+      // is the reliable label. Filenames are kept ASCII for the same reason.
+      let lines = 0, title = '';
+      try {
+        const txt = fs.readFileSync(path.join(kdir, f), 'utf8');
+        lines = txt.split('\n').length;
+        const m = txt.match(/^\s*#\s+(.+)$/m);
+        if (m) title = m[1].trim().slice(0, 60);
+      } catch (e) {}
+      return { name: title || f.replace(/\.md$/i, ''), file: 'pybrain/vault/knowledge/' + f, lines };
     });
   } catch (e) {}
   // the python engine's own source files, also named
@@ -5987,12 +6027,22 @@ app.get('/api/admin/brain/map', requireAuth, requireAdmin, (req, res) => {
   for (const rel of ['pybrain/brain/server/main.py', 'pybrain/brain/server/autolibs.py']) {
     try { pyCore.push({ name: path.basename(rel), file: rel, exists: fs.existsSync(path.join(DATA_DIR, rel)) }); } catch (e) {}
   }
+  // the downloaded Python libraries, so the owner can see in the brain which
+  // ones are actually on the machine and where they live
+  let pyLibs = [];
+  try {
+    const ldir = path.join(BRAIN_DIR, 'libs');
+    pyLibs = fs.readdirSync(ldir, { withFileTypes: true })
+      .filter((e) => e.isDirectory() && !e.name.startsWith('.') && !/\.dist-info$|\.egg-info$|^__pycache__$/.test(e.name))
+      .slice(0, 20)
+      .map((e) => ({ name: e.name, file: 'pybrain/libs/' + e.name }));
+  } catch (e) {}
   res.json({
     version: APP_VERSION,
     groups,
     pybrain: {
       exists: fs.existsSync(BRAIN_MAIN), python: !!PYTHON_BIN, knowledgeFiles: brainFiles,
-      branches: brainBranches, core: pyCore,
+      branches: brainBranches, core: pyCore, libs: pyLibs,
     },
   });
 });
