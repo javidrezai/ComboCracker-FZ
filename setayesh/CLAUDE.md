@@ -39,6 +39,32 @@ via the app's own self-editing feature.
   install and warn the admin — the guard against the "my UI change never
   showed up" bug class.
 
+## The app icon, engine/model choice, and chat language (9.9.91)
+- **The home-screen / PWA icon is the owner's face.** `GET /icon-192.png`,
+  `/icon-512.png` and `/manifest.webmanifest` are served by index.js (before
+  `express.static`) and stream `public/faces/setayesh.*` when a face is set,
+  falling back to the bundled star tiles `public/icon-{192,512}.png` (which match
+  the in-app avatar). The shell referenced these files but they never existed, so
+  the phone showed a generic "S" — the files and routes are the fix. Keep the two
+  default PNGs committed; a smoke test asserts they exist and are real PNGs.
+- **Never force chat onto a code-completion model.** `resolveTarget` picks the
+  model that fits the question: a code question → the engine's `best:'code'`
+  model, everything else → its GENERAL model. Mistral lists Codestral first, and
+  the old code used `models[0]`, so ALL Persian chat went to Codestral — English,
+  tool-refusing answers. The general model follows the system prompt, speaks the
+  user's language, and calls tools. A smoke test asserts Mistral still offers a
+  non-code model to pick.
+- **Chat language honours the member, over the English default.** `voiceBlock`
+  emits a "زبان گفتگو" directive from each member's `lang` pref; adults with no
+  explicit choice default to **Persian** (this is a Persian household), children
+  are left on their English-practice tutor prompt. The base identity still says
+  "English is the default" for a truly unknown visitor, but a known adult member
+  gets their own language first.
+- **The brain is reachable on the phone.** The topbar brain button is squeezed
+  out of the cramped mobile topbar, so `shBrain` (the thumb-reachable drawer
+  item) is shown to the admin in `openSheet()` — it had been hard-hidden with
+  `display:none !important`.
+
 ## Engine routing, failover and chat memory
 - **The failover in `/api/chat` must be able to see everything it passes on.**
   Anything the `catch` block hands to a substitute engine (`callOpts`,

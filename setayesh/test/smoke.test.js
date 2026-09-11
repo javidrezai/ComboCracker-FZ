@@ -1302,3 +1302,50 @@ test('secure-link: admin can read state and turn on HTTPS, family cannot', async
   assert.equal(off.ok, true);
   assert.equal(off.on, false);
 });
+
+// ---- App icon = the owner's face (v9.9.91) ----
+// The shell referenced /manifest.webmanifest and /icon-*.png but the files
+// never existed, so the phone's "add to home screen" fell back to a generic
+// "S". These assert the manifest and icon endpoints answer, and that the
+// bundled default star tiles are real PNGs (the fallback when no face is set).
+test('the web manifest is served with icons', async () => {
+  const r = await fetch(BASE + '/manifest.webmanifest');
+  assert.equal(r.ok, true);
+  const m = await r.json();
+  assert.equal(m.name, 'Setayesh AI');
+  assert.ok(Array.isArray(m.icons) && m.icons.length >= 2);
+  assert.ok(m.icons.some((i) => i.src === '/icon-192.png'));
+  assert.ok(m.icons.some((i) => i.src === '/icon-512.png'));
+});
+
+test('the app icon endpoints serve a PNG (the star default when no face is set)', async () => {
+  for (const size of ['192', '512']) {
+    const r = await fetch(BASE + `/icon-${size}.png`);
+    assert.equal(r.ok, true, `icon-${size} must be served`);
+    assert.match(r.headers.get('content-type') || '', /image\/png/);
+    const buf = Buffer.from(await r.arrayBuffer());
+    // PNG magic number
+    assert.deepEqual(buf.slice(0, 4), Buffer.from([0x89, 0x50, 0x4e, 0x47]), `icon-${size} must be a real PNG`);
+  }
+});
+
+test('the bundled default icon files exist on disk and are PNGs', () => {
+  for (const f of ['public/icon-192.png', 'public/icon-512.png']) {
+    const p = path.join(ROOT, f);
+    assert.ok(fs.existsSync(p), `${f} must be committed`);
+    const head = fs.readFileSync(p).slice(0, 4);
+    assert.deepEqual(head, Buffer.from([0x89, 0x50, 0x4e, 0x47]), `${f} must be a PNG`);
+  }
+});
+
+// ---- Routing: chat must not be forced onto the code-completion model ----
+// Mistral's first-listed model is Codestral (code-only); sending Persian chat
+// there produced English, tool-refusing answers. The fix picks the engine's
+// GENERAL model for non-code questions, so the provider must actually offer one.
+test('the Mistral engine offers a general (non-code) model for chat', () => {
+  const providers = require(path.join(ROOT, 'providers.js')).PROVIDERS;
+  const mistral = providers.mistral;
+  assert.ok(mistral, 'mistral provider must exist');
+  const general = (mistral.models || []).find((m) => m.best !== 'code');
+  assert.ok(general, 'mistral must list a non-code model so chat is not stuck on Codestral');
+});

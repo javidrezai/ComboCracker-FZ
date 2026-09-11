@@ -183,7 +183,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.90';
+const APP_VERSION = '9.9.91';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -1062,6 +1062,50 @@ app.get('/api/face', requireAuth, (req, res) => {
 });
 
 // (the POST that sets it is registered after multer is created, further down)
+
+// ---- The app icon = Setayesh's face -------------------------------------
+// بابا asked that the home-screen / desktop shortcut show the daughter's
+// picture, not a letter. The manifest and the icon files were referenced by the
+// shell but never existed, so the phone fell back to a generic "S" tile. These
+// routes serve the OWNER'S CHOSEN FACE as the icon whenever one is set, and a
+// bundled star tile (public/icon-*.png, matching the in-app avatar) otherwise.
+// Registered before express.static so the face wins over the static default of
+// the same name.
+const ICON_TYPES = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif' };
+function faceIconFile() {
+  for (const ext of ['.png', '.jpg', '.jpeg', '.webp', '.gif']) {
+    const f = path.join(FACES_DIR, 'setayesh' + ext);
+    try { if (fs.existsSync(f)) return { file: f, type: ICON_TYPES[ext] }; } catch (_) {}
+  }
+  return null;
+}
+function serveAppIcon(size) {
+  return (req, res) => {
+    res.set('Cache-Control', 'no-cache');
+    const face = faceIconFile();
+    if (face) { res.type(face.type); return res.sendFile(face.file); }
+    res.type('image/png');
+    return res.sendFile(path.join(__dirname, 'public', `icon-${size}.png`));
+  };
+}
+app.get('/icon-192.png', serveAppIcon(192));
+app.get('/icon-512.png', serveAppIcon(512));
+app.get(['/manifest.webmanifest', '/manifest.json'], (req, res) => {
+  const face = faceIconFile();
+  const iconType = face ? face.type : 'image/png';
+  res.set('Cache-Control', 'no-cache');
+  res.type('application/manifest+json');
+  res.json({
+    name: 'Setayesh AI', short_name: 'ستایش',
+    start_url: '/', scope: '/', display: 'standalone',
+    background_color: '#0b0e1a', theme_color: '#0b0e1a', dir: 'rtl', lang: 'fa',
+    icons: [
+      { src: '/icon-192.png', sizes: '192x192', type: iconType, purpose: 'any' },
+      { src: '/icon-512.png', sizes: '512x512', type: iconType, purpose: 'any' },
+      { src: '/icon-512.png', sizes: '512x512', type: iconType, purpose: 'maskable' },
+    ],
+  });
+});
 
 app.get('/api/health', (req, res) => {
   res.json({ ok: true, aiConfigured: anyConfigured(), userCount: users.size });
@@ -3772,12 +3816,19 @@ function resolveTarget(providerId, model, username, opts) {
   // A pin ignores whatever model the client asked for unless it belongs to the
   // pinned provider, so a stale UI selection can't drag the account elsewhere.
   const modelOk = model && (PROVIDERS[id].models || []).some((m) => m.id === model);
-  // No model asked for, and the question is clearly about code? Use the
-  // engine's coding model rather than its first-listed one.
-  const codeModel = tags.includes('code')
-    ? ((PROVIDERS[id].models || []).find((m) => m.best === 'code') || {}).id
-    : null;
-  const chosen = (pin ? (modelOk ? model : null) : model) || codeModel || (PROVIDERS[id].models[0] || {}).id;
+  // No model asked for → pick the model that FITS the question, not just the
+  // first one listed. This matters for Mistral, whose first model is Codestral
+  // (a code-completion model): sending Persian chit-chat there gave English,
+  // tool-refusing answers. A code question gets the coding model; everything
+  // else gets the engine's GENERAL model, which follows the system prompt,
+  // speaks the user's language, and uses tools properly.
+  const models = PROVIDERS[id].models || [];
+  const codeModel = (models.find((m) => m.best === 'code') || {}).id;
+  const generalModel = (models.find((m) => m.best !== 'code') || {}).id;
+  const autoModel = tags.includes('code')
+    ? (codeModel || generalModel)
+    : (generalModel || codeModel);
+  const chosen = (pin ? (modelOk ? model : null) : model) || autoModel || (models[0] || {}).id;
   if (!chosen) throw Object.assign(new Error('مدلی انتخاب نشده است.'), { userFacing: true });
   return { id, model: chosen, pinned: !!pin };
 }
@@ -3989,6 +4040,21 @@ function voiceBlock(username) {
   const chosen = TONE_RULES[tone] || (isChild ? TONE_RULES.normal : TONE_RULES.close);
 
   let block = '\n\n' + chosen + '\n' + HUMAN_VOICE;
+
+  // The language this member CHATS in. The base identity defaults to English,
+  // which is wrong for a Persian-speaking household: a weak engine latched onto
+  // "English is the default" and answered بابا in English every time. When the
+  // member has chosen a chat language, honour it — reply in that language by
+  // default, whatever language the question happened to be typed in.
+  const CHAT_NAME = { fa: 'فارسی', en: 'English', de: 'Deutsch' };
+  // Adults with no explicit choice default to Persian — this is a Persian
+  // household and the whole interface is Persian. Children are left alone: their
+  // tutor prompt deliberately leans on English for practice.
+  const cl = String(p.lang || '').toLowerCase() || (isChild ? '' : 'fa');
+  if (!isChild && CHAT_NAME[cl]) {
+    block = `\n\n*** زبان گفتگو (مهم — بر پیش‌فرض انگلیسی مقدم است) ***
+این کاربر زبان گفتگویش را **${CHAT_NAME[cl]}** انتخاب کرده. همیشه به همین زبان جواب بده، مگر اینکه خودش صریحاً به زبان دیگری بنویسد و بخواهد به همان زبان جواب بگیرد. حتی اگر پیام کوتاه، مبهم یا تک‌کلمه بود، باز هم ${CHAT_NAME[cl]} جواب بده — نه انگلیسی.` + block;
+  }
 
   // The language the member wants things WRITTEN in — letters, e-mail, a
   // document — separately from the language they chat in.

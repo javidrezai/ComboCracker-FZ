@@ -1,4 +1,4 @@
-/* SETAYESH_BUILD 9.9.90 */
+/* SETAYESH_BUILD 9.9.91 */
 (function(){
 'use strict';
 
@@ -4075,10 +4075,11 @@ function simplifyForFamily(){
    "needs your approval" badge, so pending work is visible without hunting. */
 function openSheet(){
   var admin=!!(CFG&&CFG.isAdmin);
-  // shBrain stays out of this list on purpose: the brain now lives only in
-  // the top-right button (single place, as asked), so the drawer never
-  // re-shows it even for the admin.
-  ['shCC','shLearn','shUsers','shConnectors','shComms','shAdminTitle'].forEach(function(id){
+  // shBrain lives here too: on a phone the top-right brain button is squeezed
+  // out of the cramped topbar, so بابا reported "the brain isn't visible on the
+  // phone". The thumb-reachable drawer is where a phone user looks — show it to
+  // the admin here as well as in the topbar.
+  ['shBrain','shCC','shLearn','shUsers','shConnectors','shComms','shAdminTitle'].forEach(function(id){
     var e=$(id); if(e)e.style.display=admin?'':'none';
   });
   $('sheet').classList.add('on'); $('sheetScrim').classList.add('on');
