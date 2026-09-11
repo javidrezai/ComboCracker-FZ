@@ -1,4 +1,4 @@
-/* SETAYESH_BUILD 9.9.75 */
+/* SETAYESH_BUILD 9.9.76 */
 /* Brain map — a living picture of Setayesh's whole self: a central hexagon
    core with every file as a node around it, colour-coded by area, green when
    healthy / red when missing. Click a node to see what it does and edit it.
@@ -89,7 +89,9 @@
     if(img)img.onerror=function(){ var w=el('bmFaceWrap'); if(w){ w.style.aspectRatio='700/760'; w.style.borderRadius='24px'; w.innerHTML=faceSVG(); } };
     var leg=el('brainMapLegend'); if(leg)leg.innerHTML='';
   }
-  function enterMap(){ build(); selectCore(); }
+  // Enter the brains. The side panel is NOT shown up front — it appears only
+  // when you click a brain or a part (the owner asked for no permanent panel).
+  function enterMap(){ build(); var p=panel(); if(p)p.style.display='none'; }
 
   // ---- Inside: BOTH brains side by side. Left = brain one (the Node app body:
   // its files by area). Right = brain two (the self-learning Python brain with
@@ -102,8 +104,6 @@
     var g=svg('g',{style:'cursor:pointer'});
     g.setAttribute('transform','translate('+cx+' '+cy+') scale('+s+')');
     g.innerHTML=''+
-      // the brain slowly spins about its own centre
-      '<animateTransform attributeName="transform" type="rotate" from="0 0 0" to="360 0 0" dur="48s" repeatCount="indefinite" additive="sum"/>'+
       '<ellipse cx="0" cy="118" rx="96" ry="20" fill="#0a1020" opacity=".7"/>'+
       // hemispheres
       '<path d="M-4,-118 C-46,-124 -92,-96 -100,-46 C-107,6 -90,58 -58,94 C-42,112 -16,116 -6,102 C-4,60 -4,-40 -4,-118 Z" fill="url(#brL)" stroke="#ff8a1f" stroke-width="1.5" filter="url(#brGlow)"/>'+
@@ -150,19 +150,27 @@
       '.bm-flow2{stroke-dasharray:7 10;animation:bmflow2 1.1s linear infinite}'+
       '@keyframes bmflow2{to{stroke-dashoffset:17}}</style>';
     s.appendChild(defs);
-    var linesG=svg('g'), nodesG=svg('g'); s.appendChild(linesG); s.appendChild(nodesG);
+    // Static overlay (never rotates): the bridge, its pulses, brain names and
+    // captions. Two rotating groups: each whole brain (core + its lines + its
+    // nodes) turns about its own centre for a live, 3D feel. Node labels get a
+    // matching counter-rotation so their text stays upright while they orbit.
+    var staticG=svg('g'); s.appendChild(staticG);
+    var rotA=svg('g'), rotB=svg('g'); s.appendChild(rotA); s.appendChild(rotB);
+    var DURA=70, DURB=58;
+    rotA.appendChild(svg('animateTransform',{attributeName:'transform',type:'rotate',from:'0 '+cxA+' '+cy,to:'360 '+cxA+' '+cy,dur:DURA+'s',repeatCount:'indefinite'}));
+    rotB.appendChild(svg('animateTransform',{attributeName:'transform',type:'rotate',from:'0 '+cxB+' '+cy,to:'360 '+cxB+' '+cy,dur:DURB+'s',repeatCount:'indefinite'}));
+    function upright(label,x,y,dur){ label.appendChild(svg('animateTransform',{attributeName:'transform',type:'rotate',from:'0 '+x+' '+y,to:'-360 '+x+' '+y,dur:dur+'s',repeatCount:'indefinite'})); }
 
     // bridge between the two brains — signals flow both ways across it
     var bridge=svg('line',{x1:cxA,y1:cy,x2:cxB,y2:cy,stroke:'rgba(123,92,255,.7)','stroke-width':3,filter:'url(#bmGlow)',class:'bm-flow2'});
-    linesG.appendChild(bridge);
-    // two bright signal pulses travelling across the bridge in opposite ways
+    staticG.appendChild(bridge);
     var pulse1=svg('circle',{r:4,fill:'#c4b5fd',filter:'url(#bmGlow)'});
     pulse1.innerHTML='<animate attributeName="cx" values="'+cxA+';'+cxB+'" dur="2.4s" repeatCount="indefinite"/><animate attributeName="cy" values="'+cy+';'+cy+'" dur="2.4s" repeatCount="indefinite"/>';
     var pulse2=svg('circle',{r:3.5,fill:'#7dd3fc',filter:'url(#bmGlow)'});
     pulse2.innerHTML='<animate attributeName="cx" values="'+cxB+';'+cxA+'" dur="3s" repeatCount="indefinite"/><animate attributeName="cy" values="'+cy+';'+cy+'" dur="3s" repeatCount="indefinite"/>';
-    linesG.appendChild(pulse1); linesG.appendChild(pulse2);
+    staticG.appendChild(pulse1); staticG.appendChild(pulse2);
     var bl=svg('text',{x:(cxA+cxB)/2,y:cy-12,'text-anchor':'middle',fill:'#b9a7ff','font-size':'12','font-weight':'700'}); bl.textContent='⇄ هماهنگ';
-    nodesG.appendChild(bl);
+    staticG.appendChild(bl);
 
     // brain one: the app files around core A, biased to the left hemisphere
     var rings=[ {r:150,cap:8}, {r:225,cap:14}, {r:300,cap:99} ];
@@ -172,21 +180,21 @@
     var seen={};
     nodes.forEach(function(n,i){
       var r=placement[i], total=perRing[r], pos=(seen[r]=(seen[r]||0)); seen[r]++;
-      // spread across the left ~260° so nodes hug brain one, clear of brain two
       var ang=Math.PI*0.5 + (Math.PI*1.5)*(total>1?pos/(total-1):0) + (r*0.18);
       var R=rings[r].r, x=cxA+R*Math.cos(ang), y=cy+R*Math.sin(ang);
       n._x=x; n._y=y;
       var col=GROUP_COLORS[n.group]||'#8ea0c8', health=n.exists?col:'#fb7185';
-      linesG.appendChild(svg('line',{x1:cxA,y1:cy,x2:x,y2:y,stroke:n.exists?'rgba(120,190,255,.5)':'rgba(251,113,133,.6)','stroke-width':n.exists?1.4:1.8,class:'bm-flow'}));
+      rotA.appendChild(svg('line',{x1:cxA,y1:cy,x2:x,y2:y,stroke:n.exists?'rgba(120,190,255,.5)':'rgba(251,113,133,.6)','stroke-width':n.exists?1.4:1.8,class:'bm-flow'}));
       var g=svg('g',{style:'cursor:pointer'});
       g.appendChild(svg('circle',{cx:x,cy:y,r:11,fill:'rgba(10,14,26,.92)',stroke:health,'stroke-width':2,filter:'url(#bmGlow)'}));
       g.appendChild(svg('circle',{cx:x,cy:y,r:4,fill:health,opacity:n.exists?'.95':'1'}));
       var short=n.name.replace(/^public\//,'').replace(/^routes\//,'');
       var label=svg('text',{x:x,y:y+22,'text-anchor':'middle',fill:'#cbd5f5','font-size':'9.5',style:'pointer-events:none'});
       label.textContent=short.length>16?short.slice(0,15)+'…':short;
+      upright(label,x,y+22,DURA);
       g.appendChild(label);
       g.addEventListener('click',function(nn){return function(){selectNode(nn);};}(n));
-      nodesG.appendChild(g);
+      rotA.appendChild(g);
     });
 
     // brain two: the Python brain — its own core + a ring of knowledge notes
@@ -195,22 +203,22 @@
     for(var k=0;k<kn;k++){
       var a=(Math.PI*2)*(k/Math.max(kn,1)) - Math.PI/2, R2=120;
       var x2=cxB+R2*Math.cos(a), y2=cy+R2*Math.sin(a);
-      linesG.appendChild(svg('line',{x1:cxB,y1:cy,x2:x2,y2:y2,stroke:'rgba(244,114,182,.55)','stroke-width':1.4,class:'bm-flow'}));
+      rotB.appendChild(svg('line',{x1:cxB,y1:cy,x2:x2,y2:y2,stroke:'rgba(244,114,182,.55)','stroke-width':1.4,class:'bm-flow'}));
       var gk=svg('g'); gk.appendChild(svg('circle',{cx:x2,cy:y2,r:7,fill:'rgba(20,10,20,.9)',stroke:'#f472b6','stroke-width':2,filter:'url(#bmGlow)'}));
-      gk.appendChild(svg('circle',{cx:x2,cy:y2,r:2.6,fill:'#f9a8d4'})); nodesG.appendChild(gk);
+      gk.appendChild(svg('circle',{cx:x2,cy:y2,r:2.6,fill:'#f9a8d4'})); rotB.appendChild(gk);
     }
-    // both cores are the same realistic two-hemisphere brain (orange circuit
-    // half + blue organic half), as the owner asked
-    nodesG.appendChild(brainIcon(cxA,cy,0.62,'مغز اول',function(){selectCore();}));
-    nodesG.appendChild(brainIcon(cxB,cy,0.5,'مغز دوم',function(){selectPybrain();}));
+    // both cores are the same realistic two-hemisphere brain — they rotate with
+    // their group, so the whole brain (and every part) turns
+    rotA.appendChild(brainIcon(cxA,cy,0.62,'مغز اول',function(){selectCore();}));
+    rotB.appendChild(brainIcon(cxB,cy,0.5,'مغز دوم',function(){selectPybrain();}));
+    // names + captions (upright, never rotate)
     var nA=svg('text',{x:cxA,y:cy-96,'text-anchor':'middle',fill:'#eaf2ff','font-size':'14','font-weight':'800'}); nA.textContent='مغز اول';
     var nB=svg('text',{x:cxB,y:cy-80,'text-anchor':'middle',fill:'#eaf2ff','font-size':'13','font-weight':'800'}); nB.textContent='مغز دوم';
-    nodesG.appendChild(nA); nodesG.appendChild(nB);
-    // captions under each brain
+    staticG.appendChild(nA); staticG.appendChild(nB);
     var capA=svg('text',{x:cxA,y:cy+330,'text-anchor':'middle',fill:'#9db4e0','font-size':'12','font-weight':'700'}); capA.textContent='🧠 مغز اول: بدنهٔ ستایش (نود)';
     var capB=svg('text',{x:cxB,y:cy+200,'text-anchor':'middle',fill:'#f0a9cf','font-size':'12','font-weight':'700'});
     capB.textContent='🧠 مغز دوم: خودآموز '+(pb.python?'✅':'🔴')+' · '+(pb.knowledgeFiles||0)+' نوت';
-    nodesG.appendChild(capA); nodesG.appendChild(capB);
+    staticG.appendChild(capA); staticG.appendChild(capB);
 
     view.appendChild(s);
     var leg=el('brainMapLegend');

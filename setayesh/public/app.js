@@ -1,4 +1,4 @@
-/* SETAYESH_BUILD 9.9.75 */
+/* SETAYESH_BUILD 9.9.76 */
 (function(){
 'use strict';
 
@@ -563,7 +563,7 @@ function setAvatarInto(elm,username,size){ if(!elm)return; elm.textContent=''; e
 // pinned with a fixed seed so it stays the same every load. Used for the brand
 // logos here and for the brain cover in brainmap.js. If it can't load (offline)
 // callers fall back to the built-in star / SVG face.
-window.SETAYESH_FACE='https://image.pollinations.ai/prompt/'+encodeURIComponent('elegant 3d render portrait of a digital woman, futuristic android, glowing cyan and violet circuit lines on skin, dark studio background, symmetrical, high detail, cinematic')+'?width=512&height=512&nologo=true&seed=42';
+window.SETAYESH_FACE='https://image.pollinations.ai/prompt/'+encodeURIComponent('beautiful female humanoid AI robot, chrome and white cybernetic face, glowing cyan eyes, intricate mechanical robotic neck with cables, futuristic android, dark studio background, cinematic, ultra detailed, 3d render')+'?width=512&height=512&nologo=true&seed=7';
 window.__brandStar='<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l2.4 6.2L21 10l-5.2 4 1.5 6.6L12 17l-5.3 3.6L8.2 14 3 10l6.6-1.8z"/></svg>';
 function setBrandFace(){
   ['.logo','.logo-sm'].forEach(function(sel){
@@ -1192,7 +1192,10 @@ async function enterApp(){
       if(isKidUser()&&lang!=='en'){lang='en';applyLang();}
       buildModes();setMode(mode);buildModelPicker();buildCompareChips();renderKeyList();
       $('adminBtn').style.display=CFG.isAdmin?'grid':'none';
-      { var _cb=$('commsBtn'); if(_cb)_cb.style.display=CFG.isAdmin?'flex':'none'; }
+      // Connectors (email/telegram) and Settings now live inside the Tools
+      // icon, so their separate sidebar buttons are hidden to reduce clutter.
+      { var _cb=$('commsBtn'); if(_cb)_cb.style.display='none'; }
+      { var _sb=$('settingsBtn'); if(_sb)_sb.style.display='none'; }
       { var _bm=$('brainMapBtn'); if(_bm)_bm.style.display=CFG.isAdmin?'flex':'none'; }
       $('learnBtn').style.display=CFG.isAdmin?'grid':'none';
       $('ccBtn').style.display=CFG.isAdmin?'grid':'none';
@@ -3693,10 +3696,10 @@ function collapseSidebarModes(){
     wrap.insertBefore(head, ml);
   }
 
-  // The engine picker is an expert control; it belongs in the control centre,
-  // not in everyone's line of sight.
+  // The engine picker stays in the sidebar — the owner asked for the
+  // "choose engine" control to be back in its place.
   var eng=document.getElementById('modelPicker');
-  if(eng&&eng.parentNode)eng.parentNode.style.display='none';
+  if(eng&&eng.parentNode)eng.parentNode.style.display='';
 }
 
 function tidySidebar(){
@@ -3878,6 +3881,7 @@ var TK={
     {id:'mobile',i18n:'tk_mobile',icon:'<rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/>'},
     {id:'hw',i18n:'tk_hw',icon:'<path d="M9 3v4M15 3v4M9 17v4M15 17v4M3 9h4M3 15h4M17 9h4M17 15h4"/><rect x="7" y="7" width="10" height="10" rx="1.5"/>'},
     {id:'comms',i18n:'tk_comms',adminOnly:true,icon:'<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/>'},
+    {id:'settings',i18n:'tk_settings',icon:'<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09A1.65 1.65 0 008 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06A1.65 1.65 0 004.6 15a1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06A1.65 1.65 0 009 4.6a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06A1.65 1.65 0 0019.4 9c.14.36.47.62.86.7H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"/>'},
     {id:'ext',i18n:'tk_ext',icon:'<path d="M12 2l2 5 5-1-3 4 3 4-5-1-2 5-2-5-5 1 3-4-3-4 5 1z"/>'}
   ],
   active:'web'
@@ -3936,7 +3940,10 @@ Object.assign(LANG.fa,{
  tk_domain:'دامنه سایت',tk_valid:'معتبر',tk_invalid:'نامعتبر / هشدار',tk_issuer:'صادرکننده',tk_expires:'انقضا',tk_daysLeft:'روز تا انقضا',tk_expired:'منقضی شده!',
  tk_guardHint:'چند نکته‌ی ساده و مهم برای محافظت از خونه، ماشین و کامپیوترِ خودت.',
  tk_learn:'آموزش امنیت',
- tk_comms:'ایمیل و تلگرام'
+ tk_comms:'ایمیل و تلگرام',
+ tk_settings:'تنظیمات',
+ tk_settings_hint:'تنظیمات برنامه: تغییر رمز، ظاهر، زبان و بقیهٔ گزینه‌ها اینجاست.',
+ tk_settings_open:'باز کردن تنظیمات'
 });
 Object.assign(LANG.en,{
  tk_vault:'Passwords',tk_ssl:'SSL cert',tk_guard:'Protection',
@@ -3948,7 +3955,10 @@ Object.assign(LANG.en,{
  tk_domain:'Site domain',tk_valid:'Valid',tk_invalid:'Invalid / warning',tk_issuer:'Issuer',tk_expires:'Expires',tk_daysLeft:'days left',tk_expired:'Expired!',
  tk_guardHint:'A few simple, important tips to protect your own home, car and computer.',
  tk_learn:'Security learning',
- tk_comms:'Email & Telegram'
+ tk_comms:'Email & Telegram',
+ tk_settings:'Settings',
+ tk_settings_hint:'App settings: change your password, appearance, language and the rest.',
+ tk_settings_open:'Open settings'
 });
 Object.assign(LANG.fa,{
  tk_pw:'رمزساز',tk_pwHint:'رمز عبور قوی و تصادفی بساز — کاملاً روی دستگاه خودت، هیچ‌جا فرستاده نمی‌شود.',
@@ -4000,7 +4010,17 @@ function showTkTab(id){
   else if(id==='mobile')body.appendChild(tkMobilePanel());
   else if(id==='hw')body.appendChild(tkHwPanel());
   else if(id==='comms')body.appendChild(tkCommsPanel());
+  else if(id==='settings')body.appendChild(tkSettingsPanel());
   else if(id==='ext')body.appendChild(tkExtPanel());
+}
+function tkSettingsPanel(){
+  var w=el('div'); w.style.cssText='padding:4px 2px';
+  var h=el('div'); h.style.cssText='font-size:13px;color:var(--muted);line-height:1.9;margin-bottom:12px';
+  h.textContent=t('tk_settings_hint');
+  var b=el('button','btn'); b.style.width='100%'; b.textContent=t('tk_settings_open');
+  b.addEventListener('click',function(){ if(typeof closeToolkit==='function')closeToolkit(); openSettings(); });
+  w.appendChild(h); w.appendChild(b);
+  return w;
 }
 
 async function tkFetch(path,opts){
