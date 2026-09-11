@@ -1,4 +1,4 @@
-/* SETAYESH_BUILD 9.9.87 */
+/* SETAYESH_BUILD 9.9.88 */
 (function(){
 'use strict';
 
@@ -4202,6 +4202,7 @@ var TK={
     {id:'lang',i18n:'tk_lang',icon:'<path d="M4 5h10M9 3v2M11 5c0 5-3 9-7 11M7 10c0 3 3 6 7 7M13 21l4-10 4 10M14.5 18h5"/>'},
     {id:'bt',i18n:'tk_bt',needLevel:1,icon:'<path d="M7 7l10 10-5 4V3l5 4L7 17"/>'},
     {id:'cable',i18n:'tk_cable',needLevel:1,icon:'<path d="M7 3v6a5 5 0 0010 0V3M9 3h2M13 3h2M12 14v7M9 21h6"/>'},
+    {id:'phonehw',i18n:'tk_phonehw',needLevel:1,icon:'<rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 6l4 4-4 4M12 18h.01"/>'},
     {id:'comms',i18n:'tk_comms',adminOnly:true,icon:'<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/>'},
     {id:'settings',i18n:'tk_settings',icon:'<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09A1.65 1.65 0 008 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06A1.65 1.65 0 004.6 15a1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06A1.65 1.65 0 009 4.6a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06A1.65 1.65 0 0019.4 9c.14.36.47.62.86.7H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"/>'},
     {id:'ext',i18n:'tk_ext',icon:'<path d="M12 2l2 5 5-1-3 4 3 4-5-1-2 5-2-5-5 1 3-4-3-4 5 1z"/>'}
@@ -4212,7 +4213,7 @@ function tkT(k){return t(k);}
 
 var TK_I18N={
  fa:{toolkit:'جعبه‌ابزار امنیت',defensive:'دفاعی · فقط دارایی‌های خودتان',
-  tk_devices:'دستگاه‌ها',tk_lang:'گرامر و لحن',tk_bt:'بلوتوث',tk_cable:'کابل و سریال',tk_web:'اسکن وب‌سایت',tk_net:'اسکن شبکه',tk_ports:'بررسی پورت',tk_hash:'آزمایشگاه هش',tk_mobile:'اتصال موبایل',tk_hw:'سخت‌افزار',tk_ext:'افزونه‌ها',
+  tk_devices:'دستگاه‌ها',tk_lang:'گرامر و لحن',tk_bt:'بلوتوث',tk_cable:'کابل و سریال',tk_phonehw:'بلوتوث/کابلِ گوشی',tk_web:'اسکن وب‌سایت',tk_net:'اسکن شبکه',tk_ports:'بررسی پورت',tk_hash:'آزمایشگاه هش',tk_mobile:'اتصال موبایل',tk_hw:'سخت‌افزار',tk_ext:'افزونه‌ها',
   tk_extHint:'قابلیت جدید اضافه کنید بدون ساختن دوباره‌ی برنامه: یک فایل .js در پوشه‌ی plugins کنار برنامه بگذارید و «بارگذاری مجدد» را بزنید. نمونه‌ها در همان پوشه هستند.',
   tk_reload:'بارگذاری مجدد',tk_noext:'هیچ افزونه‌ای پیدا نشد. یک فایل .js در پوشه‌ی plugins بگذارید.',tk_extRun:'اجرا',tk_extErr:'خطای بارگذاری',
   tk_webHint:'وب‌سایت خودتان را از نظر تنظیمات امنیتی بررسی می‌کند (هدرها، کوکی‌ها، HTTPS، افشای نسخه). این بررسی passive است — فقط صفحه خوانده می‌شود، هیچ حمله‌ای انجام نمی‌شود.',
@@ -4231,7 +4232,7 @@ var TK_I18N={
   tk_errPrivate:'فقط شبکه‌ی محلی خودتان قابل بررسی است.',tk_loading:'در حال بارگذاری…',
   weak:'ضعیف',ok:'قابل‌قبول',strong:'قوی',excellent:'عالی'},
  en:{toolkit:'Security toolkit',defensive:'Defensive · your own assets only',
-  tk_devices:'Devices',tk_lang:'Grammar & voice',tk_bt:'Bluetooth',tk_cable:'Cable & serial',tk_web:'Website scan',tk_net:'Network scan',tk_ports:'Port check',tk_hash:'Hash lab',tk_mobile:'Mobile link',tk_hw:'Hardware',tk_ext:'Extensions',
+  tk_devices:'Devices',tk_lang:'Grammar & voice',tk_bt:'Bluetooth',tk_cable:'Cable & serial',tk_phonehw:'Phone Bluetooth/USB',tk_web:'Website scan',tk_net:'Network scan',tk_ports:'Port check',tk_hash:'Hash lab',tk_mobile:'Mobile link',tk_hw:'Hardware',tk_ext:'Extensions',
   tk_extHint:'Add a new tool without rebuilding: drop a .js file into the plugins folder next to the app and press Reload. Sample plugins are already in that folder.',
   tk_reload:'Reload',tk_noext:'No extensions found. Put a .js file in the plugins folder.',tk_extRun:'Run',tk_extErr:'load error',
   tk_webHint:'Checks your own website for security misconfigurations (headers, cookies, HTTPS, version disclosure). This is passive — it only reads the page, it performs no attack.',
@@ -4339,6 +4340,10 @@ function showTkTab(id){
   else if(id==='lang')body.appendChild(tkLangPanel());
   else if(id==='bt')body.appendChild(tkBtPanel());
   else if(id==='cable')body.appendChild(tkCablePanel());
+  else if(id==='phonehw'){ var ph=el('div','tk-panel');
+    if(window.renderPhoneHwPanel)window.renderPhoneHwPanel(ph,deviceLevel());
+    else ph.appendChild(el('div','tk-hint','بخش گوشی بارگذاری نشد.'));
+    body.appendChild(ph); }
   else if(id==='comms')body.appendChild(tkCommsPanel());
   else if(id==='settings')body.appendChild(tkSettingsPanel());
   else if(id==='ext')body.appendChild(tkExtPanel());
