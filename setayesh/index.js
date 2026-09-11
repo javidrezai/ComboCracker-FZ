@@ -181,7 +181,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.76';
+const APP_VERSION = '9.9.77';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -911,6 +911,23 @@ app.get('/api/admin/integrity', requireAuth, requireAdmin, (req, res) => {
   res.json(frontendIntegrity());
 });
 
+// ---- Setayesh's face (the brain cover + the app logos) -------------------
+// The owner picks it: either one of the generated "luxury" looks (made free by
+// the same keyless image service the app already uses) or their own picture,
+// uploaded and kept LOCALLY so it always shows, even offline. Stored under
+// public/faces/ and excluded from updates so a new version never wipes it.
+const FACE_FILE = process.env.SETAYESH_FACE_FILE || path.join(DATA_DIR, '.setayesh-face.json');
+const FACES_DIR = path.join(DATA_DIR, 'public', 'faces');
+const FACE_EXT = { 'image/png': '.png', 'image/jpeg': '.jpg', 'image/webp': '.webp', 'image/gif': '.gif' };
+function faceSetting() { const d = loadJsonFile(FACE_FILE, {}); return { url: typeof d.url === 'string' ? d.url : '' }; }
+
+app.get('/api/face', requireAuth, (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json(faceSetting());
+});
+
+// (the POST that sets it is registered after multer is created, further down)
+
 app.get('/api/health', (req, res) => {
   res.json({ ok: true, aiConfigured: anyConfigured(), userCount: users.size });
 });
@@ -963,6 +980,36 @@ const TEXT_EXTENSIONS = new Set([
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: MAX_FILE_BYTES, files: 8 },
+});
+
+// Setting Setayesh's face needs multer, so it is registered here — right after
+// the uploader exists. Reading it (GET /api/face) is defined further up.
+app.post('/api/admin/face', requireAuth, requireAdmin, upload.single('file'), (req, res) => {
+  try {
+    // (a) an uploaded picture — saved locally, so it never depends on the net
+    if (req.file) {
+      const ext = FACE_EXT[req.file.mimetype];
+      if (!ext) return res.status(400).json({ error: 'فقط تصویر PNG، JPG، WEBP یا GIF.' });
+      if (req.file.size > 6 * 1024 * 1024) return res.status(400).json({ error: 'تصویر خیلی بزرگ است (حداکثر ۶ مگابایت).' });
+      fs.mkdirSync(FACES_DIR, { recursive: true });
+      for (const e of Object.values(FACE_EXT)) { try { fs.unlinkSync(path.join(FACES_DIR, 'setayesh' + e)); } catch (err) {} }
+      fs.writeFileSync(path.join(FACES_DIR, 'setayesh' + ext), req.file.buffer);
+      const url = '/faces/setayesh' + ext + '?t=' + Date.now();
+      saveJsonFile(FACE_FILE, { url });
+      return res.json({ ok: true, url });
+    }
+    // (b) a chosen generated look, or clearing back to the default
+    const raw = String((req.body && req.body.url) || '').trim();
+    if (!raw) { saveJsonFile(FACE_FILE, { url: '' }); return res.json({ ok: true, url: '' }); }
+    if (!/^https:\/\//i.test(raw) && !/^\/faces\//.test(raw)) {
+      return res.status(400).json({ error: 'فقط آدرس https یا تصویر آپلودشده.' });
+    }
+    if (raw.length > 1000) return res.status(400).json({ error: 'آدرس خیلی بلند است.' });
+    saveJsonFile(FACE_FILE, { url: raw });
+    res.json({ ok: true, url: raw });
+  } catch (e) {
+    res.status(500).json({ error: 'ذخیره نشد: ' + e.message });
+  }
 });
 
 const OFFICE_EXTENSIONS = new Set([
@@ -5887,6 +5934,7 @@ function isUpdatablePath(rel) {
   if (base.startsWith('.setayesh')) return false;
   if (rel.startsWith('pybrain/libs/') && base !== '.gitkeep' && base.toUpperCase() !== 'README.MD') return false;
   if (rel.startsWith('pybrain/vault/logs/') && base.toUpperCase() !== 'README.MD') return false;
+  if (rel.startsWith('public/faces/')) return false;   // the owner's chosen face is theirs, not ours
   if (rel === 'pybrain/vault/knowledge/app-memory.md') return false;
   return true;
 }

@@ -1,4 +1,4 @@
-/* SETAYESH_BUILD 9.9.76 */
+/* SETAYESH_BUILD 9.9.77 */
 (function(){
 'use strict';
 
@@ -563,7 +563,8 @@ function setAvatarInto(elm,username,size){ if(!elm)return; elm.textContent=''; e
 // pinned with a fixed seed so it stays the same every load. Used for the brand
 // logos here and for the brain cover in brainmap.js. If it can't load (offline)
 // callers fall back to the built-in star / SVG face.
-window.SETAYESH_FACE='https://image.pollinations.ai/prompt/'+encodeURIComponent('beautiful female humanoid AI robot, chrome and white cybernetic face, glowing cyan eyes, intricate mechanical robotic neck with cables, futuristic android, dark studio background, cinematic, ultra detailed, 3d render')+'?width=512&height=512&nologo=true&seed=7';
+window.SETAYESH_FACE_DEFAULT='https://image.pollinations.ai/prompt/'+encodeURIComponent('beautiful female humanoid AI robot, chrome and white cybernetic face, glowing cyan eyes, intricate mechanical robotic neck with cables, futuristic android, dark studio background, cinematic, ultra detailed, 3d render')+'?width=512&height=512&nologo=true&seed=7';
+window.SETAYESH_FACE=window.SETAYESH_FACE_DEFAULT;
 window.__brandStar='<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l2.4 6.2L21 10l-5.2 4 1.5 6.6L12 17l-5.3 3.6L8.2 14 3 10l6.6-1.8z"/></svg>';
 function setBrandFace(){
   ['.logo','.logo-sm'].forEach(function(sel){
@@ -577,6 +578,88 @@ function setBrandFace(){
   });
 }
 document.addEventListener('DOMContentLoaded',setBrandFace);
+
+/* ===== Setayesh's face: a few luxury looks, or your own picture =====
+   Each look is generated free by the keyless image service the app already
+   uses, so nothing is copied from a stock site. Your own upload is stored
+   locally inside the app, so it shows even with no internet. */
+var FACE_STYLES=[
+  {k:'کروم نقره‌ای',p:'luxury silver chrome female android, polished mirror finish, glowing cyan eyes, elegant, dark studio, rim light, ultra detailed, 3d render'},
+  {k:'کریستال',p:'female android made of translucent crystal glass, internal glowing blue light, elegant luxury, dark background, ultra detailed, 3d render'},
+  {k:'طلایی',p:'luxury female android with gold and white porcelain plating, intricate mechanical details, warm rim light, elegant, ultra detailed, 3d render'},
+  {k:'نئون',p:'cyberpunk female android portrait, neon blue and magenta lights, wet reflections, cinematic, ultra detailed, 3d render'},
+  {k:'چینی سفید',p:'white porcelain female android, minimal elegant design, soft studio light, glowing cyan eye, luxury, ultra detailed, 3d render'},
+  {k:'هولوگرام',p:'holographic female AI, iridescent translucent skin, glowing circuit patterns, floating light particles, dark background, ultra detailed'}
+];
+var FACE_SEED=7, FACE_PICK='';
+function faceUrl(prompt,seed){ return 'https://image.pollinations.ai/prompt/'+encodeURIComponent(prompt)+'?width=512&height=512&nologo=true&seed='+seed; }
+function renderFacePreview(url){
+  var box=$('faceCurrent'); if(!box)return;
+  box.innerHTML='';
+  if(!url){ box.innerHTML='<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#7e8fb5;font-size:10px">پیش‌فرض</div>'; return; }
+  var im=document.createElement('img'); im.src=url;
+  im.style.cssText='width:100%;height:100%;object-fit:cover;display:block';
+  im.onerror=function(){ box.innerHTML='<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#fb7185;font-size:10px">بارگذاری نشد</div>'; };
+  box.appendChild(im);
+}
+function renderFaceGrid(){
+  var g=$('faceGrid'); if(!g)return; g.innerHTML='';
+  FACE_STYLES.forEach(function(st,i){
+    var url=faceUrl(st.p,FACE_SEED+i*13);
+    var c=el('div'); c.style.cssText='position:relative;border-radius:12px;overflow:hidden;cursor:pointer;border:2px solid '+(FACE_PICK===url?'#22d3ee':'rgba(255,255,255,.12)')+';aspect-ratio:1;background:#0a0f1e';
+    var im=document.createElement('img'); im.src=url; im.loading='lazy';
+    im.style.cssText='width:100%;height:100%;object-fit:cover;display:block';
+    im.onerror=function(){ c.innerHTML='<div style="padding:6px;font-size:9.5px;color:#7e8fb5;text-align:center">بدون اینترنت</div>'; };
+    var cap=el('div'); cap.textContent=st.k;
+    cap.style.cssText='position:absolute;inset-inline:0;bottom:0;background:rgba(4,8,18,.72);color:#dbe4f7;font-size:10px;text-align:center;padding:3px';
+    c.appendChild(im); c.appendChild(cap);
+    c.addEventListener('click',function(){ FACE_PICK=url; renderFacePreview(url); renderFaceGrid(); var n=$('faceNote'); if(n){n.style.color='';n.textContent='«'+st.k+'» انتخاب شد — «ذخیرهٔ چهره» را بزن.';} });
+    g.appendChild(c);
+  });
+}
+function faceApply(url){
+  window.SETAYESH_FACE=url||window.SETAYESH_FACE_DEFAULT;
+  setBrandFace();
+}
+function loadFace(){
+  renderFaceGrid(); renderFacePreview(window.SETAYESH_FACE);
+  fetch('/api/face',{headers:authHeaders()}).then(function(r){return r.ok?r.json():null;}).then(function(d){
+    if(d&&d.url){ FACE_PICK=d.url; faceApply(d.url); renderFacePreview(d.url); }
+  }).catch(function(){});
+}
+function saveFace(url){
+  var n=$('faceNote'); if(n){n.style.color='';n.textContent='در حال ذخیره…';}
+  var fd=new FormData(); fd.append('url',url||'');
+  fetch('/api/admin/face',{method:'POST',headers:authHeaders(),body:fd})
+    .then(function(r){return r.json().then(function(d){return {ok:r.ok,d:d};});})
+    .then(function(x){
+      if(!x.ok||x.d.error){ if(n){n.style.color='#fb7185';n.textContent=x.d.error||'ذخیره نشد';} return; }
+      faceApply(x.d.url); renderFacePreview(x.d.url||window.SETAYESH_FACE);
+      if(n){n.style.color='#34d399';n.textContent=x.d.url?'چهره ذخیره شد ✓':'به پیش‌فرض برگشت ✓';}
+    }).catch(function(e){ if(n){n.style.color='#fb7185';n.textContent='خطا: '+e.message;} });
+}
+(function(){
+  var s=$('faceSave'); if(s)s.addEventListener('click',function(){ saveFace(FACE_PICK); });
+  var sh=$('faceShuffle'); if(sh)sh.addEventListener('click',function(){ FACE_SEED=Math.floor(Math.random()*9000)+10; renderFaceGrid(); });
+  var rs=$('faceReset'); if(rs)rs.addEventListener('click',function(){ FACE_PICK=''; saveFace(''); renderFaceGrid(); });
+  var ub=$('faceUploadBtn'), uf=$('faceFile');
+  if(ub&&uf){
+    ub.addEventListener('click',function(){ uf.click(); });
+    uf.addEventListener('change',function(){
+      if(!this.files||!this.files[0])return;
+      var f=this.files[0]; this.value='';
+      var n=$('faceNote'); if(n){n.style.color='';n.textContent='در حال آپلود…';}
+      var fd=new FormData(); fd.append('file',f);
+      fetch('/api/admin/face',{method:'POST',headers:authHeaders(),body:fd})
+        .then(function(r){return r.json().then(function(d){return {ok:r.ok,d:d};});})
+        .then(function(x){
+          if(!x.ok||x.d.error){ if(n){n.style.color='#fb7185';n.textContent=x.d.error||'آپلود نشد';} return; }
+          FACE_PICK=x.d.url; faceApply(x.d.url); renderFacePreview(x.d.url); renderFaceGrid();
+          if(n){n.style.color='#34d399';n.textContent='عکس خودت ذخیره شد ✓ (محلی — بدون اینترنت هم باز می‌شود)';}
+        }).catch(function(e){ if(n){n.style.color='#fb7185';n.textContent='خطا: '+e.message;} });
+    });
+  }
+})();
 
 // Age-appropriate motivational + learning lines (English). Younger set for Fardin (~8),
 // older set for Setayesh (~11–12). A fresh one shows each time, never repeating twice in a row.
@@ -1217,6 +1300,7 @@ async function enterApp(){
       if(!CFG.isAdmin) simplifyForFamily();
       showVersion();
       if(CFG.isAdmin){ startNotifications(); checkIntegrity(); }
+      loadFace();   // every account sees the chosen face on the logos
       removeDuplicateSettings();
       renderPhoneAccess();
       // Identify this device and let the server pick the right layout.
@@ -1694,6 +1778,7 @@ function ccTab(which){
   });
   if(which==='users')loadCCUsers();
   if(which==='power'){loadCCBrainLibs();loadCCLocalModels();loadCCSearchEngines();}
+  if(which==='look'){renderFaceGrid();renderFacePreview(window.SETAYESH_FACE);}
   if(which==='privacy')loadCCPrivacy();
   if(which==='devices')loadCCDevices();
   if(which==='look')loadCCLook();

@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- SETAYESH_BUILD 9.9.76 -->
+<!-- SETAYESH_BUILD 9.9.77 -->
 <html lang="fa" dir="rtl">
 <head>
 <meta charset="UTF-8">
@@ -655,6 +655,21 @@
 
     <div id="ccLook" class="ccpane" style="display:none">
       <div class="tk-hint" style="margin-bottom:12px">بدون دست‌زدن به کد. تغییر بده، ذخیره کن، صفحه را رفرش کن.</div>
+
+      <div class="side-label" style="padding:0;margin-bottom:6px">چهرهٔ ستایش</div>
+      <div class="tk-hint" style="margin-bottom:8px">یکی از چهره‌های لوکس زیر را انتخاب کن، یا عکس دلخواه خودت را آپلود کن. چهرهٔ انتخابی هم روی صفحهٔ مغز و هم روی آیکون ستایش می‌نشیند.</div>
+      <div class="tk-row" style="gap:10px;align-items:center;margin-bottom:10px">
+        <div id="faceCurrent" style="width:74px;height:74px;border-radius:16px;overflow:hidden;border:1px solid rgba(123,92,255,.4);background:#0a0f1e;flex:none"></div>
+        <div id="faceNote" style="font-size:11.5px;color:var(--muted);line-height:1.7;flex:1"></div>
+      </div>
+      <div id="faceGrid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px"></div>
+      <div class="tk-row" style="gap:8px;flex-wrap:wrap;margin-bottom:14px">
+        <button class="btn" id="faceSave" style="font-size:12px;padding:8px 16px">ذخیرهٔ چهره</button>
+        <button class="btn ghost" id="faceShuffle" style="font-size:12px;padding:8px 14px">🎲 نمونه‌های تازه</button>
+        <button class="btn ghost" id="faceUploadBtn" style="font-size:12px;padding:8px 14px">⬆️ آپلود عکس خودم</button>
+        <button class="btn ghost" id="faceReset" style="font-size:12px;padding:8px 14px">پیش‌فرض</button>
+        <input type="file" id="faceFile" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
+      </div>
 
       <div class="side-label" style="padding:0;margin-bottom:6px">اسم برنامه</div>
       <input class="input" id="thName" placeholder="Setayesh AI" style="margin-bottom:12px">
