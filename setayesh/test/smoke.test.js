@@ -61,6 +61,8 @@ before(async () => {
     SETAYESH_HOMEDEV_FILE: path.join(tmp, 'homedevices.json'),
     SETAYESH_NOTIFY_FILE: path.join(tmp, 'notify.json'),
     SETAYESH_SYNC_FILE: path.join(tmp, 'sync.json'),
+    SETAYESH_CHATS_DIR: path.join(tmp, 'chats'),
+    SETAYESH_HEALTH_FILE: path.join(tmp, 'engine-health.json'),
   });
   child = spawn(process.execPath, [path.join(ROOT, 'index.js')], { cwd: tmp, env, stdio: 'ignore' });
   child.on('error', (e) => { throw e; });
@@ -71,7 +73,8 @@ after(() => {
   try { child && child.kill('SIGKILL'); } catch (e) {}
   try { if (tmp) fs.rmSync(tmp, { recursive: true, force: true }); } catch (e) {}
   // A couple of files have no env override and land next to index.js; tidy them.
-  for (const f of ['.setayesh-connectors.json', '.setayesh-sessions.json', '.setayesh-pending-verify.json']) {
+  for (const f of ['.setayesh-connectors.json', '.setayesh-sessions.json', '.setayesh-pending-verify.json',
+                   '.setayesh-engine-health.json']) {
     try { fs.rmSync(path.join(ROOT, f), { force: true }); } catch (e) {}
   }
   try { fs.rmSync(path.join(ROOT, 'code-library'), { recursive: true, force: true }); } catch (e) {}
@@ -433,4 +436,121 @@ test('local RAG indexes a memory and finds it by search', async () => {
   assert.ok(Array.isArray(res.results) && res.results.length > 0, 'expected a RAG hit');
   assert.match(res.results[0].snippet, /دندانپزشک/);
   assert.ok(res.results[0].score > 0, 'expected a positive relevance score');
+});
+
+// ---- Chat memory ----
+// The rule the owner set: a conversation is kept until HE deletes it. The bug
+// this guards is the old replace-the-whole-file sync, where a device holding
+// only the newest conversations silently deleted every older one on its next
+// save. Merge semantics are what make "keep them all" true, so they are tested.
+test('chats are merged, never replaced — an old device cannot wipe the archive', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+
+  const first = { id: 'chat-old', title: 'قدیمی', updated: 1000, messages: [{ role: 'user', text: 'یک' }] };
+  await api('/api/chats', { method: 'PUT', token, body: { t: 1000, chats: [first] } });
+
+  // A second device pushes only its own newer conversation — it must not
+  // delete the one it has never seen.
+  const second = { id: 'chat-new', title: 'تازه', updated: 2000, messages: [{ role: 'user', text: 'دو' }] };
+  await api('/api/chats', { method: 'PUT', token, body: { t: 2000, chats: [second] } });
+
+  const after = await (await api('/api/chats', { token })).json();
+  const ids = after.chats.map((c) => c.id).sort();
+  assert.deepEqual(ids, ['chat-new', 'chat-old'], 'both conversations must survive the merge');
+});
+
+test('an older copy of a chat never overwrites a newer one', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  await api('/api/chats', { method: 'PUT', token, body: { t: 5000, chats: [{ id: 'c-race', title: 'جدید', updated: 5000 }] } });
+  await api('/api/chats', { method: 'PUT', token, body: { t: 5001, chats: [{ id: 'c-race', title: 'کهنه', updated: 100 }] } });
+  const d = await (await api('/api/chats', { token })).json();
+  const row = d.chats.find((c) => c.id === 'c-race');
+  assert.equal(row.title, 'جدید', 'a stale device copy must not clobber the newer one');
+});
+
+test('deleting a chat removes it for good and it cannot come back on the next sync', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  await api('/api/chats', { method: 'PUT', token, body: { t: 7000, chats: [{ id: 'c-gone', title: 'حذفی', updated: 7000 }] } });
+
+  const del = await api('/api/chats/c-gone', { method: 'DELETE', token });
+  assert.equal(del.status, 200);
+
+  // Another device that still has the chat re-pushes it — the tombstone wins.
+  await api('/api/chats', { method: 'PUT', token, body: { t: 8000, chats: [{ id: 'c-gone', title: 'حذفی', updated: 8000 }] } });
+  const d = await (await api('/api/chats', { token })).json();
+  assert.equal(d.chats.filter((c) => c.id === 'c-gone').length, 0, 'a deleted chat must stay deleted');
+});
+
+// ---- Engine routing & health ----
+test('engine health reports what each engine is good at, and can be reset', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  const d = await (await api('/api/admin/engine-health', { token })).json();
+  assert.ok(Array.isArray(d.engines), 'expected an engines array');
+  for (const e of d.engines) {
+    assert.ok(Array.isArray(e.strong), 'every engine must carry routing hints');
+    assert.equal(typeof e.quarantined, 'boolean');
+  }
+  const reset = await api('/api/admin/engine-health/reset', { method: 'POST', token, body: {} });
+  assert.equal(reset.status, 200);
+  const bad = await api('/api/admin/engine-health/reset', { method: 'POST', token, body: { id: 'nope' } });
+  assert.equal(bad.status, 400);
+});
+
+test('every engine carries the routing metadata the router needs', () => {
+  const { PROVIDERS } = require(path.join(ROOT, 'providers.js'));
+  for (const [id, p] of Object.entries(PROVIDERS)) {
+    assert.ok(Number.isFinite(p.speed), `${id} is missing a speed hint`);
+    assert.ok(Array.isArray(p.strong) && p.strong.length, `${id} is missing its strengths`);
+  }
+});
+
+// ---- Automatic failover ----
+// The regression this guards is subtle and was live for a long time: the
+// failover in /api/chat referenced a `const` declared INSIDE the try block it
+// was catching for, so every substitute engine threw ReferenceError before it
+// ever reached the network. The failover looked implemented, marked each
+// engine as broken, and always showed the first engine's error. This test
+// stands up two fake engines — one that always rate-limits, one that answers —
+// and insists the answer comes back from the healthy one.
+test('a rate-limited engine fails over to a healthy one and still answers', async (t) => {
+  const http = require('node:http');
+  const stub = http.createServer((req, res) => {
+    let body = '';
+    req.on('data', (c) => { body += c; });
+    req.on('end', () => {
+      if (req.url.startsWith('/bad/')) {
+        res.writeHead(429, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ error: { message: 'rate limit exceeded' } }));
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(req.url.endsWith('/chat/completions')
+        ? { choices: [{ message: { content: 'پاسخ از موتور سالم' } }] }
+        : { data: [] }));
+    });
+  });
+  await new Promise((r) => stub.listen(0, '127.0.0.1', r));
+  const sp = stub.address().port;
+  t.after(() => stub.close());
+
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  for (const [id, label, url] of [
+    ['failtest', 'Always Rate Limited', `http://127.0.0.1:${sp}/bad/v1`],
+    ['worktest', 'Always Works', `http://127.0.0.1:${sp}/good/v1`],
+  ]) {
+    const r = await api('/api/admin/providers/custom', { method: 'POST', token, body: { id, label, baseUrl: url, models: 'm1', key: 'k' } });
+    assert.equal(r.status, 200, `could not register ${id}`);
+  }
+
+  const r = await api('/api/chat', { method: 'POST', token, body: { message: 'سلام', provider: 'failtest', model: 'm1', auto: 'false' } });
+  assert.equal(r.status, 200, 'a rate-limited engine must not surface as an HTTP error');
+  const d = await r.json();
+  assert.ok(!d.error, 'the user must not be shown a provider error: ' + d.error);
+  assert.ok(d.reply, 'expected an actual answer');
+  assert.notEqual(d.provider, 'failtest', 'the answer must come from a different engine');
+  assert.ok(d.failedOver, 'the response must say which engine was substituted');
+
+  // Clean up so the fakes do not linger in the engine list for other tests.
+  for (const id of ['failtest', 'worktest']) {
+    await api('/api/admin/providers/custom/' + id, { method: 'DELETE', token });
+  }
 });

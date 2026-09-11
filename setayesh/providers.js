@@ -6,6 +6,11 @@ const PROVIDERS = {
   anthropic: {
     label: 'Anthropic · Claude',
     kind: 'anthropic',
+    // Routing hints (see routeEngine in index.js): what this engine is good at,
+    // and roughly how fast it answers (5 = fastest). Used to pick the best
+    // engine per question instead of always hitting the same one.
+    speed: 3,
+    strong: ['code', 'reasoning', 'tools', 'long', 'vision', 'writing', 'analysis'],
     baseUrl: 'https://api.anthropic.com/v1',
     free: false,
     nativePdf: true,
@@ -20,6 +25,8 @@ const PROVIDERS = {
   gemini: {
     label: 'Google · Gemini',
     kind: 'openai',
+    speed: 4,
+    strong: ['vision', 'long', 'writing', 'general', 'current'],
     baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
     free: true,
     nativePdf: false,
@@ -32,6 +39,8 @@ const PROVIDERS = {
   groq: {
     label: 'Groq · ultra-fast',
     kind: 'openai',
+    speed: 5,
+    strong: ['fast', 'chat', 'general'],
     baseUrl: 'https://api.groq.com/openai/v1',
     free: true,
     nativePdf: false,
@@ -46,6 +55,8 @@ const PROVIDERS = {
   openrouter: {
     label: 'OpenRouter · many models',
     kind: 'openai',
+    speed: 3,
+    strong: ['code', 'general', 'vision'],
     baseUrl: 'https://openrouter.ai/api/v1',
     free: true,
     nativePdf: false,
@@ -60,6 +71,8 @@ const PROVIDERS = {
   cerebras: {
     label: 'Cerebras · fast',
     kind: 'openai',
+    speed: 5,
+    strong: ['fast', 'chat', 'code'],
     baseUrl: 'https://api.cerebras.ai/v1',
     free: true,
     nativePdf: false,
@@ -73,6 +86,8 @@ const PROVIDERS = {
   mistral: {
     label: 'Mistral',
     kind: 'openai',
+    speed: 4,
+    strong: ['code', 'writing', 'general'],
     baseUrl: 'https://api.mistral.ai/v1',
     free: true,
     nativePdf: false,
@@ -86,6 +101,8 @@ const PROVIDERS = {
   openai: {
     label: 'OpenAI',
     kind: 'openai',
+    speed: 3,
+    strong: ['code', 'reasoning', 'tools', 'vision', 'general'],
     baseUrl: 'https://api.openai.com/v1',
     free: false,
     nativePdf: false,
@@ -102,6 +119,8 @@ const PROVIDERS = {
   brain: {
     label: 'مغز محلی ستایش (پایتون)',
     kind: 'brain',
+    speed: 2,
+    strong: ['memory', 'private'],
     free: true,
     nativePdf: false,
     vision: false,
@@ -112,6 +131,8 @@ const PROVIDERS = {
   local: {
     label: 'Local server (Ollama / LM Studio)',
     kind: 'openai',
+    speed: 1,
+    strong: ['private', 'general'],
     baseUrl: 'http://localhost:11434/v1',
     free: true,
     nativePdf: false,

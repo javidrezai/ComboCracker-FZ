@@ -39,6 +39,31 @@ via the app's own self-editing feature.
   install and warn the admin — the guard against the "my UI change never
   showed up" bug class.
 
+## Engine routing, failover and chat memory
+- **The failover in `/api/chat` must be able to see everything it passes on.**
+  Anything the `catch` block hands to a substitute engine (`callOpts`,
+  `messages`, `toolCtx`, `safe`) has to be declared OUTSIDE the `try` it is
+  catching for. It was not, once, and every substitute call threw
+  `ReferenceError` before reaching the network — the failover marked each
+  engine broken and the user always saw the first engine's error. A smoke test
+  now stands up two fake engines and asserts the answer comes from the healthy
+  one; keep it.
+- `classifyQuestion()` + `rankEngines()` pick the engine per question; health
+  outweighs talent, and `noteEngine()` escalates the cooldown and quarantines
+  an engine after three failures in a row. Health persists in
+  `.setayesh-engine-health.json` so a restart doesn't re-discover a dead key.
+- **A chat failure must never reach the user as an HTTP error.** After failover
+  she tries the keyless local engines, and if even those are gone she answers
+  in her own voice with `degraded` set — honest about what is wrong, never a
+  red box.
+- **Chat memory is kept until the owner deletes it.** Nothing expires and
+  nothing is trimmed to make room. `PUT /api/chats` MERGES (a device with a
+  short local list must never wipe the archive) and only an explicit delete —
+  which writes a tombstone so it stays deleted on every device — removes a
+  conversation.
+- `LOCAL_FIRST=1` routes adults through the on-device engine (private but
+  slow). Children are local-first regardless: that guarantee is theirs.
+
 ## Layout
 - `index.js` — server (routes, chat/engine routing, 29 AI tools, admin,
   self-heal). **Still a monolith — split module by module, behind tests** (rule 3.4).

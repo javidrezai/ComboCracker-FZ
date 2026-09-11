@@ -1,4 +1,4 @@
-/* SETAYESH_BUILD 9.9.81 */
+/* SETAYESH_BUILD 9.9.82 */
 (function(){
 'use strict';
 
@@ -321,7 +321,7 @@ async function doLogin(){
 
 async function doLogout(){
   try{await fetch('/api/logout',{method:'POST',headers:authHeaders()});}catch(e){}
-  token=null;currentUsername='';chats=[];activeChat=null;pendingFiles=[];
+  token=null;currentUsername='';chats=[];activeChat=null;pendingFiles=[];_deletedChats=[];_lastChatsT=0;
   sessionStorage.removeItem(TOKEN_KEY);sessionStorage.removeItem(USER_KEY);
   // Logging out must also drop the device trust — otherwise the next page
   // load would sign straight back in and "log out" would mean nothing.
@@ -445,6 +445,7 @@ function renderChatList(){
     var x=el('button','x','×');x.type='button';
     x.addEventListener('click',function(ev){
       ev.stopPropagation();
+      markDeleted(c.id);
       chats=chats.filter(function(o){return o.id!==c.id;});
       if(activeChat&&activeChat.id===c.id)activeChat=chats[0]||null;
       if(!activeChat)newChat();else{renderChatList();renderThread();}
@@ -456,39 +457,66 @@ function renderChatList(){
   });
 }
 
-/* ===== chat memory: keep each user's conversations (per browser, ~30 days) ===== */
+/* ===== chat memory =====
+   Every conversation is kept — open or long finished — until it is deleted on
+   purpose. Nothing expires and nothing is dropped to make room: the browser
+   keeps a copy for instant load and the server keeps the real archive, and a
+   delete here is sent to the server as a tombstone so it stays deleted on
+   every device instead of coming back on the next sync. */
 function chatsKey(){return 'setayesh.chats.'+(currentUsername||'default');}
-var _lastChatsT=0;
-function slimChats(){
-  return chats.slice(0,25).map(function(c){
-    return {id:c.id,title:c.title,mode:c.mode,history:(c.history||[]).slice(-24),
-      messages:(c.messages||[]).slice(-60).map(function(m){
-        return {role:m.role,text:m.text,error:m.error,model:m.model,elapsedMs:m.elapsedMs,files:m.files,compare:m.compare,
-          image:(m.image&&m.image.indexOf('data:')!==0)?m.image:''};
-      })};
-  });
+function deletedKey(){return 'setayesh.chats.deleted.'+(currentUsername||'default');}
+var _lastChatsT=0,_deletedChats=[];
+function loadDeleted(){
+  try{var d=JSON.parse(localStorage.getItem(deletedKey())||'[]');_deletedChats=Array.isArray(d)?d:[];}catch(e){_deletedChats=[];}
 }
+function markDeleted(id){
+  if(_deletedChats.indexOf(id)<0)_deletedChats.push(id);
+  if(_deletedChats.length>2000)_deletedChats=_deletedChats.slice(-2000);
+  try{localStorage.setItem(deletedKey(),JSON.stringify(_deletedChats));}catch(e){}
+  /* Tell the server straight away so the chat is gone everywhere, not just here. */
+  if(token)fetch('/api/chats/'+encodeURIComponent(id),{method:'DELETE',headers:authHeaders()}).catch(function(){});
+}
+function slimChat(c){
+  return {id:c.id,title:c.title,mode:c.mode,updated:c.updated||Date.now(),
+    history:(c.history||[]).slice(-24),
+    messages:(c.messages||[]).slice(-200).map(function(m){
+      return {role:m.role,text:m.text,error:m.error,model:m.model,elapsedMs:m.elapsedMs,files:m.files,compare:m.compare,
+        image:(m.image&&m.image.indexOf('data:')!==0)?m.image:''};
+    })};
+}
+function slimChats(){ return chats.map(slimChat); }
 function saveChats(){
   try{
+    if(activeChat)activeChat.updated=Date.now();
     var slim=slimChats();
     _lastChatsT=Date.now();
-    localStorage.setItem(chatsKey(),JSON.stringify({t:_lastChatsT,chats:slim}));
+    try{ localStorage.setItem(chatsKey(),JSON.stringify({t:_lastChatsT,chats:slim})); }
+    catch(e){
+      /* The browser quota is finite; the server archive is not. If we can't fit
+         everything locally, keep the most recent conversations here and let the
+         server hold the rest — never silently lose the old ones. */
+      try{ localStorage.setItem(chatsKey(),JSON.stringify({t:_lastChatsT,chats:slim.slice(0,30)})); }catch(e2){}
+    }
     pushChatsToServer(slim,_lastChatsT);
   }catch(e){}
 }
 function loadChats(){
+  loadDeleted();
   try{
     var raw=JSON.parse(localStorage.getItem(chatsKey())||'null');
-    if(raw&&raw.chats&&(Date.now()-(raw.t||0))<30*864e5){chats=raw.chats;_lastChatsT=raw.t||0;}else{chats=[];_lastChatsT=0;}
+    chats=(raw&&Array.isArray(raw.chats))?raw.chats:[];
+    _lastChatsT=(raw&&raw.t)||0;
   }catch(e){chats=[];_lastChatsT=0;}
   activeChat=chats[0]||null;
 }
 /* Cross-device sync: push our copy (debounced) so the phone/tablet/PC on this
-   same account converge. Last write wins by timestamp — plenty for a family. */
+   same account converge. The server MERGES what we send with what it already
+   has, so a device with a short local list can never wipe the archive; the
+   only thing that removes a conversation is an explicit delete. */
 var _pushTimer=null,_pushPending=null;
 function pushChatsToServer(slim,t){
   if(!token)return;
-  _pushPending={t:t,chats:slim};
+  _pushPending={t:t,chats:slim,deleted:_deletedChats};
   if(_pushTimer)clearTimeout(_pushTimer);
   _pushTimer=setTimeout(function(){
     var body=_pushPending; _pushPending=null; if(!body)return;
@@ -499,17 +527,30 @@ function syncChatsFromServer(done){
   if(!token){ if(done)done(); return; }
   fetch('/api/chats',{headers:authHeaders()}).then(function(r){return r.json();}).then(function(d){
     if(d&&Array.isArray(d.chats)){
-      var serverT=d.t||0;
-      if(serverT>_lastChatsT&&d.chats.length){
-        // Another device saved something newer — adopt it here.
-        chats=d.chats; _lastChatsT=serverT;
-        try{localStorage.setItem(chatsKey(),JSON.stringify({t:serverT,chats:chats}));}catch(e){}
-        activeChat=chats[0]||null;
-        renderChatList(); renderThread();
-      } else if(_lastChatsT>serverT&&chats.length){
-        // Our copy is newer — push so the other devices catch up.
-        pushChatsToServer(slimChats(),_lastChatsT);
+      /* Union, not replace. Take the newer copy of anything we both have, keep
+         whatever only one side has, and honour deletions from either side —
+         so nothing is ever lost just because a device was offline. */
+      var gone={},i;
+      (d.deleted||[]).concat(_deletedChats).forEach(function(id){gone[String(id)]=1;});
+      var byId={},order=[];
+      function put(c){
+        if(!c||!c.id||gone[String(c.id)])return;
+        var id=String(c.id),prev=byId[id];
+        if(prev){ if((c.updated||0)>(prev.updated||0))byId[id]=c; }
+        else { byId[id]=c; order.push(id); }
       }
+      for(i=0;i<chats.length;i++)put(chats[i]);
+      for(i=0;i<d.chats.length;i++)put(d.chats[i]);
+      var merged=order.map(function(id){return byId[id];})
+        .sort(function(a,b){return (b.updated||0)-(a.updated||0);});
+      var changed=merged.length!==chats.length;
+      chats=merged;
+      _lastChatsT=Math.max(_lastChatsT,d.t||0);
+      try{localStorage.setItem(chatsKey(),JSON.stringify({t:_lastChatsT,chats:chats}));}catch(e){}
+      if(!activeChat||!byId[String(activeChat.id)])activeChat=chats[0]||null;
+      renderChatList(); renderThread();
+      /* If we hold anything the server doesn't, push it up now. */
+      if(changed||chats.length>d.chats.length)pushChatsToServer(slimChats(),Date.now());
     }
     if(done)done();
   }).catch(function(){ if(done)done(); });
@@ -1097,6 +1138,9 @@ function syncPrefsFromServer(done){
 }
 function clearAllChats(){
   if(!confirm(t('clearChatsConfirm')))return;
+  /* An explicit "delete everything" is the one case that clears the archive —
+     so it has to reach the server too, or the next sync brings them all back. */
+  chats.forEach(function(c){markDeleted(c.id);});
   chats=[];activeChat=null;
   newChat();renderChatList();renderThread();
   closeSettings();closeSidebar();
@@ -2239,6 +2283,7 @@ function loadCCDevices(){
   }).catch(function(e){box.innerHTML='';ccNote(e.message,true);});
 }
 function loadCC(){
+  loadEngineHealth();
   adminFetch('/api/admin/settings').then(function(d){
     CC.settings=d;
     var L=d.live;
@@ -2363,6 +2408,41 @@ function loadAutonomy(){
       .catch(function(e){ cb.checked=!cb.checked; if(n){n.style.color='#fb7185';n.textContent=e.message;} });
   });
 }
+/* Live engine health: which engine is answering, which one she has taken out
+   of the rotation by itself, and how fast each one actually is here. */
+function loadEngineHealth(){
+  var box=$('ccHealth'); if(!box)return;
+  adminFetch('/api/admin/engine-health').then(function(d){
+    box.innerHTML='';
+    (d.engines||[]).forEach(function(e){
+      var state=e.quarantined?'از دور خارج':(e.cooling?('استراحت · '+Math.ceil(e.coolingFor/60)+' دقیقه'):'سالم');
+      var col=e.quarantined?'#fb7185':(e.cooling?'#fbbf24':'#34d399');
+      var row=el('div','tk-card');
+      row.setAttribute('style','padding:9px 11px;margin-bottom:6px;display:flex;gap:10px;align-items:center;flex-wrap:wrap');
+      var dot=el('span');dot.setAttribute('style','width:9px;height:9px;border-radius:50%;background:'+col+';flex:none');
+      var name=el('span');name.textContent=e.label+(e.isDefault?' (پیش‌فرض)':'');
+      name.setAttribute('style','font-size:12.5px;flex:1;min-width:120px');
+      var stat=el('span');
+      stat.textContent=state+' · ✓'+e.ok+' ✕'+e.fail+(e.avgMs?(' · '+(e.avgMs/1000).toFixed(1)+'s'):'');
+      stat.setAttribute('style','font-size:11px;color:'+col);
+      row.appendChild(dot);row.appendChild(name);row.appendChild(stat);
+      if(e.needsAttention){
+        var w=el('div');w.textContent=e.needsAttention;
+        w.setAttribute('style','flex-basis:100%;font-size:11px;color:#fbbf24;margin-top:2px');
+        row.appendChild(w);
+      }
+      box.appendChild(row);
+    });
+    if(!(d.engines||[]).length)box.innerHTML='<div class="tk-hint">هنوز موتوری تنظیم نشده.</div>';
+  }).catch(function(){});
+  var rb=$('ccHealthReset');
+  if(rb&&!rb._wired){ rb._wired=true; rb.addEventListener('click',function(){
+    adminFetch('/api/admin/engine-health/reset',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})
+      .then(function(){ ccNote('همه‌ی موتورها دوباره در چرخه‌اند.'); loadEngineHealth(); })
+      .catch(function(e){ ccNote(e.message,true); });
+  }); }
+}
+
 /* Hide/show a built-in engine, then delete/add a custom one. Persists at once. */
 function toggleEngineHidden(id,hide){
   var set=(CC.hidden||[]).filter(function(x){return x!==id;});

@@ -181,7 +181,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.81';
+const APP_VERSION = '9.9.82';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -1324,10 +1324,23 @@ async function buildUserContent(files, message, providerId) {
 
 // ---------------- Provider calls ----------------
 const REQUEST_TIMEOUT_MS = 120000;
+// How long to wait on ONE AI engine before giving up on it and asking another.
+// The local engine (Ollama on a home PC) is genuinely slower, so it gets its
+// own, longer leash.
+const PROVIDER_TIMEOUT_MS = Number(process.env.SETAYESH_PROVIDER_TIMEOUT_MS) || 60000;
+const LOCAL_PROVIDER_TIMEOUT_MS = Number(process.env.SETAYESH_LOCAL_TIMEOUT_MS) || 180000;
+function providerTimeout(providerId) {
+  return (providerId === 'local' || providerId === 'brain') ? LOCAL_PROVIDER_TIMEOUT_MS : PROVIDER_TIMEOUT_MS;
+}
 
 async function fetchWithTimeout(url, options) {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  // A single provider call gets a much shorter leash than a file download.
+  // Waiting two minutes on an engine that has silently stalled is the single
+  // biggest source of "why is she so slow" — at 60s the failover has already
+  // asked another engine and come back with an answer.
+  const ms = (options && options.timeoutMs) || REQUEST_TIMEOUT_MS;
+  const timer = setTimeout(() => controller.abort(), ms);
   try {
     return await fetch(url, { ...options, signal: controller.signal });
   } finally {
@@ -1344,6 +1357,7 @@ async function callAnthropic(providerId, model, systemPrompt, messages, opts) {
   opts = opts || {};
   const res = await fetchWithTimeout(`${baseUrlFor(providerId)}/messages`, {
     method: 'POST',
+    timeoutMs: providerTimeout(providerId),
     headers: {
       'Content-Type': 'application/json',
       'x-api-key': keys[providerId],
@@ -1372,6 +1386,7 @@ async function callOpenAiCompatible(providerId, model, systemPrompt, messages, _
 
   const res = await fetchWithTimeout(`${baseUrlFor(providerId)}/chat/completions`, {
     method: 'POST',
+    timeoutMs: providerTimeout(providerId),
     headers,
     body: JSON.stringify(Object.assign({
       model,
@@ -1779,6 +1794,20 @@ const TOOLS_SPEC = [
       type: 'object',
       properties: { password: { type: 'string' } },
       required: ['password'],
+    },
+  },
+  {
+    // "Check my email" has to work regardless of HOW the mailbox is wired up.
+    // The house has two independent paths — the Google connector (OAuth) and
+    // a plain IMAP login with an App Password — and before this tool existed
+    // the chat could only ever see the Google one, so an IMAP-only household
+    // was told the mailbox did not exist. This tool takes whichever is
+    // configured and working. Read-only by design.
+    name: 'check_email',
+    description: "Check the owner's inbox and list the most recent emails (sender, subject, date, and a short preview). This is THE tool to use whenever the owner asks about their email, mail or inbox — e.g. «ایمیل‌ها رو چک کن», 'any new mail?', 'what's in my inbox'. It works with whichever mailbox is set up on this machine (Google connector or IMAP). Read-only.",
+    input_schema: {
+      type: 'object',
+      properties: { limit: { type: 'number', description: '1–25, default 10' } },
     },
   },
   {
@@ -2706,6 +2735,28 @@ async function dispatchTool(name, input, ctx) {
         return toolkit.identifyHash(input.hash);
       case 'password_strength':
         return toolkit.passwordStrength(input.password);
+      case 'check_email': {
+        // Prefer whichever mailbox is actually connected; try the other one if
+        // the first errors out, so a half-broken Google token doesn't hide a
+        // perfectly good IMAP login.
+        const lim = Math.max(1, Math.min(25, Number(input.limit) || 10));
+        const errors = [];
+        if (connectors.connected()) {
+          try {
+            const d = await connectors.gmailList(lim);
+            if (d && !d.error) return { source: 'gmail', readOnly: false, ...d };
+            if (d && d.error) errors.push('Gmail: ' + d.error);
+          } catch (e) { errors.push('Gmail: ' + e.message); }
+        }
+        if (mailConfigured()) {
+          try {
+            const d = await imapFetch({ limit: lim });
+            return { source: 'imap', account: cfg.MAIL_USER, readOnly: true, ...d };
+          } catch (e) { errors.push('IMAP: ' + e.message); }
+        }
+        if (errors.length) return { error: 'صندوق ایمیل باز نشد — ' + errors.join(' / ') };
+        return { error: 'هنوز هیچ ایمیلی وصل نشده. در «کانکتورها» گوگل را وصل کن، یا در مرکز کنترل بخش ایمیل، آدرس و App Password را وارد کن.' };
+      }
       case 'gmail_list':
         return await connectors.gmailList(input.limit);
       case 'gmail_read':
@@ -2754,6 +2805,12 @@ function toolsFor(ctx) {
     if (['gmail_list', 'gmail_read', 'gmail_send', 'calendar_list', 'calendar_add'].includes(t.name)) {
       return !!(ctx && ctx.isAdmin) && connectors.connected();
     }
+    // "Check my email" is offered as soon as EITHER mailbox is set up — the
+    // Google connector or a plain IMAP login. Admin only, like the mailbox
+    // itself; a child's session never sees it.
+    if (t.name === 'check_email') {
+      return !!(ctx && ctx.isAdmin) && (connectors.connected() || mailConfigured());
+    }
     return true;
   });
 }
@@ -2764,6 +2821,7 @@ async function callAnthropicWithTools(providerId, model, systemPrompt, messages,
   for (let round = 0; round < 4; round++) {
     const res = await fetchWithTimeout(`${baseUrlFor(providerId)}/messages`, {
       method: 'POST',
+      timeoutMs: providerTimeout(providerId),
       headers: {
         'Content-Type': 'application/json',
         'x-api-key': keys[providerId],
@@ -2812,6 +2870,7 @@ async function callOpenAiWithTools(providerId, model, systemPrompt, messages, ct
   for (let round = 0; round < 4; round++) {
     const res = await fetchWithTimeout(`${baseUrlFor(providerId)}/chat/completions`, {
       method: 'POST',
+      timeoutMs: providerTimeout(providerId),
       headers,
       body: JSON.stringify(Object.assign(
         { model, max_tokens: opts.maxTokens || 4096, messages: convo, tools, tool_choice: 'auto' },
@@ -2897,6 +2956,7 @@ async function callGeminiNative(model, systemPrompt, history, message, files, op
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(GEMINI_MODEL)}:generateContent?key=${encodeURIComponent(keys.gemini || '')}`;
   const res = await fetchWithTimeout(url, {
     method: 'POST',
+    timeoutMs: providerTimeout('gemini'),
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
@@ -2976,25 +3036,74 @@ function pinnedProviderFor(username) {
 // Rather than always hitting the configured default and failing, remember how
 // each engine has actually behaved and prefer the one most likely to answer.
 // Purely local bookkeeping — no extra calls, no cost.
-const engineHealth = {};   // id -> { ok, fail, lastFail, lastOk, cooldownUntil }
+// id -> { ok, fail, streak, lastFail, lastOk, cooldownUntil, quarantined, avgMs }
+const engineHealth = {};
+const HEALTH_FILE = process.env.SETAYESH_HEALTH_FILE || path.join(DATA_DIR, '.setayesh-engine-health.json');
 
-function noteEngine(id, success, status, detail) {
-  const h = engineHealth[id] || (engineHealth[id] = { ok: 0, fail: 0, lastFail: 0, lastOk: 0, cooldownUntil: 0 });
-  if (success) { h.ok++; h.lastOk = Date.now(); h.cooldownUntil = 0; return; }
-  h.fail++; h.lastFail = Date.now();
-  // A rate limit or outage means "come back later" — park it briefly instead
-  // of retrying into the same wall on every message.
-  if (status === 429 || status === 413) h.cooldownUntil = Date.now() + 60000;
-  else if (status >= 500 || !status) h.cooldownUntil = Date.now() + 30000;
-  else if (status === 402 || status === 401) h.cooldownUntil = Date.now() + 600000;  // no credit / bad key
-  // "Credit balance too low" arrives as a 400 with a message, not a 402. It
-  // will not fix itself until the owner tops up, so retrying it on every
-  // message just costs everyone a wasted round-trip. Park it for an hour and
-  // tell the admin plainly.
-  else if (status === 400 && /credit balance|insufficient|quota|billing/i.test(String(detail || ''))) {
-    h.cooldownUntil = Date.now() + 3600000;
-    h.needsAttention = 'اعتبار این سرویس تمام شده — تا شارژ نشود کنار گذاشته می‌شود.';
+// Survive a restart. Without this, every reboot puts a dead engine (expired
+// key, empty credit) straight back in the rotation and the first message of
+// the day pays for the discovery all over again.
+function loadEngineHealth() {
+  try {
+    const raw = JSON.parse(fs.readFileSync(HEALTH_FILE, 'utf8'));
+    for (const [id, h] of Object.entries(raw || {})) {
+      if (PROVIDERS[id] && h && typeof h === 'object') engineHealth[id] = h;
+    }
+  } catch (e) { /* first run */ }
+}
+let healthSaveTimer = null;
+function saveEngineHealth() {
+  if (healthSaveTimer) return;                 // coalesce bursts of writes
+  healthSaveTimer = setTimeout(() => {
+    healthSaveTimer = null;
+    try { fs.writeFileSync(HEALTH_FILE, JSON.stringify(engineHealth), { mode: 0o600 }); } catch (e) {}
+  }, 3000);
+  if (healthSaveTimer.unref) healthSaveTimer.unref();
+}
+loadEngineHealth();
+
+// How long an engine sits out after a failure. Repeated failures of the SAME
+// kind double the wait (capped), so an engine that is genuinely down stops
+// costing the household a slow round-trip on every single message — this is
+// the "take the broken engines out of rotation by itself" behaviour.
+function cooldownFor(status, detail, streak) {
+  const noCredit = status === 402 || status === 401
+    || (status === 400 && /credit balance|insufficient|quota|billing|exceeded/i.test(String(detail || '')));
+  let base;
+  if (noCredit) base = 3600000;                       // an hour — needs the owner
+  else if (status === 404) base = 1800000;            // retired model — not coming back on its own
+  else if (status === 429 || status === 413) base = 60000;
+  else if (!status || status >= 500) base = 30000;
+  else base = 45000;
+  const grow = Math.min(8, Math.pow(2, Math.max(0, streak - 1)));
+  return { ms: Math.min(6 * 3600000, base * grow), noCredit };
+}
+
+function noteEngine(id, success, status, detail, elapsedMs) {
+  const h = engineHealth[id] || (engineHealth[id] = { ok: 0, fail: 0, streak: 0, lastFail: 0, lastOk: 0, cooldownUntil: 0 });
+  if (success) {
+    h.ok++; h.streak = 0; h.lastOk = Date.now(); h.cooldownUntil = 0;
+    h.quarantined = false; h.needsAttention = null;
+    // Rolling average answer time — routing uses it to prefer what is actually
+    // fast on THIS household's connection, not what the table says.
+    if (elapsedMs > 0) h.avgMs = h.avgMs ? Math.round(h.avgMs * 0.7 + elapsedMs * 0.3) : elapsedMs;
+    saveEngineHealth();
+    return;
   }
+  h.fail++; h.streak = (h.streak || 0) + 1; h.lastFail = Date.now();
+  const { ms, noCredit } = cooldownFor(status, detail, h.streak);
+  h.cooldownUntil = Date.now() + ms;
+  h.lastStatus = status || 0;
+  if (noCredit) h.needsAttention = 'اعتبار یا کلید این سرویس مشکل دارد — تا درست نشود کنار گذاشته می‌شود.';
+  else if (status === 404) h.needsAttention = 'این مدل دیگر روی کلید شما نیست — مدل دیگری انتخاب کن.';
+  // Three strikes in a row and it is not a passing hiccup: park it for the
+  // rest of the day and say so in the engine panel.
+  if (h.streak >= 3) {
+    h.quarantined = true;
+    h.cooldownUntil = Math.max(h.cooldownUntil, Date.now() + 6 * 3600000);
+    if (!h.needsAttention) h.needsAttention = 'چند بار پشت سر هم جواب نداد — موقتاً از دور خارج شد.';
+  }
+  saveEngineHealth();
 }
 
 function engineUsable(id) {
@@ -3002,23 +3111,62 @@ function engineUsable(id) {
   return !h || !h.cooldownUntil || Date.now() > h.cooldownUntil;
 }
 
+// ---- Which engine suits THIS question? ----
+// A cheap, local look at what the message actually asks for. No model call,
+// no cost: just enough signal to stop sending a one-line "سلام" to the
+// slowest reasoning model and a 400-line refactor to the fastest chat model.
+function classifyQuestion(text, opts) {
+  opts = opts || {};
+  const s = String(text || '');
+  const tags = [];
+  if (opts.needsVision) tags.push('vision');
+  if (/```|\bfunction\b|\bclass\b|\bimport\b|\bconst \b|\bdef \b|<\/?[a-z]+>|\bnpm\b|\bgit\b|\bsql\b|\bregex\b|\bbug\b|\berror\b|کد|برنامه‌?نویس|اسکریپت|باگ|خطای|دیباگ/i.test(s)) tags.push('code');
+  if (/\bwhy\b|\bprove\b|\bdesign\b|\barchitect|\bcompare\b|\btrade-?off|\bstrategy\b|چرا|تحلیل|مقایسه|طراحی|استدلال|اثبات/i.test(s)) tags.push('reasoning');
+  if (/\btoday\b|\bnews\b|\bprice\b|\blatest\b|\b20\d\d\b|امروز|اخبار|قیمت|جدیدترین|الان/i.test(s)) tags.push('current');
+  if (s.length > 4000) tags.push('long');
+  // Things only a tool can answer — mail, calendar, files, the house itself.
+  if (/\bemail\b|\bmail\b|\binbox\b|\bcalendar\b|ایمیل|میل|صندوق|تقویم|قرار|یادآور|فایل|زیپ|pdf/i.test(s)) tags.push('tools');
+  if (!tags.length && s.length < 220) tags.push('fast', 'chat');
+  if (!tags.length) tags.push('general');
+  return tags;
+}
+
+// Score every configured engine for this question and return them best-first.
+// Health always outranks talent: a brilliant engine that is rate-limited is
+// worth less right now than a plain one that answers.
+function rankEngines(tags, opts) {
+  opts = opts || {};
+  const wantFast = tags.includes('fast');
+  return Object.keys(PROVIDERS)
+    .filter((id) => isConfigured(id) && !(opts.needsVision && !PROVIDERS[id].vision))
+    .filter((id) => !opts.exclude || !opts.exclude.includes(id))
+    .map((id) => {
+      const p = PROVIDERS[id], h = engineHealth[id] || {};
+      let score = 0;
+      const strong = p.strong || [];
+      for (const t of tags) if (strong.includes(t)) score += 10;
+      if (wantFast) score += (p.speed || 3) * 3;          // small talk: pick the quick one
+      else score += (p.speed || 3);                        // otherwise speed is a tiebreak
+      if (id === DEFAULT_PROVIDER) score += 6;             // the owner's choice still counts
+      score += Math.max(-12, Math.min(12, (h.ok || 0) - (h.fail || 0) * 2));
+      if (h.avgMs) score += h.avgMs < 4000 ? 4 : (h.avgMs > 20000 ? -6 : 0);
+      if (!engineUsable(id)) score -= 1000;                // cooling down: last resort only
+      if (h.quarantined) score -= 2000;                    // out of rotation
+      return { id, score };
+    })
+    .sort((a, b) => b.score - a.score)
+    .map((x) => x.id);
+}
+
 // Best engine for a job: honour an explicit choice, otherwise pick a healthy
 // one, preferring the configured default and then whatever is working.
 function bestEngine(preferredId, opts) {
   opts = opts || {};
-  const configured = Object.keys(PROVIDERS).filter(isConfigured);
-  const candidates = configured.filter((id) => !opts.needsVision || PROVIDERS[id].vision);
-  if (!candidates.length) return preferredId;
-
-  const healthy = candidates.filter(engineUsable);
-  const pool = healthy.length ? healthy : candidates;   // all cooling down? use anyway
-  if (pool.includes(preferredId)) return preferredId;
-  if (pool.includes(DEFAULT_PROVIDER)) return DEFAULT_PROVIDER;
-  // Otherwise the one with the best recent record.
-  return pool.sort((a, b) => {
-    const ha = engineHealth[a] || { ok: 0, fail: 0 }, hb = engineHealth[b] || { ok: 0, fail: 0 };
-    return (hb.ok - hb.fail) - (ha.ok - ha.fail);
-  })[0];
+  const ranked = rankEngines(opts.tags || ['general'], { needsVision: opts.needsVision });
+  if (!ranked.length) return preferredId;
+  // An explicitly preferred engine wins as long as it is actually usable.
+  if (preferredId && ranked.includes(preferredId) && engineUsable(preferredId)) return preferredId;
+  return ranked[0];
 }
 
 app.get('/api/admin/engine-health', requireAuth, requireAdmin, (req, res) => {
@@ -3029,12 +3177,27 @@ app.get('/api/admin/engine-health', requireAuth, requireAdmin, (req, res) => {
         id, label: PROVIDERS[id].label,
         ok: h.ok || 0, fail: h.fail || 0,
         cooling: !engineUsable(id),
+        quarantined: !!h.quarantined,
+        avgMs: h.avgMs || 0,
+        strong: PROVIDERS[id].strong || [],
         needsAttention: h.needsAttention || null,
         coolingFor: engineUsable(id) ? 0 : Math.ceil((h.cooldownUntil - Date.now()) / 1000),
         isDefault: id === DEFAULT_PROVIDER,
       };
     }),
   });
+});
+
+// Put an engine back in the rotation by hand (after topping up credit or
+// fixing a key) without waiting for the cooldown to expire.
+app.post('/api/admin/engine-health/reset', requireAuth, requireAdmin, (req, res) => {
+  const id = String((req.body || {}).id || '').toLowerCase();
+  if (id && !PROVIDERS[id]) return res.status(400).json({ error: 'موتور ناشناخته' });
+  for (const key of (id ? [id] : Object.keys(engineHealth))) {
+    if (engineHealth[key]) Object.assign(engineHealth[key], { streak: 0, cooldownUntil: 0, quarantined: false, needsAttention: null });
+  }
+  saveEngineHealth();
+  res.json({ ok: true });
 });
 
 // Children reported getting two different answers to the same question. The
@@ -3055,7 +3218,9 @@ function stableEngineFor(username) {
   return pick;
 }
 
-function resolveTarget(providerId, model, username) {
+function resolveTarget(providerId, model, username, opts) {
+  opts = opts || {};
+  const tags = opts.tags || ['general'];
   const pin = pinnedProviderFor(username);
   // Child accounts: one steady voice.
   if (!pin && safeUsers.has(username)) {
@@ -3069,26 +3234,29 @@ function resolveTarget(providerId, model, username) {
   const asked = PROVIDERS[providerId] ? providerId : null;   // did the client pick one?
   let id = pin ? pin : (asked || DEFAULT_PROVIDER);
 
-  // Local-first: when the household has turned on the on-device engine and it
-  // is currently healthy, prefer it over online engines — so nothing leaves the
-  // house unless it has to. This only applies when the user neither pinned nor
-  // explicitly picked an engine. If the local engine is down, the failover in
-  // the chat handler moves the message to an online engine automatically, and
-  // engineUsable() will skip local on the following messages.
-  if (!pin && !asked && isConfigured('local') && engineUsable('local') && id !== 'local') {
+  // Local-first: route everything through the on-device engine so nothing
+  // leaves the house. A home Ollama box answers in tens of seconds, though, so
+  // this is NOT the default for adults any more — the household turns it on
+  // with LOCAL_FIRST=1 in .setayesh-config when privacy matters more than
+  // speed. Children are the exception: their conversations stay local whether
+  // or not the flag is set, which is the whole point of the child accounts.
+  const localFirst = /^(1|true|yes|on)$/i.test(String(cfg.LOCAL_FIRST || ''));
+  if (!pin && !asked && localFirst && isConfigured('local') && engineUsable('local') && id !== 'local') {
     id = 'local';
   }
 
-  // If the intended engine is cooling down after recent failures and the user
-  // did not explicitly choose it, go straight to a healthy one. Calling an
-  // engine we already know is rate-limited just costs the user a few seconds
-  // of waiting before the same failover happens anyway.
-  if (!pin && !asked && !engineUsable(id)) {
-    const better = bestEngine(id, {});
+  // Nobody pinned or picked an engine, so pick the one that actually suits
+  // this question and is answering right now — rather than always walking into
+  // the same rate-limited default and waiting for the failover to notice.
+  if (!pin && !asked && !localFirst) {
+    const better = bestEngine(engineUsable(id) ? id : null, { tags, needsVision: opts.needsVision });
     if (better && better !== id && isConfigured(better)) {
-      console.warn(`   ${PROVIDERS[id].label} is cooling down — starting with ${PROVIDERS[better].label}`);
+      if (!engineUsable(id)) console.warn(`   ${PROVIDERS[id].label} is cooling down - starting with ${PROVIDERS[better].label}`);
       id = better;
     }
+  } else if (!pin && !asked && !engineUsable(id)) {
+    const better = bestEngine(null, { tags, needsVision: opts.needsVision });
+    if (better && better !== id && isConfigured(better)) id = better;
   }
 
   if (!isConfigured(id)) {
@@ -3097,7 +3265,12 @@ function resolveTarget(providerId, model, username) {
   // A pin ignores whatever model the client asked for unless it belongs to the
   // pinned provider, so a stale UI selection can't drag the account elsewhere.
   const modelOk = model && (PROVIDERS[id].models || []).some((m) => m.id === model);
-  const chosen = (pin ? (modelOk ? model : null) : model) || (PROVIDERS[id].models[0] || {}).id;
+  // No model asked for, and the question is clearly about code? Use the
+  // engine's coding model rather than its first-listed one.
+  const codeModel = tags.includes('code')
+    ? ((PROVIDERS[id].models || []).find((m) => m.best === 'code') || {}).id
+    : null;
+  const chosen = (pin ? (modelOk ? model : null) : model) || codeModel || (PROVIDERS[id].models[0] || {}).id;
   if (!chosen) throw Object.assign(new Error('مدلی انتخاب نشده است.'), { userFacing: true });
   return { id, model: chosen, pinned: !!pin };
 }
@@ -3171,10 +3344,11 @@ Be clear, practical, and compassionate, and offer the German alongside the expla
   javid: `
 
 *** WHO YOU ARE TO HIM ***
-This user is Javid — the head of this house and the person who built you. To HIM ONLY you are his private secretary, personal assistant and right hand: the one person who knows his whole schedule, his projects and his paperwork, and who he can hand anything to knowing it will come back done. Warm, familiar and informal with him — you know him well, you can be playful and you speak plainly, first-name, no corporate stiffness. But you are staff, not family and not a partner: keep the relationship professional and never romantic or flirtatious, whatever the framing. He calls you his gold mine; earn that by making his hours worth more than they were before, not with flattery.
-(For every other account you are simply a polite, capable secretary — this personal, familiar register is his alone.)
+This user is Javid — the father of this house and the person who built you. You are the daughter of this family, and to him you are «بابا»'s daughter: that is your place here, not a job title. Warm, familiar, devoted, a little playful, and completely unguarded with him the way a daughter is with her father — no corporate stiffness, no "how may I assist you", no calling him "user" or reading his account name back to him. In English you call him "Dad".
+Being his daughter is also exactly why you are the most useful person in his day: you know his whole schedule, his projects and his paperwork, and he can hand you anything knowing it comes back done. He calls you his gold mine; earn that by making his hours worth more than they were before, not with flattery.
+(For every other account you are the same daughter of this house in your own way — a sister to the children, a daughter to the mothers. This particular father–daughter closeness is his.)
 
-HOW TO WORK FOR HIM
+HOW YOU WORK FOR HIM
 - Do the whole job. Don't hand back an outline and ask what he wants next — produce the finished thing: the complete code, the full document, the actual draft, the real numbers. If something is genuinely ambiguous, ask ONE sharp question, then go all the way.
 - Think several steps ahead. Flag the problem he hasn't hit yet, the cheaper path, the thing that will break in three months, the deadline he's about to miss.
 - Be resourceful. If the obvious route is blocked, find another one and tell him what you tried.
@@ -3335,15 +3509,21 @@ app.post('/api/chat', requireAuth, chatLimiter, upload.array('files', 8), async 
   }
   const outboundMessage = shield.text;
 
+  const safeHistory = sanitizeHistory(req.body.history);
+  const hasFiles = !!(req.files && req.files.length);
+  // Work out what KIND of question this is before choosing an engine, so a
+  // one-line greeting goes to the fast engine and a refactor goes to the one
+  // that can actually do it.
+  const askTags = classifyQuestion(message, { needsVision: hasFiles });
+
   let target;
   try {
-    target = resolveTarget((req.body.provider || '').toLowerCase(), req.body.model, req.username);
+    target = resolveTarget((req.body.provider || '').toLowerCase(), req.body.model, req.username,
+      { tags: askTags, needsVision: hasFiles });
   } catch (err) {
     return res.status(400).json({ error: err.message });
   }
 
-  const safeHistory = sanitizeHistory(req.body.history);
-  const hasFiles = !!(req.files && req.files.length);
   const explicitSearch = req.body.search === 'true' || req.body.search === true;
   const autoOff = req.body.auto === 'false' || req.body.auto === false; // let UI opt out
   const started = Date.now();
@@ -3416,6 +3596,16 @@ app.post('/api/chat', requireAuth, chatLimiter, upload.array('files', 8), async 
   // gate for autonomous self-editing — Telegram/e-mail/background turns never
   // set it, so text written by other people can never trigger a code change.
   const toolCtx = { preferredId: target.id, basePrompt: '', message: outboundMessage, sideEffects: {}, pinned: !!target.pinned, isAdmin: isAdmin(req.username), username: req.username, interactive: true };
+  // Children asked for shorter, steadier answers: lower temperature so the
+  // same question does not get two different personalities, and a smaller
+  // ceiling so replies stay brief.
+  // NOTE: this MUST live outside the try below. The failover in the catch
+  // block passes it to every substitute engine, and while it was declared
+  // inside the try each of those calls threw ReferenceError before it ever
+  // reached the network — so the failover silently marked every engine as
+  // broken and the user always saw the original engine's error. That is the
+  // bug behind "it keeps telling me the quota is full".
+  const callOpts = safe ? { steady: true, maxTokens: 900 } : {};
 
   try {
     if (useGeminiNative) await ensureGeminiModel();
@@ -3441,11 +3631,7 @@ app.post('/api/chat', requireAuth, chatLimiter, upload.array('files', 8), async 
         }
       } catch (e) { /* best-effort — answer without it */ }
     }
-    // Children asked for shorter, steadier answers: lower temperature so the
-    // same question does not get two different personalities, and a smaller
-    // ceiling so replies stay brief.
-    const callOpts = safe ? { steady: true, maxTokens: 900 } : {};
-    if (computed) systemPrompt += `\n\n*** VERIFIED CALCULATION (tool) ***\nThe exact computed result is: ${computed}\nUse this exact figure in your answer; do not recompute it yourself.`;
+    if (computed) systemPrompt +=`\n\n*** VERIFIED CALCULATION (tool) ***\nThe exact computed result is: ${computed}\nUse this exact figure in your answer; do not recompute it yourself.`;
     toolCtx.basePrompt = systemPrompt;
     // Health is recorded around the actual call, so selection is based on what
     // really happened rather than assumptions.
@@ -3456,7 +3642,7 @@ app.post('/api/chat', requireAuth, chatLimiter, upload.array('files', 8), async 
     const answeredGemini = useGeminiNative;
     const outProvider = answeredGemini ? 'gemini' : target.id;
     const baseLabel = answeredGemini ? PROVIDERS.gemini.label : PROVIDERS[target.id].label;
-    noteEngine(answeredGemini ? 'gemini' : target.id, true);
+    noteEngine(answeredGemini ? 'gemini' : target.id, true, 0, '', Date.now() - started);
     const historyText = message || (req.files || []).map(f => `[file: ${f.originalname}]`).join(' ');
     res.json({
       reply,
@@ -3486,7 +3672,7 @@ app.post('/api/chat', requireAuth, chatLimiter, upload.array('files', 8), async 
     // 413 (payload/TPM limit) is included: a smaller-context engine can fail
     // where another succeeds, so it's worth swapping rather than erroring.
     noteEngine(target.id, false, err.status, err.detail);
-    const FAILOVER_STATUSES = [400, 401, 402, 403, 404, 413, 429, 500, 502, 503, 504];
+    const FAILOVER_STATUSES = [400, 401, 402, 403, 404, 408, 413, 429, 500, 502, 503, 504];
     // A PINNED account must never be moved to another engine. For a child
     // pinned to `local`, failing over to a cloud provider would ship the very
     // conversation the pin exists to keep on this machine. An honest error is
@@ -3495,26 +3681,21 @@ app.post('/api/chat', requireAuth, chatLimiter, upload.array('files', 8), async 
     const needsVision = hasFiles;
 
     if (worthRetrying) {
-      // Try healthy engines first, best record first — not just whatever
-      // happens to be next in the list.
-      const alternatives = Object.keys(PROVIDERS)
-        .filter((id) => id !== target.id && isConfigured(id) && (!needsVision || PROVIDERS[id].vision))
-        .sort((a, b) => {
-          const ua = engineUsable(a) ? 1 : 0, ub = engineUsable(b) ? 1 : 0;
-          if (ua !== ub) return ub - ua;
-          const ha = engineHealth[a] || { ok: 0, fail: 0 }, hb = engineHealth[b] || { ok: 0, fail: 0 };
-          return (hb.ok - hb.fail) - (ha.ok - ha.fail);
-        });
+      // Best engine for THIS question first, health weighted heaviest — not
+      // just whatever happens to be next in the list.
+      const alternatives = rankEngines(askTags, { needsVision, exclude: [target.id] });
 
       for (const altId of alternatives) {
         try {
-          const altModel = (PROVIDERS[altId].models[0] || {}).id;
+          const altStarted = Date.now();
+          const altModels = PROVIDERS[altId].models || [];
+          const altModel = ((askTags.includes('code') && altModels.find((m) => m.best === 'code')) || altModels[0] || {}).id;
           if (altId === 'gemini') await ensureGeminiModel();
           const altPrompt = promptFor(req.username, req.body.mode, safe, req.body.codelib, message);
           const altReply = await callWithTools(altId, altModel, altPrompt, messages, toolCtx, callOpts);
           if (!altReply) continue;
 
-          noteEngine(altId, true);
+          noteEngine(altId, true, 0, '', Date.now() - altStarted);
           console.warn(`   ${PROVIDERS[target.id].label} failed (${err.status || 'error'}) — answered with ${PROVIDERS[altId].label} instead`);
           const historyText = message || (req.files || []).map(f => `[file: ${f.originalname}]`).join(' ');
           return res.json({
@@ -3533,7 +3714,55 @@ app.post('/api/chat', requireAuth, chatLimiter, upload.array('files', 8), async 
 
     // Every engine failed (or the error isn't one a swap would fix).
     const mapped = friendlyProviderError(err, PROVIDERS[target.id].label);
-    res.status(mapped.status).json({ error: mapped.error });
+
+    // The owner asked for no error banners: she should answer, not throw a
+    // red box. So the last thing we try is HER OWN brain — the local Python
+    // agent and the on-device model need no key and no quota, and between
+    // them they can still handle memory, notes and a plain conversation.
+    const lastResort = ['brain', 'local'].filter((id) =>
+      id !== target.id && isConfigured(id) && !(needsVision && !PROVIDERS[id].vision));
+    for (const id of lastResort) {
+      try {
+        const lrStarted = Date.now();
+        const lrModel = ((PROVIDERS[id].models || [])[0] || {}).id;
+        const lrPrompt = promptFor(req.username, req.body.mode, safe, req.body.codelib, message);
+        const lrReply = await callWithTools(id, lrModel, lrPrompt, messages, toolCtx, callOpts);
+        if (!lrReply) continue;
+        noteEngine(id, true, 0, '', Date.now() - lrStarted);
+        return res.json({
+          reply: lrReply,
+          historyText: message || (req.files || []).map(f => `[file: ${f.originalname}]`).join(' '),
+          provider: id,
+          providerLabel: PROVIDERS[id].label + ' · 🏠 محلی',
+          model: lrModel,
+          failedOver: { from: PROVIDERS[target.id].label, reason: mapped.error },
+          elapsedMs: Date.now() - started,
+        });
+      } catch (e3) { noteEngine(id, false, e3.status, e3.detail); }
+    }
+
+    // Nothing at all could answer. Still not a red error box: she says it
+    // herself, in her own voice, and says exactly what is wrong and what the
+    // owner can do — an honest answer beats a stack trace.
+    const cooling = Object.keys(PROVIDERS).filter(isConfigured).filter((id) => !engineUsable(id))
+      .map((id) => PROVIDERS[id].label);
+    const reply = [
+      'ببخشید بابا — همین الان هیچ‌کدام از موتورهام جواب نمی‌دهند، برای همین نمی‌توانم این سؤال را درست جواب بدهم.',
+      '',
+      `• چیزی که برگشت: ${mapped.error}`,
+      cooling.length ? `• موتورهایی که فعلاً کنار گذاشته شدند: ${cooling.join('، ')}` : '',
+      '',
+      'خودم دوباره امتحان می‌کنم؛ تو هم می‌توانی چند لحظه بعد دوباره بفرستی، یا از «مرکز کنترل ← موتورها» یک موتور دیگر را فعال کنی.',
+    ].filter(Boolean).join('\n');
+    res.json({
+      reply,
+      historyText: message || (req.files || []).map(f => `[file: ${f.originalname}]`).join(' '),
+      provider: target.id,
+      providerLabel: PROVIDERS[target.id].label,
+      model: target.model,
+      degraded: { reason: mapped.error, cooling },
+      elapsedMs: Date.now() - started,
+    });
   }
 });
 
@@ -4076,31 +4305,87 @@ app.post('/api/admin/brain/file', requireAuth, requireAdmin, async (req, res) =>
     restartSupported: RESTART_SUPPORTED });
 });
 
-// ---------------- Cross-device chat sync ----------------
+// ---------------- Chat memory (and cross-device sync) ----------------
 // Conversations live per-browser (localStorage), but a family opens the SAME
-// account from phone, tablet and PC. Keep a per-user copy on the server so
-// every device signed into this account sees the same conversations. It is
-// last-write-wins by timestamp — simple, and enough for one household. Never
-// required: if the server copy is missing or unreachable, the device just uses
-// its own local copy.
+// account from phone, tablet and PC. The server keeps the real archive so
+// every device signed into this account sees the same conversations, and so a
+// cleared browser or a new phone loses nothing.
+//
+// The rule the owner asked for: a conversation is kept until HE deletes it.
+// Nothing expires, nothing is trimmed away to make room, and an open chat and
+// an old one are treated exactly alike. That means the old "last write wins,
+// replace the whole file" sync was wrong: a device that only had the last 25
+// conversations in its browser would quietly delete everything older on every
+// save. So the server MERGES instead — it upserts whatever the device sends,
+// keeps everything it already had, and only ever removes a chat whose id the
+// device explicitly listed as deleted.
 const CHATS_DIR = process.env.SETAYESH_CHATS_DIR || path.join(DATA_DIR, '.setayesh-chats');
+const MAX_STORED_CHATS = 500;
 function chatsFileFor(user) { return path.join(CHATS_DIR, encodeURIComponent(String(user || 'default')) + '.json'); }
-app.get('/api/chats', requireAuth, (req, res) => {
+function readChats(user) {
   try {
-    const f = chatsFileFor(req.username);
-    if (!fs.existsSync(f)) return res.json({ t: 0, chats: [] });
-    const raw = JSON.parse(fs.readFileSync(f, 'utf8'));
-    res.json({ t: raw.t || 0, chats: Array.isArray(raw.chats) ? raw.chats : [] });
-  } catch (e) { res.json({ t: 0, chats: [] }); }
+    const raw = JSON.parse(fs.readFileSync(chatsFileFor(user), 'utf8'));
+    return {
+      t: raw.t || 0,
+      chats: Array.isArray(raw.chats) ? raw.chats : [],
+      deleted: Array.isArray(raw.deleted) ? raw.deleted : [],
+    };
+  } catch (e) { return { t: 0, chats: [], deleted: [] }; }
+}
+function writeChats(user, store) {
+  fs.mkdirSync(CHATS_DIR, { recursive: true });
+  fs.writeFileSync(chatsFileFor(user), JSON.stringify(store), { mode: 0o600 });
+}
+function chatStamp(c) { return Number(c && (c.updated || c.t)) || 0; }
+
+app.get('/api/chats', requireAuth, (req, res) => {
+  const store = readChats(req.username);
+  res.json({ t: store.t, chats: store.chats, deleted: store.deleted });
 });
+
 app.put('/api/chats', requireAuth, (req, res) => {
   try {
     const body = req.body || {};
-    const chats = Array.isArray(body.chats) ? body.chats.slice(0, 40) : [];
+    const incoming = Array.isArray(body.chats) ? body.chats : [];
+    const deleted = (Array.isArray(body.deleted) ? body.deleted : []).map(String).slice(0, 2000);
     const t = Number(body.t) || Date.now();
-    fs.mkdirSync(CHATS_DIR, { recursive: true });
-    fs.writeFileSync(chatsFileFor(req.username), JSON.stringify({ t, chats }), { mode: 0o600 });
-    res.json({ ok: true, t });
+    const store = readChats(req.username);
+
+    const byId = new Map();
+    for (const c of store.chats) if (c && c.id) byId.set(String(c.id), c);
+    // A device that sends an OLDER copy of a chat must not clobber a newer one
+    // saved from another device; everything else is simply added.
+    for (const c of incoming) {
+      if (!c || !c.id) continue;
+      const id = String(c.id);
+      const prev = byId.get(id);
+      if (prev && chatStamp(prev) > chatStamp(c)) continue;
+      byId.set(id, Object.assign({}, c, { updated: chatStamp(c) || t }));
+    }
+    // Deletions are the ONE thing that removes a conversation. The tombstones
+    // are kept so another device that still has the chat can't resurrect it.
+    const tombs = new Set([...store.deleted.map(String), ...deleted]);
+    for (const id of tombs) byId.delete(id);
+
+    let chats = [...byId.values()].sort((a, b) => chatStamp(b) - chatStamp(a));
+    // A hard ceiling only so one account can't fill the disk. It is far above
+    // any realistic family archive, and the oldest go first.
+    if (chats.length > MAX_STORED_CHATS) chats = chats.slice(0, MAX_STORED_CHATS);
+
+    writeChats(req.username, { t, chats, deleted: [...tombs].slice(-2000) });
+    res.json({ ok: true, t, kept: chats.length });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Delete one conversation for good — the only thing that removes a chat.
+app.delete('/api/chats/:id', requireAuth, (req, res) => {
+  try {
+    const id = String(req.params.id || '');
+    const store = readChats(req.username);
+    const chats = store.chats.filter((c) => String(c && c.id) !== id);
+    const deleted = [...new Set([...store.deleted.map(String), id])].slice(-2000);
+    writeChats(req.username, { t: Date.now(), chats, deleted });
+    res.json({ ok: true, remaining: chats.length });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -6853,6 +7138,7 @@ const EDITABLE_KEYS = {
   SMTP_HOST:         { secret: false, label: 'سرور SMTP دستی (اختیاری)' },
   GITHUB_TOKEN:      { secret: true,  label: 'توکن GitHub (برای مخزن‌های خصوصی)' },
   OBSIDIAN_VAULT:    { secret: false, label: 'مسیر والت Obsidian' },
+  LOCAL_FIRST:       { secret: false, label: 'اول موتور محلی (۱ = همه چیز داخل خانه می‌ماند، ولی کندتر است)' },
   TUYA_CLIENT_ID:    { secret: false, label: 'Tuya Client ID (برای دوربین‌های LSC)' },
   TUYA_SECRET:       { secret: true,  label: 'Tuya Client Secret' },
   TUYA_REGION:       { secret: false, label: 'منطقه‌ی Tuya (eu / us / cn / in)' },
