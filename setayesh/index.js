@@ -120,6 +120,8 @@ const netguard = require('./netguard');
 // Persian / English / German: which one is this, is it written correctly, and
 // how does a letter in it actually have to look.
 const language = require('./language');
+// Talking to a device over Bluetooth or down a cable: pair, read, write.
+const hwlink = require('./hwlink');
 
 // Optional feature modules (Google connectors, Telegram). If one of these files
 // is missing — e.g. a half-finished manual update where not every file was
@@ -192,7 +194,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.84';
+const APP_VERSION = '9.9.85';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -447,8 +449,21 @@ const safeUsers = new Set();    // usernames in child-safe mode
 // blank fields just mean "no personalization on that axis".
 const profiles = new Map();     // username -> { age, interests, tone }
 
+// How far a member may go with the hardware around the house — the USB and
+// Bluetooth tools, the serial cable, everything that touches a real device.
+//   0  خاموش   nothing; they do not even see the tools
+//   1  درجه ۱  LOOK: list what is connected, read a device's details
+//   2  درجه ۲  TOUCH: pair, connect, send commands, write to a device
+// Javid is the father and the owner: he is always 2 and cannot be demoted,
+// because the account that hands out permission cannot be the one locked out
+// of it. Everyone else starts at 0 and he opens them up one at a time.
+const DEVICE_LEVELS = { 0: 'بسته', 1: 'درجه ۱ — فقط دیدن', 2: 'درجه ۲ — دیدن و کنترل' };
+const NO_DEVICE_ACCESS = 'دسترسی به دستگاه‌ها برای این حساب باز نشده. از بابا بخواه در «کاربران» برایت بازش کند.';
+const NEEDS_LEVEL_2 = 'این کار درجه‌ی ۲ می‌خواهد (کنترل دستگاه). این حساب فقط می‌تواند ببیند، نه تغییر بدهد.';
+const deviceLevels = new Map();   // username -> 0 | 1 | 2
+
 function rebuildFromList(list) {
-  users.clear(); safeUsers.clear(); profiles.clear();
+  users.clear(); safeUsers.clear(); profiles.clear(); deviceLevels.clear();
   for (const u of list) {
     // A stored value starting with $2 is already a bcrypt hash; anything else
     // is legacy plaintext being migrated.
@@ -456,6 +471,8 @@ function rebuildFromList(list) {
     users.set(u.username, hash);
     if (u.safe) safeUsers.add(u.username);
     profiles.set(u.username, { age: u.age ?? null, interests: u.interests || '', tone: u.tone || '' });
+    const lvl = Number(u.deviceLevel);
+    deviceLevels.set(u.username, [0, 1, 2].includes(lvl) ? lvl : 0);
   }
 }
 const _loadedUsers = loadUsersFromDisk();
@@ -474,6 +491,26 @@ function isAdmin(username) {
   // silently locking everyone out of the admin panel for the whole session.
   if (!ADMIN_USER || !users.has(ADMIN_USER)) resolveAdminUser();
   return Boolean(ADMIN_USER) && username === ADMIN_USER;
+}
+
+// The father is always level 2. For everyone else it is whatever he set.
+function deviceLevelOf(username) {
+  if (isAdmin(username)) return 2;
+  return deviceLevels.get(username) ?? 0;
+}
+// Express guard: `requireDeviceLevel(1)` for anything that only reads,
+// `requireDeviceLevel(2)` for anything that changes a device.
+function requireDeviceLevel(min) {
+  return (req, res, next) => {
+    const have = deviceLevelOf(req.username);
+    if (have >= min) return next();
+    return res.status(403).json({
+      error: have === 0
+        ? 'دسترسی به دستگاه‌ها برای این حساب باز نشده. از بابا بخواه در «کاربران» برایت باز کند.'
+        : 'این کار درجه‌ی ۲ لازم دارد (کنترل دستگاه). حساب تو درجه‌ی ۱ است — فقط می‌توانی ببینی.',
+      deviceLevel: have, needed: min,
+    });
+  };
 }
 
 // Who is around right now. Updated on every authenticated request; "online"
@@ -495,7 +532,8 @@ function currentUserList() {
   return Array.from(users.keys()).map(u => {
     const p = profiles.get(u) || {};
     // `password` holds the bcrypt hash — never the plaintext.
-    return { username: u, password: users.get(u), safe: safeUsers.has(u), age: p.age ?? null, interests: p.interests || '', tone: p.tone || '' };
+    return { username: u, password: users.get(u), safe: safeUsers.has(u), age: p.age ?? null,
+             interests: p.interests || '', tone: p.tone || '', deviceLevel: deviceLevels.get(u) ?? 0 };
   });
 }
 
@@ -799,7 +837,9 @@ app.get('/api/admin/users', requireAuth, requireAdmin, (req, res) => {
     admin: ADMIN_USER,
     users: Array.from(users.keys()).map(u => {
       const p = profiles.get(u) || {};
-      return { username: u, safe: safeUsers.has(u), admin: isAdmin(u), age: p.age ?? null, interests: p.interests || '', tone: p.tone || '' };
+      return { username: u, safe: safeUsers.has(u), admin: isAdmin(u), age: p.age ?? null,
+               interests: p.interests || '', tone: p.tone || '',
+               deviceLevel: deviceLevelOf(u), deviceLevelLocked: isAdmin(u) };
     }),
   });
 });
@@ -855,6 +895,29 @@ app.post('/api/admin/safe', requireAuth, requireAdmin, (req, res) => {
   res.json({ ok: true, safe: safeUsers.has(username) });
 });
 
+// Open the hardware tools for one member, or close them again. Only the
+// father can call this, and he cannot demote himself: the account that grants
+// permission must never be able to lock itself out of granting it.
+app.post('/api/admin/device-level', requireAuth, requireAdmin, (req, res) => {
+  const { username } = req.body || {};
+  const raw = (req.body || {}).level;
+  // Number(null) and Number('') are both 0, so a malformed request would
+  // quietly SET the level to zero instead of being refused. Insist on an
+  // actual number or a numeric string.
+  const level = (typeof raw === 'number' || (typeof raw === 'string' && raw.trim() !== ''))
+    ? Number(raw) : NaN;
+  if (!users.has(username)) return res.status(404).json({ error: 'کاربر پیدا نشد' });
+  if (![0, 1, 2].includes(level)) return res.status(400).json({ error: 'درجه باید ۰، ۱ یا ۲ باشد.' });
+  if (isAdmin(username)) {
+    return res.status(400).json({ error: 'حساب بابا همیشه درجه‌ی ۲ است و پایین نمی‌آید.' });
+  }
+  deviceLevels.set(username, level);
+  saveUsers();
+  nightLog(`دسترسی دستگاه‌های «${username}» شد: ${DEVICE_LEVELS[level]}`, 'info',
+    `device access level for ${username} set to ${level}`);
+  res.json({ ok: true, username, level, label: DEVICE_LEVELS[level] });
+});
+
 app.post('/api/admin/delete', requireAuth, requireAdmin, requireStepUp, (req, res) => {
   const { username } = req.body || {};
   if (!users.has(username)) return res.status(404).json({ error: 'کاربر پیدا نشد' });
@@ -862,6 +925,7 @@ app.post('/api/admin/delete', requireAuth, requireAdmin, requireStepUp, (req, re
   if (users.size <= 1) return res.status(400).json({ error: 'حداقل یک کاربر باید بماند' });
   users.delete(username);
   safeUsers.delete(username);
+  deviceLevels.delete(username);
   profiles.delete(username);
   // kill any live sessions for that user
   for (const [tok, s] of sessions) if (s.username === username) sessions.delete(tok);
@@ -970,6 +1034,11 @@ app.get('/api/config', requireAuth, (req, res) => {
   res.json({
     providers, modes, defaultProvider: defProvider, defaultModel: defModel,
     isAdmin: isAdmin(req.username), safe: safeUsers.has(req.username),
+    // How far this member may go with the hardware, so the interface can hide
+    // the doors that will not open for them. The server still checks it on
+    // every call — this value is a convenience, never the guard.
+    deviceLevel: deviceLevelOf(req.username),
+    deviceLevelLabel: DEVICE_LEVELS[deviceLevelOf(req.username)],
     net: localLanIps().map(ip => `http://${ip}:${PORT}`),
   });
 });
@@ -1805,6 +1874,55 @@ const TOOLS_SPEC = [
       type: 'object',
       properties: { password: { type: 'string' } },
       required: ['password'],
+    },
+  },
+  // ---- Bluetooth and the cable ---------------------------------------------
+  {
+    name: 'hardware_inventory',
+    description: "Everything physically attached to this machine right now, in full detail: every USB device with its manufacturer, model, serial, driver and version; every serial/COM port and which device it belongs to; every paired Bluetooth device with what it is and what it can do. Use when the owner asks what is plugged in, what is connected, or about a specific cable or Bluetooth device. Read-only.",
+    input_schema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'bluetooth_devices',
+    description: "List Bluetooth devices — the paired ones, and optionally what is broadcasting nearby right now. Returns each device's name, type (speaker, keyboard, phone…), battery where it reports one, signal strength and the services it offers. Set scan:true to look around; that is passive listening, nothing is contacted.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        scan: { type: 'boolean', description: 'Also look for devices broadcasting nearby.' },
+        seconds: { type: 'number', description: 'How long to listen, 3–20 (default 6).' },
+      },
+    },
+  },
+  {
+    name: 'bluetooth_info',
+    description: "Everything about ONE Bluetooth device by its address: name, kind, manufacturer, paired/connected state, battery, signal, and the full list of services it exposes. Use before offering to connect to something, so you know what it actually is.",
+    input_schema: { type: 'object', properties: { mac: { type: 'string' } }, required: ['mac'] },
+  },
+  {
+    name: 'bluetooth_connect',
+    description: "Pair, connect, trust, disconnect or forget a Bluetooth device. The device shows its OWN confirmation (a PIN, a button to hold) — Setayesh never guesses a PIN and never bypasses pairing. Requires device level 2; say so plainly if the account does not have it.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        mac: { type: 'string' },
+        action: { type: 'string', description: 'pair, connect, trust, disconnect or forget' },
+      },
+      required: ['mac', 'action'],
+    },
+  },
+  {
+    name: 'serial_talk',
+    description: "Send a line down a serial/USB cable to a device and read what it answers — for an Arduino, an ESP32, a modem, a router console, a 3D printer, anything with a serial connection. Give `port` from hardware_inventory. `send` is text (a newline is added), or `hex` for raw bytes. Requires device level 2.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        port: { type: 'string', description: 'COM3 on Windows, /dev/ttyUSB0 on Linux.' },
+        send: { type: 'string', description: 'Text to send, e.g. "AT".' },
+        hex: { type: 'string', description: 'Raw bytes as hex instead of text.' },
+        baud: { type: 'number', description: 'Speed, default 115200.' },
+        waitMs: { type: 'number', description: 'How long to wait for a reply, default 1500.' },
+      },
+      required: ['port'],
     },
   },
   // ---- Language: grammar and letters ---------------------------------------
@@ -2886,6 +3004,37 @@ async function dispatchTool(name, input, ctx) {
         return toolkit.identifyHash(input.hash);
       case 'password_strength':
         return toolkit.passwordStrength(input.password);
+      // ---- bluetooth and the cable -----------------------------------------
+      // Every one of these re-checks the level here as well as in the tool
+      // gate. The gate decides what she is OFFERED; this decides what actually
+      // runs, and a model that hallucinates a tool name must still be refused.
+      case 'hardware_inventory': {
+        if (deviceLevelOf(ctx.username) < 1) return { error: NO_DEVICE_ACCESS };
+        return await hwlink.everything();
+      }
+      case 'bluetooth_devices': {
+        if (deviceLevelOf(ctx.username) < 1) return { error: NO_DEVICE_ACCESS };
+        return await hwlink.btDevices({ scan: !!input.scan, seconds: input.seconds });
+      }
+      case 'bluetooth_info': {
+        if (deviceLevelOf(ctx.username) < 1) return { error: NO_DEVICE_ACCESS };
+        return await hwlink.btInfo(String(input.mac || ''));
+      }
+      case 'bluetooth_connect': {
+        if (deviceLevelOf(ctx.username) < 2) return { error: NEEDS_LEVEL_2 };
+        const out = await hwlink.btAction(String(input.mac || ''), String(input.action || ''));
+        if (out.ok) nightLog(`بلوتوث: ${input.action} روی ${input.mac}`, 'info', `bluetooth ${input.action}`);
+        return out;
+      }
+      case 'serial_talk': {
+        if (deviceLevelOf(ctx.username) < 2) return { error: NEEDS_LEVEL_2 };
+        try {
+          return await hwlink.serialTalk(String(input.port || ''), {
+            baud: input.baud, send: input.send, hex: input.hex, waitMs: input.waitMs,
+          });
+        } catch (e) { return { error: e.message }; }
+      }
+
       // ---- language --------------------------------------------------------
       case 'check_grammar':
         return language.check(String(input.text || ''), input.language, { apply: input.apply });
@@ -3057,6 +3206,15 @@ function toolsFor(ctx) {
     // connection on their own device, and it exposes nothing private.
     if (['scan_devices', 'device_command', 'scan_file_threats', 'emergency_internet'].includes(t.name)) {
       return !!(ctx && ctx.isAdmin);
+    }
+    // The hardware tools follow the member's own device level rather than the
+    // admin flag, because the point of the levels is that Javid can open these
+    // to somebody else without making them an administrator of everything.
+    if (['hardware_inventory', 'bluetooth_devices', 'bluetooth_info'].includes(t.name)) {
+      return deviceLevelOf(ctx && ctx.username) >= 1;
+    }
+    if (['bluetooth_connect', 'serial_talk'].includes(t.name)) {
+      return deviceLevelOf(ctx && ctx.username) >= 2;
     }
     return true;
   });
@@ -4632,6 +4790,99 @@ app.post('/api/admin/brain/file', requireAuth, requireAdmin, async (req, res) =>
       ? 'ذخیره شد — فقط صفحه را در مرورگر تازه کن (Ctrl+Shift+R).'
       : (RESTART_SUPPORTED ? 'ذخیره شد — برای فعال شدن، ری‌استارت لازم است.' : 'ذخیره شد — برنامه را دستی ری‌استارت کن.'),
     restartSupported: RESTART_SUPPORTED });
+});
+
+// ---------------- Hardware link: Bluetooth and the cable ----------------
+//
+// Two access levels decide everything here, and they are checked on the SERVER
+// for every single call, never in the interface:
+//   درجه ۱  may LOOK  — list what is attached, read a device's details
+//   درجه ۲  may TOUCH — pair, connect, write, send down the cable
+// Javid is always 2. Everyone else is whatever he opened for them, and 0 by
+// default, so a new account can see none of this until he says so.
+
+app.get('/api/hw/all', requireAuth, requireDeviceLevel(1), async (req, res) => {
+  try {
+    const all = await hwlink.everything();
+    all.yourLevel = deviceLevelOf(req.username);
+    all.canControl = all.yourLevel >= 2;
+    res.json(all);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// What appeared or disappeared since the last look — "nothing gets plugged in
+// without her noticing".
+app.get('/api/hw/watch', requireAuth, requireDeviceLevel(1), async (req, res) => {
+  try { res.json(await hwlink.watch()); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/hw/bluetooth', requireAuth, requireDeviceLevel(1), async (req, res) => {
+  try {
+    // Looking around is passive — it listens to what devices broadcast anyway —
+    // so it stays at level 1.
+    res.json(await hwlink.btDevices({ scan: req.query.scan === '1', seconds: Number(req.query.seconds) || 6 }));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/hw/bluetooth/:mac', requireAuth, requireDeviceLevel(1), async (req, res) => {
+  try { res.json(await hwlink.btInfo(req.params.mac)); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Pair / connect / disconnect / forget — changes the device, so level 2.
+app.post('/api/hw/bluetooth/action', requireAuth, requireDeviceLevel(2), async (req, res) => {
+  const body = req.body || {};
+  try {
+    const out = await hwlink.btAction(String(body.mac || ''), String(body.action || ''));
+    if (out.ok) {
+      nightLog(`بلوتوث: ${body.action} روی ${body.mac} توسط ${req.username}`, 'info',
+        `bluetooth ${body.action} on ${body.mac} by ${req.username}`);
+    }
+    res.json(out);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/hw/gatt', requireAuth, requireDeviceLevel(1), async (req, res) => {
+  try { res.json(await hwlink.gattList(String(req.query.mac || ''))); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/hw/gatt/read', requireAuth, requireDeviceLevel(1), async (req, res) => {
+  const b = req.body || {};
+  try { res.json(await hwlink.gattRead(String(b.mac || ''), String(b.path || ''))); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+// Writing into a device can change its settings or its firmware, so this one
+// needs level 2 AND the step-up check the app uses for its other dangerous
+// actions: a stolen session must not be enough to reflash a device.
+app.post('/api/hw/gatt/write', requireAuth, requireDeviceLevel(2), requireStepUp, async (req, res) => {
+  const b = req.body || {};
+  try {
+    const out = await hwlink.gattWrite(String(b.mac || ''), String(b.path || ''), String(b.hex || ''));
+    nightLog(`نوشتن روی بلوتوث ${b.mac} (${b.hex}) توسط ${req.username}`, 'warn',
+      `bluetooth write to ${b.mac} by ${req.username}`);
+    res.json(out);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/hw/serial', requireAuth, requireDeviceLevel(1), async (req, res) => {
+  try { res.json(await hwlink.serialPorts()); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+// Sending bytes down a cable is a real action on real hardware.
+app.post('/api/hw/serial/talk', requireAuth, requireDeviceLevel(2), async (req, res) => {
+  const b = req.body || {};
+  try {
+    const out = await hwlink.serialTalk(String(b.port || ''), {
+      baud: b.baud, send: b.send, hex: b.hex, waitMs: b.waitMs, newline: b.newline,
+    });
+    res.json(out);
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+app.get('/api/hw/usb', requireAuth, requireDeviceLevel(1), async (req, res) => {
+  try { res.json({ devices: await hwlink.usbDetailed() }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // ---------------- Language: grammar and letters ----------------

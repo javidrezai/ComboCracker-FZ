@@ -94,6 +94,21 @@ via the app's own self-editing feature.
   in `.setayesh-allowed-devices.json`. That is the owner's «با اجازه».
 - **`network_status` is the one non-admin tool** in this group — the owner asked
   that every member see the connection state on their own device.
+- **`identify.js`** — the full IEEE OUI registry (`oui.dat.gz`, 52 085 prefixes,
+  loaded lazily) plus randomised-MAC detection and hostname resolution (mDNS
+  reverse, NetBIOS, reverse DNS). A device is only called "unknown" when it
+  genuinely is. The ARP regex must allow letters in the separator — excluding
+  a-f meant it could not cross the word "at" and found nothing on Linux/macOS.
+- **`hwlink.js`** — Bluetooth (pair/connect/GATT read+write) and the cable
+  (full USB descriptors, serial ports, two-way serial). Stdlib only: bluez on
+  Linux, PowerShell + `System.IO.Ports.SerialPort` on Windows, `stty` + the tty
+  as a file on POSIX. `assertKnownPort` means only a port the SYSTEM listed can
+  be opened — never an arbitrary path from a message.
+- **Device access levels** (`deviceLevelOf` / `requireDeviceLevel`): 0 closed,
+  1 look, 2 touch. The admin is always 2 and cannot be demoted — the account
+  that grants permission must not be able to lock itself out of granting it.
+  Enforce on the SERVER for every route AND inside `dispatchTool`; the UI check
+  is only cosmetic. Granting level 2 must never imply admin rights.
 - **Voice**: `voiceBlock()` in index.js builds the tone rules from each member's
   `tone` and `writeLang` prefs. Children never get the adult "خودمونی" register.
 

@@ -786,3 +786,146 @@ test('the ARP table parses on Linux and macOS, not only Windows', () => {
   assert.equal(parse('router (192.168.2.1) at e0:28:6d:a:b:c on en0')['192.168.2.1'],
     'e0:28:6d:0a:0b:0c', 'macOS arp output');
 });
+
+// ---- Hardware access levels ----
+// The owner asked for two grades besides his own account. The whole point is
+// that the SERVER decides, so these tests go through HTTP as each user rather
+// than checking the interface.
+async function mkUser(token, username, password) {
+  await api('/api/admin/users', { method: 'POST', token, body: { username, password } });
+  const r = await (await api('/api/login', { method: 'POST', body: { username, password } })).json();
+  return r.token;
+}
+
+test('a new account starts with no hardware access at all', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  const kid = await mkUser(token, 'lvltest0', 'pass12345');
+  assert.ok(kid, 'could not create the test account');
+
+  for (const p of ['/api/hw/all', '/api/hw/serial', '/api/hw/usb', '/api/hw/bluetooth', '/api/hw/watch']) {
+    const r = await api(p, { token: kid });
+    assert.equal(r.status, 403, p + ' should be closed by default');
+  }
+  const cfg = await (await api('/api/config', { token: kid })).json();
+  assert.equal(cfg.deviceLevel, 0);
+});
+
+test('level 1 may look but never touch', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  const u = await mkUser(token, 'lvltest1', 'pass12345');
+  const set = await api('/api/admin/device-level', { method: 'POST', token, body: { username: 'lvltest1', level: 1 } });
+  assert.equal(set.status, 200);
+
+  // Looking works.
+  assert.equal((await api('/api/hw/serial', { token: u })).status, 200);
+  assert.equal((await api('/api/hw/usb', { token: u })).status, 200);
+  assert.equal((await api('/api/hw/bluetooth', { token: u })).status, 200);
+
+  // Touching does not.
+  const pair = await api('/api/hw/bluetooth/action', { method: 'POST', token: u,
+    body: { mac: 'aa:bb:cc:dd:ee:ff', action: 'pair' } });
+  assert.equal(pair.status, 403, 'level 1 must not be able to pair');
+  assert.match((await pair.json()).error, /درجه/);
+
+  const talk = await api('/api/hw/serial/talk', { method: 'POST', token: u, body: { port: 'COM1', send: 'AT' } });
+  assert.equal(talk.status, 403, 'level 1 must not be able to send down a cable');
+});
+
+test('level 2 may touch, and the level is what decides — not the admin flag', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  const u = await mkUser(token, 'lvltest2', 'pass12345');
+  await api('/api/admin/device-level', { method: 'POST', token, body: { username: 'lvltest2', level: 2 } });
+
+  const cfg = await (await api('/api/config', { token: u })).json();
+  assert.equal(cfg.deviceLevel, 2);
+  assert.equal(cfg.isAdmin, false, 'granting hardware access must NOT make someone an admin');
+
+  // It gets past the permission gate; what comes back then depends on the
+  // hardware, so anything except 403 proves the gate opened.
+  const talk = await api('/api/hw/serial/talk', { method: 'POST', token: u, body: { port: 'COM-nope', send: 'AT' } });
+  assert.notEqual(talk.status, 403, 'level 2 should get past the gate');
+
+  // And it is still not an admin of anything else.
+  assert.equal((await api('/api/admin/users', { token: u })).status, 403);
+});
+
+test('the father cannot be demoted out of his own permission system', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  const r = await api('/api/admin/device-level', { method: 'POST', token, body: { username: 'admin', level: 0 } });
+  assert.equal(r.status, 400);
+  const cfg = await (await api('/api/config', { token })).json();
+  assert.equal(cfg.deviceLevel, 2, 'the admin must stay at level 2');
+});
+
+test('only the father may hand out levels', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  const u = await mkUser(token, 'lvltest3', 'pass12345');
+  await api('/api/admin/device-level', { method: 'POST', token, body: { username: 'lvltest3', level: 2 } });
+  // Even at the highest hardware level, a member cannot promote anyone.
+  const r = await api('/api/admin/device-level', { method: 'POST', token: u,
+    body: { username: 'lvltest3', level: 2 } });
+  assert.equal(r.status, 403);
+});
+
+test('an invalid level is refused', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  await mkUser(token, 'lvltest4', 'pass12345');
+  for (const level of [3, -1, 'two', null]) {
+    const r = await api('/api/admin/device-level', { method: 'POST', token, body: { username: 'lvltest4', level } });
+    assert.equal(r.status, 400, 'level ' + level + ' should be refused');
+  }
+});
+
+// ---- Bluetooth and serial parsing ----
+test('bluetoothctl output is parsed into a full device picture', () => {
+  const hw = require(path.join(ROOT, 'hwlink.js'));
+  const list = hw.parseBtDevices('Device AC:BC:32:11:22:33 JBL Flip 5\nDevice 5C:49:7D:AA:BB:CC Soundbar\nnoise');
+  assert.equal(list.length, 2);
+  assert.equal(list[0].mac, 'ac:bc:32:11:22:33');
+
+  const info = hw.parseBtInfo([
+    '        Name: JBL Flip 5', '        Icon: audio-card', '        Paired: yes',
+    '        Connected: yes', '        RSSI: -52',
+    '        UUID: Audio Sink                (0000110b-0000-1000-8000-00805f9b34fb)',
+  ].join('\n'));
+  assert.equal(info.paired, true);
+  assert.equal(info.connected, true);
+  assert.equal(info.rssi, -52);
+  assert.equal(info.kind, 'اسپیکر یا هدفون');
+  assert.equal(info.uuids.length, 1);
+});
+
+test('GATT attributes get a readable label, and values decode', () => {
+  const hw = require(path.join(ROOT, 'hwlink.js'));
+  const attrs = hw.parseGattAttributes([
+    'Primary Service', '/org/bluez/hci0/dev_AA/service000a',
+    '0000180a-0000-1000-8000-00805f9b34fb',
+    'Characteristic', '/org/bluez/hci0/dev_AA/service000a/char000b',
+    '00002a29-0000-1000-8000-00805f9b34fb',
+  ].join('\n'));
+  assert.equal(attrs.length, 2);
+  assert.equal(attrs[1].kind, 'characteristic');
+  assert.equal(attrs[1].label, 'سازنده');
+
+  const v = hw.parseGattValue('  00: 4a 42 4c    JBL');
+  assert.equal(v.text, 'JBL');
+  assert.equal(v.hex, '4a424c');
+});
+
+test('a serial port must be one the system actually reported', async () => {
+  const hw = require(path.join(ROOT, 'hwlink.js'));
+  await assert.rejects(() => hw.assertKnownPort('/etc/passwd'),
+    /فهرست پورت/, 'an arbitrary path must never be opened as a serial port');
+  await assert.rejects(() => hw.serialTalk('../../etc/shadow', { send: 'x' }), /فهرست پورت/);
+});
+
+test('Windows COM ports are parsed, and non-ports ignored', () => {
+  const hw = require(path.join(ROOT, 'hwlink.js'));
+  const ports = hw.parseWinSerial(JSON.stringify([
+    { Name: 'USB-SERIAL CH340 (COM3)', Manufacturer: 'wch.cn', PNPDeviceID: 'USB\\VID_1A86&PID_7523\\5' },
+    { Name: 'Some other device' },
+  ]));
+  assert.equal(ports.length, 1);
+  assert.equal(ports[0].port, 'COM3');
+  assert.equal(ports[0].vendor, 'wch.cn');
+});

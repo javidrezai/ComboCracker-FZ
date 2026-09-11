@@ -1,4 +1,4 @@
-/* SETAYESH_BUILD 9.9.84 */
+/* SETAYESH_BUILD 9.9.85 */
 (function(){
 'use strict';
 
@@ -1244,6 +1244,33 @@ function loadAdminUsers(){
       });
       safeLbl.appendChild(safeCb);safeLbl.appendChild(el('span','',t('safeMode')));
       actions.appendChild(safeLbl);
+
+      /* How far this member may go with the hardware: the USB and Bluetooth
+         tools, the serial cable. Javid's own row is fixed at درجه ۲ — the
+         account that hands out permission must not be able to lock itself out
+         of handing it out. */
+      var lvlWrap=el('label');
+      lvlWrap.style.cssText='display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--muted)';
+      lvlWrap.appendChild(el('span','','دستگاه‌ها:'));
+      var lvlSel=el('select','input');
+      lvlSel.style.cssText='font-size:11px;width:auto;padding:4px 8px';
+      [[0,'بسته'],[1,'درجه ۱ — دیدن'],[2,'درجه ۲ — کنترل']].forEach(function(o){
+        var x=el('option');x.value=o[0];x.textContent=o[1];
+        if(Number(u.deviceLevel||0)===o[0])x.selected=true;
+        lvlSel.appendChild(x);
+      });
+      if(u.deviceLevelLocked){ lvlSel.disabled=true; lvlSel.title='حساب بابا همیشه درجه‌ی ۲ است.'; }
+      lvlSel.addEventListener('change',function(){
+        var prev=u.deviceLevel;
+        adminFetch('/api/admin/device-level',{method:'POST',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({username:u.username,level:Number(lvlSel.value)})})
+          .then(function(d){ u.deviceLevel=d.level; $('adminNote').style.color='#34d399';
+            $('adminNote').textContent=u.username+' → '+d.label; })
+          .catch(function(e){ lvlSel.value=String(prev||0);
+            $('adminNote').style.color='#fb7185'; $('adminNote').textContent=e.message; });
+      });
+      lvlWrap.appendChild(lvlSel);
+      actions.appendChild(lvlWrap);
       // reset password
       var rb=el('button','tk-btn',t('adminReset'));rb.style.cssText='padding:6px 11px;font-size:11.5px';
       rb.addEventListener('click',function(){
@@ -4173,6 +4200,8 @@ var TK={
     {id:'hw',i18n:'tk_hw',icon:'<path d="M9 3v4M15 3v4M9 17v4M15 17v4M3 9h4M3 15h4M17 9h4M17 15h4"/><rect x="7" y="7" width="10" height="10" rx="1.5"/>'},
     {id:'devices',i18n:'tk_devices',adminOnly:true,icon:'<rect x="2" y="6" width="13" height="9" rx="1.5"/><path d="M17 9h5v9h-5zM6 19h6"/>'},
     {id:'lang',i18n:'tk_lang',icon:'<path d="M4 5h10M9 3v2M11 5c0 5-3 9-7 11M7 10c0 3 3 6 7 7M13 21l4-10 4 10M14.5 18h5"/>'},
+    {id:'bt',i18n:'tk_bt',needLevel:1,icon:'<path d="M7 7l10 10-5 4V3l5 4L7 17"/>'},
+    {id:'cable',i18n:'tk_cable',needLevel:1,icon:'<path d="M7 3v6a5 5 0 0010 0V3M9 3h2M13 3h2M12 14v7M9 21h6"/>'},
     {id:'comms',i18n:'tk_comms',adminOnly:true,icon:'<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/>'},
     {id:'settings',i18n:'tk_settings',icon:'<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09A1.65 1.65 0 008 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06A1.65 1.65 0 004.6 15a1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06A1.65 1.65 0 009 4.6a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06A1.65 1.65 0 0019.4 9c.14.36.47.62.86.7H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"/>'},
     {id:'ext',i18n:'tk_ext',icon:'<path d="M12 2l2 5 5-1-3 4 3 4-5-1-2 5-2-5-5 1 3-4-3-4 5 1z"/>'}
@@ -4183,7 +4212,7 @@ function tkT(k){return t(k);}
 
 var TK_I18N={
  fa:{toolkit:'جعبه‌ابزار امنیت',defensive:'دفاعی · فقط دارایی‌های خودتان',
-  tk_devices:'دستگاه‌ها',tk_lang:'گرامر و لحن',tk_web:'اسکن وب‌سایت',tk_net:'اسکن شبکه',tk_ports:'بررسی پورت',tk_hash:'آزمایشگاه هش',tk_mobile:'اتصال موبایل',tk_hw:'سخت‌افزار',tk_ext:'افزونه‌ها',
+  tk_devices:'دستگاه‌ها',tk_lang:'گرامر و لحن',tk_bt:'بلوتوث',tk_cable:'کابل و سریال',tk_web:'اسکن وب‌سایت',tk_net:'اسکن شبکه',tk_ports:'بررسی پورت',tk_hash:'آزمایشگاه هش',tk_mobile:'اتصال موبایل',tk_hw:'سخت‌افزار',tk_ext:'افزونه‌ها',
   tk_extHint:'قابلیت جدید اضافه کنید بدون ساختن دوباره‌ی برنامه: یک فایل .js در پوشه‌ی plugins کنار برنامه بگذارید و «بارگذاری مجدد» را بزنید. نمونه‌ها در همان پوشه هستند.',
   tk_reload:'بارگذاری مجدد',tk_noext:'هیچ افزونه‌ای پیدا نشد. یک فایل .js در پوشه‌ی plugins بگذارید.',tk_extRun:'اجرا',tk_extErr:'خطای بارگذاری',
   tk_webHint:'وب‌سایت خودتان را از نظر تنظیمات امنیتی بررسی می‌کند (هدرها، کوکی‌ها، HTTPS، افشای نسخه). این بررسی passive است — فقط صفحه خوانده می‌شود، هیچ حمله‌ای انجام نمی‌شود.',
@@ -4202,7 +4231,7 @@ var TK_I18N={
   tk_errPrivate:'فقط شبکه‌ی محلی خودتان قابل بررسی است.',tk_loading:'در حال بارگذاری…',
   weak:'ضعیف',ok:'قابل‌قبول',strong:'قوی',excellent:'عالی'},
  en:{toolkit:'Security toolkit',defensive:'Defensive · your own assets only',
-  tk_devices:'Devices',tk_lang:'Grammar & voice',tk_web:'Website scan',tk_net:'Network scan',tk_ports:'Port check',tk_hash:'Hash lab',tk_mobile:'Mobile link',tk_hw:'Hardware',tk_ext:'Extensions',
+  tk_devices:'Devices',tk_lang:'Grammar & voice',tk_bt:'Bluetooth',tk_cable:'Cable & serial',tk_web:'Website scan',tk_net:'Network scan',tk_ports:'Port check',tk_hash:'Hash lab',tk_mobile:'Mobile link',tk_hw:'Hardware',tk_ext:'Extensions',
   tk_extHint:'Add a new tool without rebuilding: drop a .js file into the plugins folder next to the app and press Reload. Sample plugins are already in that folder.',
   tk_reload:'Reload',tk_noext:'No extensions found. Put a .js file in the plugins folder.',tk_extRun:'Run',tk_extErr:'load error',
   tk_webHint:'Checks your own website for security misconfigurations (headers, cookies, HTTPS, version disclosure). This is passive — it only reads the page, it performs no attack.',
@@ -4281,6 +4310,10 @@ function buildTkTabs(){
   var box=$('tkTabs');box.innerHTML='';
   TK.tabs.forEach(function(tab){
     if(tab.adminOnly&&!(CFG&&CFG.isAdmin))return; // email/telegram settings are admin-only
+    // The hardware tabs appear only for a member Javid has opened them to.
+    // The server checks the level on every call regardless; this just keeps
+    // the interface from showing a door that will not open.
+    if(tab.needLevel&&(deviceLevel()<tab.needLevel))return;
     var b=el('button','tk-tab'+(tab.id===TK.active?' on':''));b.type='button';
     b.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'+tab.icon+'</svg><span>'+esc(t(tab.i18n))+'</span>';
     b.addEventListener('click',function(){showTkTab(tab.id);});
@@ -4304,6 +4337,8 @@ function showTkTab(id){
   else if(id==='hw')body.appendChild(tkHwPanel());
   else if(id==='devices')body.appendChild(tkDevicesPanel());
   else if(id==='lang')body.appendChild(tkLangPanel());
+  else if(id==='bt')body.appendChild(tkBtPanel());
+  else if(id==='cable')body.appendChild(tkCablePanel());
   else if(id==='comms')body.appendChild(tkCommsPanel());
   else if(id==='settings')body.appendChild(tkSettingsPanel());
   else if(id==='ext')body.appendChild(tkExtPanel());
@@ -4941,6 +4976,287 @@ function tkLangPanel(){
     [['','پیش‌فرض (خودمونی)'],['close','خیلی خودمونی'],['normal','معمولی'],['formal','رسمی']],curT));
   pb.appendChild(note);
   p.appendChild(prefCard);
+  return p;
+}
+
+/* What level of hardware access this member has. Javid is 2; everyone else is
+   whatever he opened. The server enforces it on every call — this only decides
+   what the interface bothers to show. */
+function deviceLevel(){ return (CFG&&Number(CFG.deviceLevel))||0; }
+
+function hwCard(title){
+  var c=el('div','tk-card');
+  c.innerHTML='<div class="tk-card-h">'+esc(title)+'</div>';
+  var b=el('div','tk-card-b');c.appendChild(b);
+  return {card:c,body:b};
+}
+function hwRow(main,sub,extra){
+  var r=el('div');
+  r.style.cssText='padding:8px 0;border-bottom:1px solid rgba(255,255,255,.06);display:flex;gap:9px;align-items:flex-start;flex-wrap:wrap';
+  var left=el('div');left.style.cssText='flex:1;min-width:150px';
+  left.innerHTML='<div style="font-size:12.5px">'+main+'</div>'+
+    (sub?'<div style="font-size:11px;color:#8ea0c8;margin-top:2px;direction:ltr;text-align:right">'+sub+'</div>':'');
+  r.appendChild(left);
+  if(extra)r.appendChild(extra);
+  return r;
+}
+
+/* ---- Bluetooth ---------------------------------------------------------- */
+function tkBtPanel(){
+  var p=el('div','tk-panel');
+  var lvl=deviceLevel();
+  var w=el('div','tk-warn');
+  w.textContent=lvl>=2
+    ? 'دستگاه‌های جفت‌شده و آن‌هایی که همین الان دور و برند. می‌توانی وصل شوی، اطلاعات بگیری و روی دستگاه‌های BLE مقدار بنویسی. '+
+      'جفت‌شدن را خودِ دستگاه تأیید می‌کند — ستایش هیچ رمزی حدس نمی‌زند.'
+    : 'حساب تو درجه‌ی ۱ است: می‌توانی ببینی و اطلاعات بخوانی، ولی وصل‌شدن و نوشتن باز نیست.';
+  p.appendChild(w);
+
+  var bar=el('div');bar.style.cssText='display:flex;gap:8px;flex-wrap:wrap;margin:10px 0';
+  var listBtn=el('button','btn');listBtn.textContent='جفت‌شده‌ها';listBtn.style.fontSize='13px';
+  var scanBtn=el('button','btn ghost');scanBtn.textContent='گشتن دور و بر';scanBtn.style.fontSize='13px';
+  bar.appendChild(listBtn);bar.appendChild(scanBtn);p.appendChild(bar);
+  var note=el('div');note.style.cssText='font-size:12px;min-height:16px;margin-bottom:6px';p.appendChild(note);
+  var out=el('div');p.appendChild(out);
+
+  function say(t,ok){note.style.color=ok?'#34d399':'#fb7185';note.textContent=t;}
+
+  function act(mac,action,btn){
+    btn.disabled=true;say('در حال '+action+'…',true);
+    tkFetch('/api/hw/bluetooth/action',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({mac:mac,action:action})})
+      .then(function(d){
+        btn.disabled=false;
+        say(d.ok?('انجام شد ✓'):((d.error||d.detail||'انجام نشد')+(d.hint?(' — '+d.hint):'')),d.ok);
+        if(d.ok)load(false);
+      })
+      .catch(function(e){btn.disabled=false;say(e.message);});
+  }
+
+  function showGatt(mac,host){
+    host.innerHTML='<div class="tk-hint"><span class="spin"></span> خواندن مشخصه‌ها…</div>';
+    tkFetch('/api/hw/gatt?mac='+encodeURIComponent(mac)).then(function(d){
+      host.innerHTML='';
+      if(d.error){host.innerHTML='<div class="tk-hint" style="color:#fbbf24">'+esc(d.error)+'</div>';return;}
+      if(!d.attributes||!d.attributes.length){host.innerHTML='<div class="tk-hint">'+esc(d.note||'چیزی پیدا نشد.')+'</div>';return;}
+      d.attributes.forEach(function(a){
+        if(a.kind==='service')return;
+        var r=el('div');
+        r.style.cssText='display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:5px 0;font-size:11.5px';
+        var lbl=el('span');lbl.style.cssText='flex:1;min-width:130px';
+        lbl.innerHTML=esc(a.label||a.uuid.slice(0,8))+'<span style="color:#8ea0c8;direction:ltr"> '+esc(a.uuid.slice(0,8))+'</span>';
+        var val=el('span');val.style.cssText='color:#6ee7b7;min-width:70px';
+        var rd=el('button','btn ghost');rd.style.cssText='font-size:10.5px;padding:3px 8px';rd.textContent='خواندن';
+        rd.addEventListener('click',function(){
+          rd.disabled=true;
+          tkFetch('/api/hw/gatt/read',{method:'POST',headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({mac:mac,path:a.path})})
+            .then(function(v){rd.disabled=false;
+              val.textContent=v.error?('— '+v.error):(v.text||v.hex||('')+(v.number!=null?(' ('+v.number+')'):''));})
+            .catch(function(e){rd.disabled=false;val.textContent=e.message;});
+        });
+        r.appendChild(lbl);r.appendChild(val);r.appendChild(rd);
+        if(deviceLevel()>=2){
+          var inp=el('input','input');inp.placeholder='هگز مثل 01';
+          inp.style.cssText='font-size:10.5px;width:88px;padding:3px 6px;direction:ltr';
+          var wr=el('button','btn ghost');wr.style.cssText='font-size:10.5px;padding:3px 8px';wr.textContent='نوشتن';
+          wr.addEventListener('click',function(){
+            if(!inp.value.trim())return;
+            if(!confirm('روی «'+(a.label||a.uuid)+'» مقدار '+inp.value+' نوشته شود؟ نوشتن اشتباه می‌تواند دستگاه را خراب کند.'))return;
+            wr.disabled=true;
+            tkFetch('/api/hw/gatt/write',{method:'POST',headers:{'Content-Type':'application/json'},
+              body:JSON.stringify({mac:mac,path:a.path,hex:inp.value})})
+              .then(function(v){wr.disabled=false;say(v.ok?'نوشته شد ✓':(v.error||'نوشته نشد'),v.ok);})
+              .catch(function(e){wr.disabled=false;say(e.message);});
+          });
+          r.appendChild(inp);r.appendChild(wr);
+        }
+        host.appendChild(r);
+      });
+    }).catch(function(e){host.innerHTML='<div class="tk-hint" style="color:#fb7185">'+esc(e.message)+'</div>';});
+  }
+
+  function render(d){
+    out.innerHTML='';
+    if(d.supported===false){
+      out.innerHTML='<div class="tk-hint" style="color:#fbbf24">'+esc(d.note||'بلوتوث در دسترس نیست.')+'</div>';
+      return;
+    }
+    if(d.note){var n=el('div','tk-hint');n.style.color='#fbbf24';n.textContent=d.note;out.appendChild(n);}
+    if(!d.devices||!d.devices.length){
+      out.innerHTML+='<div class="tk-hint">دستگاه بلوتوثی پیدا نشد.</div>';return;
+    }
+    var c=hwCard('دستگاه‌ها ('+d.devices.length+')');
+    d.devices.forEach(function(dev){
+      var tags=[];
+      if(dev.kind)tags.push(dev.kind);
+      if(dev.vendor)tags.push(dev.vendor);
+      if(dev.connected)tags.push('وصل');
+      else if(dev.paired)tags.push('جفت‌شده');
+      if(dev.battery)tags.push('باتری '+dev.battery);
+      if(typeof dev.rssi==='number')tags.push(dev.rssi+' dBm');
+      var main=esc(dev.name||dev.mac)+(tags.length?' <span style="color:#8ea0c8;font-size:11px">· '+esc(tags.join(' · '))+'</span>':'');
+      var btns=el('div');btns.style.cssText='display:flex;gap:5px;flex-wrap:wrap';
+      var detailHost=el('div');detailHost.style.cssText='flex-basis:100%;margin-top:5px';
+
+      var infoB=el('button','btn ghost');infoB.style.cssText='font-size:11px;padding:4px 9px';infoB.textContent='مشخصات';
+      infoB.addEventListener('click',function(){
+        detailHost.innerHTML='<div class="tk-hint"><span class="spin"></span> …</div>';
+        tkFetch('/api/hw/bluetooth/'+encodeURIComponent(dev.mac)).then(function(i){
+          if(i.error){detailHost.innerHTML='<div class="tk-hint" style="color:#fbbf24">'+esc(i.error)+'</div>';return;}
+          var rows=[];
+          [['نام',i.name||i.alias],['نوع',i.kind],['سازنده',dev.vendor],['کلاس',i.class],
+           ['جفت‌شده',i.paired?'بله':'خیر'],['وصل',i.connected?'بله':'خیر'],
+           ['مورد اعتماد',i.trusted?'بله':'خیر'],['باتری',i.battery],['سیگنال',i.rssi!=null?(i.rssi+' dBm'):''],
+           ['مدل',i.modalias]].forEach(function(kv){
+             if(kv[1]!=null&&kv[1]!=='')rows.push('<div style="font-size:11.5px"><span style="color:#8ea0c8">'+esc(kv[0])+':</span> '+esc(String(kv[1]))+'</div>');
+           });
+          var svc=(i.services||[]).map(function(x){return esc(x.label||x.name||x.uuid);});
+          if(svc.length)rows.push('<div style="font-size:11.5px;margin-top:4px"><span style="color:#8ea0c8">کارهایی که بلد است:</span> '+svc.join('، ')+'</div>');
+          detailHost.innerHTML=rows.join('');
+        }).catch(function(e){detailHost.innerHTML='<div class="tk-hint" style="color:#fb7185">'+esc(e.message)+'</div>';});
+      });
+      btns.appendChild(infoB);
+
+      var gattB=el('button','btn ghost');gattB.style.cssText='font-size:11px;padding:4px 9px';gattB.textContent='مقدارها';
+      gattB.addEventListener('click',function(){showGatt(dev.mac,detailHost);});
+      btns.appendChild(gattB);
+
+      if(deviceLevel()>=2){
+        [['connect','وصل شو'],['pair','جفت کن'],['disconnect','قطع کن'],['forget','فراموش کن']].forEach(function(a){
+          var b=el('button','btn ghost');b.style.cssText='font-size:11px;padding:4px 9px';b.textContent=a[1];
+          b.addEventListener('click',function(){
+            if(a[0]==='forget'&&!confirm('«'+(dev.name||dev.mac)+'» فراموش شود؟'))return;
+            act(dev.mac,a[0],b);
+          });
+          btns.appendChild(b);
+        });
+      }
+      var row=hwRow(main,esc(dev.mac||''),btns);
+      row.appendChild(detailHost);
+      c.body.appendChild(row);
+    });
+    out.appendChild(c.card);
+  }
+
+  function load(scan){
+    out.innerHTML='<div class="tk-hint"><span class="spin"></span> '+(scan?'گشتن…':'خواندن…')+'</div>';
+    tkFetch('/api/hw/bluetooth'+(scan?'?scan=1&seconds=6':''))
+      .then(render)
+      .catch(function(e){out.innerHTML='<div class="tk-hint" style="color:#fb7185">'+esc(e.message)+'</div>';});
+  }
+  listBtn.addEventListener('click',function(){load(false);});
+  scanBtn.addEventListener('click',function(){load(true);});
+  load(false);
+  return p;
+}
+
+/* ---- Cable: USB detail + a real serial link ----------------------------- */
+function tkCablePanel(){
+  var p=el('div','tk-panel');
+  var w=el('div','tk-warn');
+  w.textContent='هر چیزی که با کابل وصل شده، با تمام مشخصاتش — سازنده، مدل، شماره سریال، درایور. '+
+    (deviceLevel()>=2?'و اگر پورت سریال باشد، می‌توانی مستقیم با دستگاه حرف بزنی.'
+                     :'حساب تو فقط دیدن است؛ فرستادن دستور به دستگاه باز نیست.');
+  p.appendChild(w);
+
+  var bar=el('div');bar.style.cssText='display:flex;gap:8px;flex-wrap:wrap;margin:10px 0';
+  var go=el('button','btn');go.textContent='بخوان';go.style.fontSize='13px';
+  var watchB=el('button','btn ghost');watchB.textContent='چه چیزی تازه وصل شد؟';watchB.style.fontSize='13px';
+  bar.appendChild(go);bar.appendChild(watchB);p.appendChild(bar);
+  var note=el('div');note.style.cssText='font-size:12px;min-height:16px;margin-bottom:6px';p.appendChild(note);
+  var out=el('div');p.appendChild(out);
+
+  function serialConsole(port){
+    var c=hwCard('گفتگو با '+port);
+    var line=el('div');line.style.cssText='display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px';
+    var cmd=el('input','input');cmd.placeholder='دستور، مثل AT';
+    cmd.style.cssText='flex:1;min-width:130px;font-size:12px;direction:ltr;text-align:left';
+    var baud=el('select','input');baud.style.cssText='font-size:11.5px;width:auto;padding:5px 8px';
+    [9600,19200,38400,57600,115200,230400,921600].forEach(function(b){
+      var o=el('option');o.value=b;o.textContent=b;if(b===115200)o.selected=true;baud.appendChild(o);});
+    var send=el('button','btn');send.textContent='بفرست';send.style.cssText='font-size:12px';
+    line.appendChild(cmd);line.appendChild(baud);line.appendChild(send);
+    c.body.appendChild(line);
+    var log=el('div');
+    log.style.cssText='font-size:11.5px;line-height:1.8;direction:ltr;text-align:left;white-space:pre-wrap;'+
+      'max-height:220px;overflow:auto;background:rgba(0,0,0,.22);border-radius:9px;padding:8px 10px';
+    c.body.appendChild(log);
+    function push(t){log.textContent+=t+'\n';log.scrollTop=log.scrollHeight;}
+    send.addEventListener('click',function(){
+      var v=cmd.value;
+      send.disabled=true;push('> '+v);
+      tkFetch('/api/hw/serial/talk',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({port:port,send:v,baud:Number(baud.value),waitMs:1500})})
+        .then(function(d){send.disabled=false;cmd.value='';
+          if(d.error){push('! '+d.error);return;}
+          push(d.text?d.text.replace(/\r/g,''):(d.hex?('[hex] '+d.hex):'(چیزی نیامد)'));
+          if(d.note)push('# '+d.note);})
+        .catch(function(e){send.disabled=false;push('! '+e.message);});
+    });
+    cmd.addEventListener('keydown',function(e){if(e.key==='Enter')send.click();});
+    return c.card;
+  }
+
+  function render(d){
+    out.innerHTML='';
+    var sum=el('div','tk-hint');
+    sum.textContent='USB: '+d.counts.usb+' · پورت سریال: '+d.counts.serial+' · بلوتوث: '+d.counts.bluetooth;
+    out.appendChild(sum);
+
+    if(d.serial&&d.serial.length){
+      var sc=hwCard('پورت‌های سریال / کابل داده');
+      d.serial.forEach(function(sp){
+        var sub=[sp.description,sp.vendor,sp.serial,sp.usbId].filter(Boolean).join(' · ');
+        var btn=null;
+        if(deviceLevel()>=2){
+          btn=el('button','btn ghost');btn.style.cssText='font-size:11px;padding:4px 9px';
+          btn.textContent='وصل شو و حرف بزن';
+          btn.addEventListener('click',function(){
+            var host=btn.parentNode.parentNode;
+            if(host._console){host._console.remove();host._console=null;return;}
+            host._console=serialConsole(sp.port);
+            host.appendChild(host._console);
+          });
+        }
+        sc.body.appendChild(hwRow('<b>'+esc(sp.port)+'</b>',esc(sub),btn));
+      });
+      out.appendChild(sc.card);
+    } else if(d.serialNote){
+      var sn=el('div','tk-hint');sn.style.color='#fbbf24';sn.textContent=d.serialNote;out.appendChild(sn);
+    }
+
+    if(d.usb&&d.usb.length){
+      var uc=hwCard('دستگاه‌های USB ('+d.usb.length+')');
+      d.usb.forEach(function(u){
+        var id=[u.vendorId,u.productId].filter(Boolean).join(':');
+        var facts=[u.manufacturer,id?('ID '+id):'',u.serial?('سریال '+u.serial):'',
+                   u.usbClass,u.speed,u.driver?('درایور '+u.driver+(u.driverVersion?(' '+u.driverVersion):'')):'',
+                   u.location,u.maxPower].filter(Boolean).join(' · ');
+        uc.body.appendChild(hwRow('<b>'+esc(u.name||u.product||'USB')+'</b>',esc(facts)));
+      });
+      out.appendChild(uc.card);
+    }
+    if(d.bluetoothNote){var bn=el('div','tk-hint');bn.textContent=d.bluetoothNote;out.appendChild(bn);}
+  }
+
+  go.addEventListener('click',function(){
+    out.innerHTML='<div class="tk-hint"><span class="spin"></span> خواندن همه‌ی درگاه‌ها…</div>';
+    tkFetch('/api/hw/all').then(render)
+      .catch(function(e){out.innerHTML='<div class="tk-hint" style="color:#fb7185">'+esc(e.message)+'</div>';});
+  });
+  watchB.addEventListener('click',function(){
+    note.style.color='';note.textContent='مقایسه با دفعه‌ی قبل…';
+    tkFetch('/api/hw/watch').then(function(d){
+      if(d.first){note.style.color='#8ea0c8';note.textContent=d.note;return;}
+      var parts=[];
+      if(d.attached.length)parts.push('تازه وصل شد: '+d.attached.map(function(x){return x.name||x.port||x.mac;}).join('، '));
+      if(d.removed.length)parts.push('جدا شد: '+d.removed.map(function(x){return x.name||x.port||x.mac;}).join('، '));
+      note.style.color=parts.length?'#34d399':'#8ea0c8';
+      note.textContent=parts.length?parts.join(' · '):'چیزی عوض نشده.';
+    }).catch(function(e){note.style.color='#fb7185';note.textContent=e.message;});
+  });
+  go.click();
   return p;
 }
 
