@@ -64,6 +64,39 @@ via the app's own self-editing feature.
 - `LOCAL_FIRST=1` routes adults through the on-device engine (private but
   slow). Children are local-first regardless: that guarantee is theirs.
 
+## Files, devices, network, language (9.9.83)
+- **`formats.js`** — the extension registry AND the converter. `FORMATS.md` (repo
+  root) and `pybrain/vault/knowledge/file-formats.md` are GENERATED from it at
+  boot; never hand-edit them. Office files and PDFs are read with `zlib` alone —
+  .docx/.xlsx/.pptx are ZIP+XML, and PDF text lives in zlib streams. A PDF
+  filter chain is often `[ /ASCII85Decode /FlateDecode ]`, so decoders must run
+  in order; Persian PDFs arrive as presentation forms in visual order, hence the
+  NFKC + guarded line-reversal. Media transcoding needs system ffmpeg/ImageMagick
+  and says so plainly when they are missing — never pretend.
+- **`bigfile.js`** — streaming reader. Two rules: (1) every long walk yields to
+  the event loop (`breathe()`), because a synchronous scan freezes the whole
+  house; (2) `search` matches per WINDOW, not per line — one string per line
+  meant 5.4M allocations for a 231 MB log and a 10x slowdown inside the server.
+  `protect()` is registered from index.js with the REAL state-file paths; the
+  name patterns are only a fallback.
+- **`discover.js`** — USB / Bluetooth / drives / LAN (SSDP + mDNS). Parsers are
+  pure and unit-tested; the command runners are thin. Discovery is passive.
+- **`netguard.js`** — device risk, heuristic file-threat scan, network trust
+  (captive portal, DNS hijack, TLS interception), emergency connectivity, and the
+  X25519+AES-GCM envelope. **Never** an attack tool: no password guessing, and
+  `connectWifi` refuses unless `approvedSsid === ssid`.
+- **`language.js`** — fa/en/de detection, rule-based grammar check, letter
+  conventions. Persian needs `(?<![؀-ۿ])` lookarounds, not `\b`; the
+  Arabic→Persian letter fold is applied to a normalised copy first (1:1, so
+  offsets stay valid); rules run most-certain-first so a `maybe` rule cannot
+  claim a range a `sure` rule needed.
+- **Device control is gated twice**: admin-only tool, AND the device id must be
+  in `.setayesh-allowed-devices.json`. That is the owner's «با اجازه».
+- **`network_status` is the one non-admin tool** in this group — the owner asked
+  that every member see the connection state on their own device.
+- **Voice**: `voiceBlock()` in index.js builds the tone rules from each member's
+  `tone` and `writeLang` prefs. Children never get the adult "خودمونی" register.
+
 ## Layout
 - `index.js` — server (routes, chat/engine routing, 29 AI tools, admin,
   self-heal). **Still a monolith — split module by module, behind tests** (rule 3.4).

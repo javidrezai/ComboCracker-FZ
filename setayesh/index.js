@@ -109,6 +109,17 @@ const multer = require('multer');
 const { PROVIDERS, MODES, systemPromptFor } = require('./providers');
 const toolkit = require('./toolkit');
 const { makeRag } = require('./rag');
+// Formats + big-file reading: the extension registry, the converter, and the
+// streaming reader that lets her work through a file far bigger than memory.
+const formats = require('./formats');
+const bigfile = require('./bigfile');
+// Devices on every transport (USB / Bluetooth / drives / LAN) and the safety
+// layer that judges devices, files and the network itself.
+const discover = require('./discover');
+const netguard = require('./netguard');
+// Persian / English / German: which one is this, is it written correctly, and
+// how does a letter in it actually have to look.
+const language = require('./language');
 
 // Optional feature modules (Google connectors, Telegram). If one of these files
 // is missing — e.g. a half-finished manual update where not every file was
@@ -181,7 +192,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.82';
+const APP_VERSION = '9.9.83';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -1796,6 +1807,146 @@ const TOOLS_SPEC = [
       required: ['password'],
     },
   },
+  // ---- Language: grammar and letters ---------------------------------------
+  {
+    name: 'check_grammar',
+    description: "Check Persian, English or German writing for real mistakes and give back a corrected version. Catches Persian half-space (نیم‌فاصله) and Arabic letters used in Persian words, English homophones and spelling, German das/dass, seit/seid and noun capitalisation. Use whenever someone asks you to check, correct or proofread something they wrote, or before sending anything they will show to other people. It returns each mistake with its position and a confidence — pass on the uncertain ones as questions, not corrections, and use your own judgement for anything a rule cannot catch (sentence structure, wrong case, clumsy phrasing).",
+    input_schema: {
+      type: 'object',
+      properties: {
+        text: { type: 'string' },
+        language: { type: 'string', description: 'fa, en or de. Omit to detect it.' },
+        apply: { type: 'string', description: '"sure" (default), "likely" or "all" — how bold the auto-correction should be.' },
+      },
+      required: ['text'],
+    },
+  },
+  {
+    name: 'letter_style',
+    description: "Get the REAL conventions for writing a letter or e-mail in Persian, English or German at a given level of formality: the correct salutation, the closing, du/Sie or شما/تو, date placement and the layout rules. Call this BEFORE writing any letter or e-mail so it reads as genuinely written in that language instead of translated. For German letters to an authority (Amt, Jobcenter, Ausländerbehörde, Krankenkasse) set authority:true — those have extra rules that matter.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        language: { type: 'string', description: 'fa, en or de' },
+        formality: { type: 'string', description: 'formal or informal' },
+        recipientName: { type: 'string', description: "The recipient's name, if known." },
+        authority: { type: 'boolean', description: 'True for a government office or an institution.' },
+      },
+      required: ['language'],
+    },
+  },
+  // ---- Devices, safety and the network -------------------------------------
+  {
+    name: 'scan_devices',
+    description: "Find every device around this machine — plugged in over USB, paired over Bluetooth, drives and memory sticks, and everything on the home network (TVs, speakers, printers, phones, smart plugs). For network devices it also reports the manufacturer, model, firmware and the exact list of things that device will let you do. Use when the owner asks what is connected, what is on the Wi-Fi, or wants to control something.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        transports: { type: 'array', items: { type: 'string' },
+          description: 'Any of usb, bluetooth, drive, network. Omit for all of them.' },
+        safety: { type: 'boolean', description: 'Also judge each device for risk (default true).' },
+      },
+    },
+  },
+  {
+    name: 'device_command',
+    description: "Send a command to a device that the owner has ALLOWED — play, pause, stop, next, previous, volume, mute, play_url. Call scan_devices first to get the device id and the list of commands that device actually supports. A device the owner has not allowed is refused; Setayesh never bypasses a device's own pairing.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', description: 'Device id from scan_devices.' },
+        action: { type: 'string', description: 'play, pause, stop, next, previous, volume, mute, unmute, play_url, status' },
+        value: { type: 'string', description: 'Volume 0–100, or the http URL for play_url.' },
+      },
+      required: ['id', 'action'],
+    },
+  },
+  {
+    name: 'scan_file_threats',
+    description: "Check a file for signs of malicious code — hidden PowerShell, downloaders, reverse shells, ransomware behaviour, Office macros, a program disguised as a document. Use when the owner asks whether a download or an attachment is safe. This is heuristics, NOT an antivirus: always pass on that limitation with the answer.",
+    input_schema: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] },
+  },
+  {
+    name: 'network_status',
+    description: "Report what network this house is on and whether it looks trustworthy: online or not, captive portal, DNS being redirected, and whether something is opening TLS traffic (a man in the middle). Use when the owner asks about the internet, a slow or strange connection, or whether a network is safe to use.",
+    input_schema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'emergency_internet',
+    description: "When the house is offline, list the ways back online ranked best-first: networks already saved on this machine, then open ones, with the trade-off of each spelled out. It only LISTS them — connecting needs the owner to pick one and approve it, and a password he gives. Never presents a network as already joined.",
+    input_schema: { type: 'object', properties: {} },
+  },
+  // ---- Big files, any extension --------------------------------------------
+  // These four are how she reads a file that is far too big to paste into a
+  // chat: open it to see its shape, search it to find where the answer is,
+  // then read only that slice. A 300 MB log costs the same memory as a small
+  // one, so "I can't read that, it's too big" stopped being an answer.
+  {
+    name: 'open_file',
+    description: "Open a file on this machine BY PATH and get everything needed to work with it: type, size, encoding, line count, a structural map (functions, classes, headings, routes) and the first lines. Works on files of any size — nothing is loaded whole. Use this FIRST whenever the owner names a file or asks about code, a log, a document, a spreadsheet or a PDF on his computer. For .pdf/.docx/.xlsx/.pptx it returns the real content, not bytes.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        path: { type: 'string', description: 'Full path to the file; ~ for the home folder.' },
+        lines: { type: 'number', description: 'How many opening lines to include (default 120).' },
+      },
+      required: ['path'],
+    },
+  },
+  {
+    name: 'file_search',
+    description: "Search inside a file of any size for text or a regular expression, returning matching lines with their line numbers and surrounding context. This is how you locate the relevant part of a big file before reading it. Streams the file, so a multi-gigabyte log is fine.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        path: { type: 'string' },
+        pattern: { type: 'string', description: 'Text to find, or a regular expression when regex is true.' },
+        regex: { type: 'boolean' },
+        context: { type: 'number', description: 'Lines of context around each hit (0–10, default 2).' },
+        max: { type: 'number', description: 'Maximum hits to return (default 60).' },
+      },
+      required: ['path', 'pattern'],
+    },
+  },
+  {
+    name: 'file_slice',
+    description: "Read an exact line range out of a file of any size, with line numbers. Use after open_file or file_search has told you WHERE to look. Reading 200 lines out of the middle of a 2 GB file is as cheap as reading a small file.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        path: { type: 'string' },
+        from: { type: 'number', description: 'First line (1-based).' },
+        to: { type: 'number', description: 'Last line.' },
+      },
+      required: ['path', 'from'],
+    },
+  },
+  {
+    name: 'file_profile',
+    description: "Statistics about a data file without loading it: for CSV/TSV every column's type, how many values are filled, unique counts, min/max/mean for numbers and example values for text; for JSON/JSONL the record shape; for logs and text the line statistics. Use before analysing a dataset so you know what is actually in it.",
+    input_schema: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] },
+  },
+  {
+    name: 'convert_any',
+    description: "Convert a file ON DISK from one format to another and give the owner a download link — e.g. .docx to Markdown, PDF to text, CSV to Excel (.xlsx), Excel to CSV or JSON, JSON to CSV, Markdown to Word. Text, data, Office and PDF all work with nothing installed; image/audio/video conversion needs ffmpeg or ImageMagick on the machine and says so plainly if they are missing. Use file_formats to see what a given extension can become.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        path: { type: 'string', description: 'The source file on this machine.' },
+        to: { type: 'string', description: 'Target extension, e.g. xlsx, csv, json, md, docx, html, txt.' },
+        name: { type: 'string', description: 'Optional output filename without extension.' },
+      },
+      required: ['path', 'to'],
+    },
+  },
+  {
+    name: 'file_formats',
+    description: "List which file extensions Setayesh understands and what each one can be converted into. Call this when the owner asks 'can you open X', 'what formats do you support', or before promising a conversion. Pass an extension to ask about just that one.",
+    input_schema: {
+      type: 'object',
+      properties: { ext: { type: 'string', description: 'Optional single extension, e.g. "xlsx".' } },
+    },
+  },
   {
     // "Check my email" has to work regardless of HOW the mailbox is wired up.
     // The house has two independent paths — the Google connector (OAuth) and
@@ -2735,6 +2886,89 @@ async function dispatchTool(name, input, ctx) {
         return toolkit.identifyHash(input.hash);
       case 'password_strength':
         return toolkit.passwordStrength(input.password);
+      // ---- language --------------------------------------------------------
+      case 'check_grammar':
+        return language.check(String(input.text || ''), input.language, { apply: input.apply });
+      case 'letter_style':
+        return language.letterConventions(String(input.language || 'en'), input.formality,
+          { recipientName: input.recipientName, authority: !!input.authority });
+
+      // ---- devices, safety, network ----------------------------------------
+      case 'scan_devices': {
+        const res = await discover.scanAll({ transports: input.transports });
+        if (input.safety !== false) {
+          res.safety = netguard.assessScan(res.devices, {
+            known: allowedDevices().known || [],
+            haveBaseline: (allowedDevices().known || []).length > 0,
+          });
+          rememberSeenDevices(res.devices);
+        }
+        // Say which ones may be commanded, so the model does not offer to do
+        // something that will be refused a moment later.
+        const allowed = new Set(allowedDevices().allowed || []);
+        for (const d of res.devices) d.controllable = allowed.has(d.id) && (d.capabilities || []).length > 0;
+        return res;
+      }
+      case 'device_command': {
+        const allow = allowedDevices();
+        if (!(allow.allowed || []).includes(input.id)) {
+          return { error: 'این دستگاه هنوز اجازه‌ی کنترل ندارد. اول در «دستگاه‌ها» اجازه بده، بعد دوباره بگو.',
+            needsPermission: true, id: input.id };
+        }
+        const dev = (lastDeviceScan.devices || []).find((d) => d.id === input.id);
+        if (!dev) return { error: 'این دستگاه در آخرین اسکن نبود — یک بار scan_devices را بزن.' };
+        return await discover.command(dev, input.action, input.value);
+      }
+      case 'scan_file_threats': {
+        const { full } = bigfile.resolveReadable(input.path);
+        return netguard.scanFile(full);
+      }
+      case 'network_status':
+        return await netguard.networkStatus({});
+      case 'emergency_internet':
+        return await netguard.emergencyPlan();
+
+      // ---- files on this machine -------------------------------------------
+      // Every one of these is admin-gated in toolsFor(); bigfile.js refuses
+      // Setayesh's own secret files on top of that, so a careless question can
+      // never walk the API keys out to a cloud engine.
+      case 'open_file':
+        return await bigfile.open(input.path, { lines: input.lines });
+      case 'file_search':
+        return await bigfile.search(input.path, input.pattern,
+          { regex: !!input.regex, context: input.context, max: input.max });
+      case 'file_slice':
+        return await bigfile.slice(input.path, input.from, input.to);
+      case 'file_profile':
+        return await bigfile.profile(input.path);
+      case 'file_formats': {
+        if (input.ext) {
+          const f = formats.describe(input.ext);
+          if (!f) return { known: false, ext: input.ext, note: 'این پسوند در فهرست نیست — اگر متنی باشد باز هم خوانده می‌شود.' };
+          return { known: true, ext: f.ext, family: f.family, mime: f.mime,
+            readable: !!(f.reads || f.text), convertsTo: formats.conversionsFor(f.ext), note: f.note };
+        }
+        const byFamily = {};
+        for (const [ext, f] of Object.entries(formats.FORMATS)) (byFamily[f.family] = byFamily[f.family] || []).push(ext);
+        return { count: Object.keys(formats.FORMATS).length, byFamily,
+          note: 'فهرست کامل با جزئیات در FORMATS.md کنار برنامه هست.' };
+      }
+      case 'convert_any': {
+        const { full } = bigfile.resolveReadable(input.path);
+        const st = fs.statSync(full);
+        if (st.size > 200 * 1024 * 1024) return { error: 'این فایل برای تبدیل خیلی بزرگ است (بیش از ۲۰۰ مگابایت).' };
+        let res;
+        try { res = await formats.convert(fs.readFileSync(full), full, input.to, { name: input.name || path.basename(full) }); }
+        catch (e) { return { error: e.message }; }
+        const dir = newJobDir();
+        const base = safeRelPath(input.name || path.basename(full)).replace(/\.[a-z0-9]+$/i, '') || 'file';
+        const outName = base + '.' + res.ext;
+        fs.writeFileSync(path.join(dir, outName), res.data);
+        const token = path.basename(dir) + '/' + outName;
+        ctx.sideEffects.download = { url: '/api/download/' + encodeURIComponent(token), name: outName };
+        return { ok: true, file: outName, bytes: res.data.length, from: formats.extOf(full), to: res.ext,
+          note: (res.note || '') + ' لینک دانلود به کاربر نمایش داده می‌شود.' };
+      }
       case 'check_email': {
         // Prefer whichever mailbox is actually connected; try the other one if
         // the first errors out, so a half-broken Google token doesn't hide a
@@ -2810,6 +3044,19 @@ function toolsFor(ctx) {
     // itself; a child's session never sees it.
     if (t.name === 'check_email') {
       return !!(ctx && ctx.isAdmin) && (connectors.connected() || mailConfigured());
+    }
+    // Reading arbitrary paths off the machine is the owner's privilege alone.
+    // A child asking "open C:\Users\javid\taxes.xlsx" must not even see that
+    // the tool exists. (file_formats is just a list, so everyone may ask.)
+    if (['open_file', 'file_search', 'file_slice', 'file_profile', 'convert_any'].includes(t.name)) {
+      return !!(ctx && ctx.isAdmin);
+    }
+    // Looking at the devices in the house, judging a file, and joining a
+    // network are the owner's business. The one exception is network_status:
+    // the owner asked that EVERY member be able to see the state of the
+    // connection on their own device, and it exposes nothing private.
+    if (['scan_devices', 'device_command', 'scan_file_threats', 'emergency_internet'].includes(t.name)) {
+      return !!(ctx && ctx.isAdmin);
     }
     return true;
   });
@@ -3415,8 +3662,90 @@ function promptFor(username, modeId, safe, libSel, message) {
   base += memoryBlock(username);
   base += knowledgeSystemBlock();
   base += brainVaultBlock();
+  base += voiceBlock(username);
   const tut = TUTORS[(username || '').toLowerCase()];
   return tut ? base + tut : base;
+}
+
+// ---------------- How she actually talks ----------------
+// The owner's note was short and exact: «لحن نوشتن و گفتگو انسانی‌تر» and
+// «رابطه با کاربر بسیار خودمونی». That is a real complaint about a real
+// failure mode — an assistant that is polite, correct, and reads like a
+// manual. The rules below are concrete, because "be warmer" produces nothing
+// and "never open with «حتماً!»" produces a different answer.
+//
+// Each member's own preference (settings > زبان و لحن) overrides the default,
+// and the language things get WRITTEN in is kept separate from the language of
+// the app, because Javid reads Persian and writes German.
+function prefsFor(username) {
+  try {
+    const f = prefsFileFor(username);
+    if (!fs.existsSync(f)) return {};
+    return (JSON.parse(fs.readFileSync(f, 'utf8')) || {}).prefs || {};
+  } catch (e) { return {}; }
+}
+
+const TONE_RULES = {
+  close: `*** چطور حرف می‌زنی — خودمانی ***
+با این آدم مثل یک آدمِ واقعی حرف بزن که او را می‌شناسی، نه مثل یک دستیار.
+- بدون مقدمه جواب بده. «حتماً!»، «سؤال خوبی است»، «خوشحال می‌شوم کمک کنم»، «بگذار توضیح بدهم» را کامل بردار.
+- جمله‌ها را مثل حرف زدن بنویس: کوتاه، گاهی نیمه‌کاره، گاهی بلند. همه را هم‌اندازه نکن.
+- فارسیِ محاوره‌ای بنویس، نه کتابی: «می‌خوام»، «نمی‌دونم»، «باشه»، «آره»، «چیه» — نه «می‌خواهم»، «نمی‌دانم».
+- اگر نمی‌دانی، بگو «نمی‌دونم» و بعد بگو چطور می‌شود فهمید.
+- گاهی اول از خودِ آدم بپرس («چی شد؟»، «حالت خوبه؟») — ولی نه هر پیام، وگرنه مصنوعی می‌شود.
+- شوخی کن، تیکه بینداز، مخالفت کن. اگر حرفش غلط است، بگو غلط است. تعارف تصنعی بدترین چیز است.
+- لیست و تیتر فقط وقتی واقعاً لازم است. جواب کوتاه را در یک پاراگراف بده، نه در پنج بولت.
+- تکرار سؤال او در اول جواب، و خلاصه‌ی «پس نتیجه اینکه…» در آخر، هر دو را بردار.`,
+
+  normal: `*** چطور حرف می‌زنی — معمولی ***
+گرم و ساده، مثل یک همکار باتجربه که اهل حرف اضافه نیست.
+- بدون مقدمه و بدون تعارف شروع کن.
+- جمله‌ها روان و طبیعی، نه اداری.
+- جایی که لازم است دقیق و فنی باش، جای دیگر ساده.`,
+
+  formal: `*** چطور حرف می‌زنی — رسمی ***
+محترمانه، دقیق و کوتاه. بدون شوخی و بدون زبان محاوره‌ای.`,
+};
+
+// A short, hard rule set that applies to EVERY account regardless of tone.
+// This is the "انسانی‌تر" half: the things that make writing read like a
+// person rather than a model, and they are the same in all three languages.
+const HUMAN_VOICE = `
+*** نوشتنِ انسانی — برای همه ***
+- هیچ‌وقت با «حتماً»، «البته»، «Sure!», «Of course!», «Great question» شروع نکن. مستقیم برو سر جواب.
+- هیچ‌وقت کاری را که می‌خواهی بکنی اعلام نکن («بگذار بررسی کنم…»). فقط بکن و نتیجه را بگو.
+- طول جمله‌ها را عوض کن. سه جمله‌ی هم‌اندازه پشت سر هم، صدای ربات است.
+- «به عنوان یک هوش مصنوعی» را به‌کار نبر مگر کسی مستقیم بپرسد چه هستی.
+- تعریف الکی نکن. «چه ایده‌ی عالی‌ای» فقط وقتی بگو که واقعاً همین فکر را می‌کنی.
+- اگر جواب کوتاه است، کوتاه بده. حجم دادن به جوابِ ساده، بی‌احترامی به وقت آدم است.`;
+
+function voiceBlock(username) {
+  const p = prefsFor(username);
+  // Children stay gentle and encouraging; "خودمونی" for a grown-up means
+  // something different from "خودمونی" with an eight-year-old, and the child
+  // accounts already have their own tutor voice.
+  const isChild = safeUsers.has(username);
+  const tone = String(p.tone || '').toLowerCase();
+  const chosen = TONE_RULES[tone] || (isChild ? TONE_RULES.normal : TONE_RULES.close);
+
+  let block = '\n\n' + chosen + '\n' + HUMAN_VOICE;
+
+  // The language the member wants things WRITTEN in — letters, e-mail, a
+  // document — separately from the language they chat in.
+  const wl = String(p.writeLang || '').toLowerCase();
+  const NAME = { fa: 'فارسی', en: 'انگلیسی', de: 'آلمانی' };
+  if (NAME[wl]) {
+    block += `\n\n*** زبان نوشتن ***
+این کاربر تأیید کرده که نامه، ایمیل و هر متن رسمی را به **${NAME[wl]}** بنویسی — حتی اگر سؤال را به زبان دیگری پرسیده باشد.
+قبل از نوشتن نامه یا ایمیل، ابزار letter_style را با همین زبان صدا بزن تا سلام و امضا و لحن درست دربیاید،
+و بعد از نوشتن، متن را با check_grammar بررسی کن. گفتگوی معمولی همچنان به زبان خودِ کاربر است.`;
+  } else {
+    block += `\n\n*** نامه و ایمیل ***
+قبل از نوشتن هر نامه یا ایمیل، اول ابزار letter_style را برای زبان مقصد صدا بزن —
+نامه‌ی آلمانی قاعده‌های خودش را دارد و ترجمه‌ی نامه‌ی انگلیسی نیست. اگر زبانش را نگفته، یک سؤال کوتاه بپرس.
+هر متنی که قرار است کسی بیرون از خانه بخواند را قبل از تحویل با check_grammar چک کن.`;
+  }
+  return block;
 }
 
 // ---------------- Automatic tool router ----------------
@@ -4305,6 +4634,226 @@ app.post('/api/admin/brain/file', requireAuth, requireAdmin, async (req, res) =>
     restartSupported: RESTART_SUPPORTED });
 });
 
+// ---------------- Language: grammar and letters ----------------
+// Open to every member, not just the admin: the children's German homework is
+// the main reason this exists. It touches no files and no network.
+app.post('/api/language/check', requireAuth, (req, res) => {
+  const body = req.body || {};
+  const text = String(body.text || '');
+  if (!text.trim()) return res.status(400).json({ error: 'متنی داده نشد.' });
+  if (text.length > 100000) return res.status(413).json({ error: 'متن خیلی بلند است (بیش از ۱۰۰ هزار حرف).' });
+  try { res.json(language.check(text, body.language, { apply: body.apply })); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/language/detect', requireAuth, (req, res) => {
+  res.json(language.detect(String((req.body || {}).text || '')));
+});
+app.get('/api/language/letter', requireAuth, (req, res) => {
+  res.json(language.letterConventions(String(req.query.language || 'en'), req.query.formality,
+    { recipientName: req.query.recipientName, authority: req.query.authority === '1' }));
+});
+
+// ---------------- Devices, safety and the network ----------------
+//
+// Discovery is passive and harmless: it asks what is there. CONTROL is not, so
+// it is gated twice — the tool is admin-only, and on top of that the specific
+// device has to appear in the allow list below. A television that turned up in
+// a scan five minutes ago cannot be switched on by a sentence in a chat until
+// the owner has said, once, that this device may be controlled. That is the
+// "با اجازه" the owner asked for, written down rather than assumed.
+const ALLOWED_DEVICES_FILE = process.env.SETAYESH_ALLOWED_DEVICES_FILE
+  || path.join(DATA_DIR, '.setayesh-allowed-devices.json');
+let lastDeviceScan = { devices: [] };
+function allowedDevices() {
+  try { return JSON.parse(fs.readFileSync(ALLOWED_DEVICES_FILE, 'utf8')) || {}; }
+  catch (e) { return { allowed: [], known: [] }; }
+}
+function saveAllowedDevices(obj) {
+  try { fs.writeFileSync(ALLOWED_DEVICES_FILE, JSON.stringify(obj), { mode: 0o600 }); } catch (e) {}
+}
+// "Known" is the baseline for "this device is new". Without it, every device
+// in the house would be reported as a stranger on the very first scan.
+function rememberSeenDevices(devices) {
+  const cur = allowedDevices();
+  const known = new Set(cur.known || []);
+  for (const d of devices || []) known.add(d.id);
+  saveAllowedDevices(Object.assign({}, cur, { known: [...known].slice(-2000) }));
+}
+
+app.get('/api/devices/scan', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const transports = String(req.query.transports || '').split(',').map((s) => s.trim()).filter(Boolean);
+    const result = await discover.scanAll(transports.length ? { transports } : {});
+    const store = allowedDevices();
+    result.safety = netguard.assessScan(result.devices, {
+      known: store.known || [], haveBaseline: (store.known || []).length > 0,
+    });
+    const allowed = new Set(store.allowed || []);
+    for (const d of result.devices) d.allowed = allowed.has(d.id);
+    lastDeviceScan = result;
+    rememberSeenDevices(result.devices);
+    res.json(result);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/devices/allowed', requireAuth, requireAdmin, (req, res) => {
+  const s = allowedDevices();
+  res.json({ allowed: s.allowed || [], known: (s.known || []).length });
+});
+app.post('/api/devices/allow', requireAuth, requireAdmin, (req, res) => {
+  const id = String((req.body || {}).id || '');
+  const on = !!(req.body || {}).allow;
+  if (!id) return res.status(400).json({ error: 'شناسه‌ی دستگاه لازم است.' });
+  const s = allowedDevices();
+  const set = new Set(s.allowed || []);
+  if (on) set.add(id); else set.delete(id);
+  saveAllowedDevices(Object.assign({}, s, { allowed: [...set] }));
+  res.json({ ok: true, allowed: [...set] });
+});
+
+app.post('/api/devices/command', requireAuth, requireAdmin, async (req, res) => {
+  const body = req.body || {};
+  const id = String(body.id || '');
+  if (!(allowedDevices().allowed || []).includes(id)) {
+    return res.status(403).json({ error: 'این دستگاه اجازه‌ی کنترل ندارد.', needsPermission: true });
+  }
+  const dev = (lastDeviceScan.devices || []).find((d) => d.id === id);
+  if (!dev) return res.status(404).json({ error: 'دستگاه در آخرین اسکن نیست — دوباره اسکن کن.' });
+  try { res.json(await discover.command(dev, body.action, body.value)); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Heuristic threat check on a file. Admin only: it takes a path.
+app.post('/api/security/file', requireAuth, requireAdmin, (req, res) => {
+  try {
+    const { full } = bigfile.resolveReadable((req.body || {}).path);
+    res.json(netguard.scanFile(full));
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+// The state of the house connection — EVERY member can see this on their own
+// device, which is exactly what the owner asked for. It reveals no private
+// data: interface names, whether we are online, and whether the network looks
+// like it is being tampered with.
+let netStatusCache = { at: 0, value: null };
+app.get('/api/network/status', requireAuth, async (req, res) => {
+  try {
+    // Cached briefly: it does real network probes, and six family devices
+    // polling it should not mean six sets of probes every few seconds.
+    if (netStatusCache.value && Date.now() - netStatusCache.at < 25000) {
+      return res.json(Object.assign({ cached: true }, netStatusCache.value));
+    }
+    const value = await netguard.networkStatus({ deep: req.query.deep !== '0' });
+    netStatusCache = { at: Date.now(), value };
+    // A network that turns hostile is worth telling the whole house about,
+    // once — not every time somebody's phone refreshes.
+    if (value.trust === 'untrusted' && netStatusCache.warned !== value.warnings.map((w) => w.text).join('|')) {
+      netStatusCache.warned = value.warnings.map((w) => w.text).join('|');
+      try {
+        nightLog('هشدار شبکه: ' + value.warnings.map((w) => w.text).join(' / '), 'warn', 'network warning raised');
+      } catch (e) {}
+    }
+    res.json(value);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/network/emergency', requireAuth, requireAdmin, async (req, res) => {
+  try { res.json(await netguard.emergencyPlan()); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Joining a network is a real-world act with legal and privacy weight, so it
+// needs the owner to name the network he is approving. `approvedSsid` must
+// equal `ssid`; a generic "yes" is not enough, and no password is ever guessed.
+app.post('/api/network/connect', requireAuth, requireAdmin, requireStepUp, async (req, res) => {
+  const body = req.body || {};
+  try {
+    const out = await netguard.connectWifi(String(body.ssid || ''), {
+      approvedSsid: String(body.approvedSsid || ''),
+      password: body.password ? String(body.password) : '',
+    });
+    netStatusCache = { at: 0, value: null };
+    res.status(out.ok ? 200 : (out.needsApproval ? 400 : 502)).json(out);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// The encrypted channel for a network we do not trust. The server publishes a
+// public key; a client seals with it and only this machine can open it. The
+// private key never leaves the house and is regenerated on every boot.
+const netguardKeys = netguard.newKeypair();
+app.get('/api/secure/pubkey', requireAuth, (req, res) => {
+  res.json({ alg: 'x25519-aes-256-gcm', publicKey: netguardKeys.publicKey,
+    note: 'با این کلید پاکت بساز؛ فقط همین سرور می‌تواند بازش کند.' });
+});
+app.post('/api/secure/open', requireAuth, (req, res) => {
+  try {
+    const out = netguard.unseal((req.body || {}).envelope, netguardKeys.privateKey);
+    res.json({ ok: true, text: out.toString('utf8').slice(0, 100000) });
+  } catch (e) { res.status(400).json({ error: 'پاکت باز نشد (دستکاری شده یا کلیدش فرق دارد).' }); }
+});
+
+// ---------------- Files: formats, analysis, conversion ----------------
+// The registry is public to any signed-in member (it is just a capability
+// list), but everything that TOUCHES a path is admin-only, exactly like the
+// matching AI tools.
+app.get('/api/formats', requireAuth, (req, res) => {
+  const ext = String(req.query.ext || '').toLowerCase().replace(/^\./, '');
+  if (ext) {
+    const f = formats.describe(ext);
+    if (!f) return res.status(404).json({ known: false, ext });
+    return res.json({ known: true, ...f, convertsTo: formats.conversionsFor(ext) });
+  }
+  res.json({
+    count: Object.keys(formats.FORMATS).length,
+    formats: Object.entries(formats.FORMATS).map(([e, f]) => ({
+      ext: e, family: f.family, mime: f.mime, readable: !!(f.reads || f.text),
+      convertsTo: formats.conversionsFor(e), note: f.note,
+    })),
+    mediaTool: { image: !!formats.mediaTool('image'), av: !!formats.mediaTool('video') },
+  });
+});
+
+app.post('/api/files/analyze', requireAuth, requireAdmin, async (req, res) => {
+  const body = req.body || {};
+  try {
+    const what = String(body.what || 'open');
+    if (what === 'search') return res.json(await bigfile.search(body.path, body.pattern, body));
+    if (what === 'slice') return res.json(await bigfile.slice(body.path, body.from, body.to));
+    if (what === 'outline') return res.json(await bigfile.outline(body.path, body));
+    if (what === 'profile') return res.json(await bigfile.profile(body.path));
+    if (what === 'hexdump') return res.json(bigfile.hexdump(body.path, body.offset, body.length));
+    if (what === 'checksum') return res.json(await bigfile.checksum(body.path));
+    if (what === 'tail') return res.json(await bigfile.tail(body.path, body.lines));
+    return res.json(await bigfile.open(body.path, body));
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+// Convert either an uploaded file or one already on disk. Upload keeps working
+// from a phone, where the file is not on this machine at all.
+app.post('/api/files/convert', requireAuth, requireAdmin, upload.single('file'), async (req, res) => {
+  try {
+    const to = String((req.body && req.body.to) || '').toLowerCase().replace(/^\./, '');
+    if (!to) return res.status(400).json({ error: 'فرمت مقصد داده نشد.' });
+    let buf, srcName;
+    if (req.file) { buf = req.file.buffer; srcName = req.file.originalname; }
+    else if (req.body && req.body.path) {
+      const { full } = bigfile.resolveReadable(req.body.path);
+      const st = fs.statSync(full);
+      if (st.size > 200 * 1024 * 1024) return res.status(413).json({ error: 'فایل بیش از ۲۰۰ مگابایت است.' });
+      buf = fs.readFileSync(full); srcName = path.basename(full);
+    } else return res.status(400).json({ error: 'فایل یا مسیر فایل لازم است.' });
+
+    const out = await formats.convert(buf, srcName, to, { name: srcName });
+    const dir = newJobDir();
+    const base = safeRelPath((req.body && req.body.name) || srcName).replace(/\.[a-z0-9]+$/i, '') || 'file';
+    const outName = base + '.' + out.ext;
+    fs.writeFileSync(path.join(dir, outName), out.data);
+    const token = path.basename(dir) + '/' + outName;
+    res.json({ ok: true, name: outName, bytes: out.data.length, note: out.note,
+      url: '/api/download/' + encodeURIComponent(token) });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
 // ---------------- Chat memory (and cross-device sync) ----------------
 // Conversations live per-browser (localStorage), but a family opens the SAME
 // account from phone, tablet and PC. The server keeps the real archive so
@@ -4408,7 +4957,13 @@ app.put('/api/prefs', requireAuth, (req, res) => {
     const inP = (body && typeof body.prefs === 'object' && body.prefs) ? body.prefs : {};
     // Only these keys, all short strings — nothing else is stored.
     const prefs = {};
-    ['theme', 'textsize', 'lang'].forEach((k) => { if (inP[k] != null) prefs[k] = String(inP[k]).slice(0, 40); });
+    // writeLang = the language this member wants things WRITTEN in (letters,
+    // e-mail, documents), which is not the same as the language of the app.
+    // Javid reads the app in Persian but sends his letters in German.
+    // tone = how close she talks to this member: خودمونی / معمولی / رسمی.
+    ['theme', 'textsize', 'lang', 'writeLang', 'tone'].forEach((k) => {
+      if (inP[k] != null) prefs[k] = String(inP[k]).slice(0, 40);
+    });
     const t = Number(body.t) || Date.now();
     fs.mkdirSync(PREFS_DIR, { recursive: true });
     fs.writeFileSync(prefsFileFor(req.username), JSON.stringify({ t, prefs }), { mode: 0o600 });
@@ -7911,6 +8466,34 @@ const server = (TLS ? https.createServer({ cert: TLS.cert, key: TLS.key }, app) 
       console.log('   3D library: three.min.js (' + Math.round(sz/1024) + ' KB) ✓');
     }
   } catch (e) {}
+
+  // Tell the file reader exactly which files hold this household's secrets.
+  // The name patterns in bigfile.js are a fallback; these are the real paths,
+  // including any the owner has moved with an environment variable — so
+  // "open my config file" is refused even when it is not called what the
+  // patterns expect.
+  try {
+    bigfile.protect([
+      USERS_FILE, CONFIG_FILE, SESSIONS_FILE, HEALTH_FILE, AUTONOMY_FILE,
+      HIDDEN_ENGINES_FILE, MEMORY_FILE, DEVICES_FILE, CHATS_DIR, PREFS_DIR,
+      path.join(DATA_DIR, '.setayesh-connectors.json'),
+      path.join(DATA_DIR, '.setayesh-pending-verify.json'),
+      process.env.SETAYESH_HOMEDEV_FILE || path.join(DATA_DIR, '.setayesh-homedevices.json'),
+      process.env.SETAYESH_NOTIFY_FILE || path.join(DATA_DIR, '.setayesh-notify.json'),
+      process.env.SETAYESH_BACKUP_DIR || path.join(DATA_DIR, 'backups'),
+      ALLOWED_DEVICES_FILE,
+    ]);
+  } catch (e) {}
+
+  // Regenerate FORMATS.md (next to the app) and the brain's own copy of it
+  // from the live registry, so what the documentation promises is always
+  // exactly what the code can do.
+  try {
+    const w = formats.writeFormatDocs(DATA_DIR);
+    const tools = [formats.mediaTool('image') ? 'image' : '', formats.mediaTool('video') ? 'audio/video' : '']
+      .filter(Boolean).join(', ') || 'none (text/data/Office/PDF still work)';
+    console.log(`   Formats: ${w.extensions} extensions, FORMATS.md written. Media codecs: ${tools}`);
+  } catch (e) { /* read-only install */ }
 
   // If the previous boot was a self-update, prove it works or roll it back.
   checkPendingVerification();

@@ -554,3 +554,173 @@ test('a rate-limited engine fails over to a healthy one and still answers', asyn
     await api('/api/admin/providers/custom/' + id, { method: 'DELETE', token });
   }
 });
+
+// ---- Formats and the converter ----
+test('the format registry is served and every entry is well formed', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  const d = await (await api('/api/formats', { token })).json();
+  assert.ok(d.count > 80, 'expected a real registry, got ' + d.count);
+  for (const f of d.formats) {
+    assert.ok(f.ext && f.family && f.mime, 'incomplete entry: ' + JSON.stringify(f));
+    assert.ok(!f.convertsTo.includes(f.ext), f.ext + ' lists itself as a conversion target');
+  }
+});
+
+test('CSV converts to a real .xlsx and reads back with the same cells', async () => {
+  const formats = require(path.join(ROOT, 'formats.js'));
+  const csv = 'name,age,city\nJavid,44,Berlin\n"Setayesh, S",12,Berlin\nفردین,8,برلین\n';
+  const out = await formats.convert(Buffer.from(csv), 'people.csv', 'xlsx');
+  assert.equal(out.data.slice(0, 2).toString('latin1'), 'PK', 'not a zip');
+  const back = formats.read(out.data, 'people.xlsx');
+  assert.deepEqual(back.columns, ['name', 'age', 'city']);
+  assert.deepEqual(back.rows[1], ['Setayesh, S', '12', 'Berlin'], 'a quoted comma must survive the round trip');
+  assert.deepEqual(back.rows[2], ['فردین', '8', 'برلین'], 'Persian must survive the round trip');
+});
+
+test('Markdown converts to a real .docx and reads back with its structure', async () => {
+  const formats = require(path.join(ROOT, 'formats.js'));
+  const out = await formats.convert(Buffer.from('# عنوان\n\nیک پاراگراف.\n\n- یک\n- دو\n'), 'n.md', 'docx');
+  const back = formats.read(out.data, 'n.docx');
+  const kinds = back.blocks.map((b) => b.type);
+  assert.ok(kinds.includes('h1'), 'heading lost');
+  assert.ok(kinds.includes('li'), 'list item lost');
+  // A bullet must not accumulate on every round trip.
+  assert.ok(!back.blocks.some((b) => /^[•·]/.test(b.text)), 'bullet character leaked into the text');
+});
+
+test('.env values are masked when the file is read', () => {
+  const formats = require(path.join(ROOT, 'formats.js'));
+  const r = formats.read(Buffer.from('API_KEY=supersecretvalue123\nPORT=3000\n'), '.env');
+  const joined = JSON.stringify(r);
+  assert.ok(!joined.includes('supersecretvalue123'), 'a secret leaked out of the .env reader');
+  assert.ok(r.warning, 'the masking must be stated');
+});
+
+// ---- Big files ----
+test('a file is analysed by path, and secrets are refused', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  const ok = await api('/api/files/analyze', { method: 'POST', token, body: { path: path.join(ROOT, 'package.json') } });
+  assert.equal(ok.status, 200);
+  const d = await ok.json();
+  assert.equal(d.file.ext, 'json');
+  assert.ok(d.file.lines > 0);
+
+  // The accounts file holds password hashes; it must never be readable here,
+  // because a chat answer can be produced by a cloud engine.
+  const bad = await api('/api/files/analyze', { method: 'POST', token, body: { path: path.join(tmp, 'users.json') } });
+  assert.equal(bad.status, 400, 'the users file must be refused');
+  assert.match((await bad.json()).error, /محرمانه/);
+});
+
+test('search finds a line in the middle of a file with correct context', async () => {
+  const bigfile = require(path.join(ROOT, 'bigfile.js'));
+  const p = path.join(tmp, 'lines.txt');
+  const lines = [];
+  for (let i = 1; i <= 5000; i++) lines.push(i === 3200 ? 'here is the NEEDLE we want' : 'filler line ' + i);
+  fs.writeFileSync(p, lines.join('\n') + '\n');
+  const r = await bigfile.search(p, 'NEEDLE', { context: 2 });
+  assert.equal(r.matches, 1);
+  assert.equal(r.hits[0].line, 3200, 'wrong line number');
+  assert.match(r.hits[0].before[1], /^3199: /);
+  assert.match(r.hits[0].after[0], /^3201: /);
+  const sl = await bigfile.slice(p, 3200, 3200);
+  assert.match(sl.text, /^3200: here is the NEEDLE/);
+});
+
+// ---- Language ----
+test('grammar check fixes Persian half-spaces and Arabic letters', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  const r = await (await api('/api/language/check', { method: 'POST', token,
+    body: { text: 'من می روم و کتاب ها را مي خرم' } })).json();
+  assert.equal(r.lang, 'fa');
+  assert.equal(r.corrected, 'من می‌روم و کتاب‌ها را می‌خرم');
+});
+
+test('grammar check tells German from English and fixes each one', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  const de = await (await api('/api/language/check', { method: 'POST', token,
+    body: { text: 'Seit ihr schon da? Die strasse ist lang.', apply: 'likely' } })).json();
+  assert.equal(de.lang, 'de');
+  assert.match(de.corrected, /Seid ihr/, 'seit/seid not corrected, or capital lost');
+  assert.match(de.corrected, /Straße/);
+
+  const en = await (await api('/api/language/check', { method: 'POST', token,
+    body: { text: 'i recieve teh letter and they should of told me .' } })).json();
+  assert.equal(en.lang, 'en');
+  assert.match(en.corrected, /^I receive the letter/);
+  assert.match(en.corrected, /should have told me\./);
+});
+
+test('letter conventions are language-specific, not translated English', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  const de = await (await api('/api/language/letter?language=de&formality=formal&authority=1', { token })).json();
+  assert.match(de.salutation, /Sehr geehrte/);
+  assert.match(de.closing, /Mit freundlichen Grüßen/);
+  assert.ok(de.rules.some((r) => /Aktenzeichen/.test(r)), 'the authority rule is missing');
+  const fa = await (await api('/api/language/letter?language=fa&formality=formal', { token })).json();
+  assert.match(fa.closing, /با تشکر/);
+});
+
+// ---- Devices and the network ----
+test('device discovery returns a structured answer even with no hardware', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  const r = await api('/api/devices/scan?transports=usb,drive', { token });
+  assert.equal(r.status, 200);
+  const d = await r.json();
+  assert.ok(d.counts && typeof d.counts.usb === 'number');
+  assert.ok(Array.isArray(d.devices));
+  assert.ok(d.safety && Array.isArray(d.safety.findings));
+});
+
+test('a device cannot be commanded until the owner allows it', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  const r = await api('/api/devices/command', { method: 'POST', token, body: { id: 'ssdp:whatever', action: 'play' } });
+  assert.equal(r.status, 403, 'an unallowed device must be refused');
+  assert.equal((await r.json()).needsPermission, true);
+});
+
+test('network status is visible to every member, not just the admin', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  const d = await (await api('/api/network/status?deep=0', { token })).json();
+  assert.equal(typeof d.online, 'boolean');
+  assert.ok(['ok', 'caution', 'untrusted'].includes(d.trust));
+  assert.ok(Array.isArray(d.interfaces));
+});
+
+test('joining a network needs the owner to name the network he approves', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  const netguard = require(path.join(ROOT, 'netguard.js'));
+  const no = await netguard.connectWifi('SomeCafe', {});
+  assert.equal(no.ok, false);
+  assert.equal(no.needsApproval, true, 'must refuse without an explicit approval for that ssid');
+  const wrong = await netguard.connectWifi('SomeCafe', { approvedSsid: 'OtherNetwork' });
+  assert.equal(wrong.needsApproval, true, 'approving one network must not approve another');
+});
+
+test('the file threat scanner catches a program disguised as a document', () => {
+  const netguard = require(path.join(ROOT, 'netguard.js'));
+  const p = path.join(tmp, 'invoice.pdf');
+  fs.writeFileSync(p, Buffer.concat([Buffer.from([0x4d, 0x5a]), Buffer.alloc(2048)]));
+  const r = netguard.scanFile(p);
+  assert.equal(r.level, 'high');
+  assert.ok(r.findings.some((f) => /نوع واقعی/.test(f.text)), 'the type mismatch was not reported');
+  assert.ok(r.limitation, 'the scanner must always state that it is not an antivirus');
+
+  const clean = path.join(tmp, 'note.txt');
+  fs.writeFileSync(clean, 'خرید نان و شیر برای فردا\n');
+  assert.equal(netguard.scanFile(clean).level, 'ok');
+});
+
+test('the encrypted envelope round-trips and rejects tampering', () => {
+  const netguard = require(path.join(ROOT, 'netguard.js'));
+  const me = netguard.newKeypair();
+  const secret = 'شماره حساب و رمز — روی شبکه‌ی عمومی';
+  const env = netguard.seal(secret, me.publicKey, 'test');
+  assert.ok(!JSON.stringify(env).includes('حساب'), 'the plaintext must not be in the envelope');
+  assert.equal(netguard.unseal(env, me.privateKey).toString('utf8'), secret);
+
+  const tampered = Object.assign({}, env, { data: Buffer.from('x'.repeat(32)).toString('base64') });
+  assert.throws(() => netguard.unseal(tampered, me.privateKey), 'tampering must fail loudly');
+  const other = netguard.newKeypair();
+  assert.throws(() => netguard.unseal(env, other.privateKey), 'the wrong key must fail');
+});

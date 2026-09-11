@@ -15,6 +15,7 @@ rollback/
 data/
 uploads/
 inbox/
+workspace/
 assets.generated.js
 antivirus-root.pem
 

@@ -1,4 +1,4 @@
-/* SETAYESH_BUILD 9.9.82 */
+/* SETAYESH_BUILD 9.9.83 */
 (function(){
 'use strict';
 
@@ -1114,6 +1114,11 @@ function currentPrefs(){
   try{p.theme=localStorage.getItem(themeKey())||'violet';}catch(e){}
   try{p.textsize=localStorage.getItem('setayesh.textsize')||'medium';}catch(e){}
   try{p.lang=localStorage.getItem('setayesh.lang')||p.lang;}catch(e){}
+  /* writeLang = the language letters and e-mail get written in (not the app
+     language). tone = how close she talks to this member. The server reads
+     both when it builds her system prompt. */
+  try{p.writeLang=localStorage.getItem('setayesh.writeLang')||'';}catch(e){}
+  try{p.tone=localStorage.getItem('setayesh.tone')||'';}catch(e){}
   return p;
 }
 function pushPrefs(){
@@ -1128,6 +1133,10 @@ function syncPrefsFromServer(done){
   if(!token){if(done)done();return;}
   fetch('/api/prefs',{headers:authHeaders()}).then(function(r){return r.json();}).then(function(d){
     var p=(d&&d.prefs)||{}, has=!!(p.theme||p.textsize||p.lang);
+    try{
+      if(p.writeLang!=null)localStorage.setItem('setayesh.writeLang',p.writeLang);
+      if(p.tone!=null)localStorage.setItem('setayesh.tone',p.tone);
+    }catch(e){}
     if(p.theme)applyPresetTheme(p.theme);
     if(p.textsize)applyTextSize(p.textsize);
     if(p.lang&&typeof lang!=='undefined'&&p.lang!==lang){lang=p.lang;try{localStorage.setItem('setayesh.lang',lang);}catch(e){}applyLang();}
@@ -1359,6 +1368,10 @@ async function enterApp(){
       // Identify this device and let the server pick the right layout.
       registerDevice();
       renderOfflineBar(); flushOutbox();
+      // Every member sees the state of the house connection on their own
+      // device — checked now and then, not constantly.
+      pollNetStatus(true);
+      setInterval(function(){ pollNetStatus(false); }, 120000);
       refreshBoardBadge();
     }
   }catch(e){}
@@ -3268,8 +3281,54 @@ function outboxRead(){ try{ return JSON.parse(localStorage.getItem(OFFLINE_KEY)|
 function outboxWrite(list){ try{ localStorage.setItem(OFFLINE_KEY,JSON.stringify(list.slice(-30))); }catch(e){} }
 function outboxAdd(item){ var l=outboxRead(); l.push(item); outboxWrite(l); renderOfflineBar(); }
 
+/* Network state, on EVERY member's own device.
+   Two different things get shown, because they are different questions:
+   "is MY phone online" (navigator.onLine + whether the server answers me) and
+   "is the network the house sits on trustworthy" (the server's own check).
+   A child on the sofa and the father at work each see their own side. */
+var _netState={house:null,at:0};
+function renderNetChip(){
+  var chip=document.getElementById('netChip');
+  if(!chip){
+    chip=document.createElement('div'); chip.id='netChip';
+    chip.style.cssText='display:none;margin:0 0 8px;padding:8px 12px;border-radius:11px;'+
+      'font-size:12px;line-height:1.6;cursor:pointer';
+    var wrap=document.querySelector('.composer-wrap');
+    if(wrap)wrap.insertBefore(chip,wrap.firstChild); else return;
+    chip.addEventListener('click',function(){ pollNetStatus(true); });
+  }
+  var h=_netState.house;
+  var myOffline=!navigator.onLine;
+  if(myOffline){
+    chip.style.display='';
+    chip.style.cssText+=';background:rgba(251,191,36,.10);border:1px solid rgba(251,191,36,.35);color:#fbbf24';
+    chip.textContent='📴 این دستگاه آفلاین است.';
+    return;
+  }
+  if(!h||h.trust==='ok'){ chip.style.display='none'; return; }
+  chip.style.display='';
+  var bad=h.trust==='untrusted';
+  chip.style.background=bad?'rgba(251,113,133,.10)':'rgba(251,191,36,.10)';
+  chip.style.border='1px solid '+(bad?'rgba(251,113,133,.35)':'rgba(251,191,36,.35)');
+  chip.style.color=bad?'#fb7185':'#fbbf24';
+  var first=(h.warnings&&h.warnings[0])?h.warnings[0].text:'';
+  chip.textContent=(bad?'⚠️ شبکه امن نیست — ':'⚠️ شبکه معمولی نیست — ')+first;
+}
+function pollNetStatus(force){
+  if(!token)return;
+  if(!force&&Date.now()-_netState.at<60000)return;
+  _netState.at=Date.now();
+  fetch('/api/network/status',{headers:authHeaders()})
+    .then(function(r){return r.ok?r.json():null;})
+    .then(function(d){ if(d){_netState.house=d;renderNetChip();} })
+    .catch(function(){});
+}
+window.addEventListener('online',function(){renderNetChip();pollNetStatus(true);});
+window.addEventListener('offline',renderNetChip);
+
 function renderOfflineBar(){
   var n=outboxRead().length;
+  renderNetChip();
   var bar=document.getElementById('offlineBar');
   if(!bar){
     bar=document.createElement('div'); bar.id='offlineBar';
@@ -4112,6 +4171,8 @@ var TK={
     {id:'learn',i18n:'tk_learn',icon:'<path d="M22 10L12 5 2 10l10 5 10-5z"/><path d="M6 12v5c0 1 2.7 3 6 3s6-2 6-3v-5"/>'},
     {id:'mobile',i18n:'tk_mobile',icon:'<rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/>'},
     {id:'hw',i18n:'tk_hw',icon:'<path d="M9 3v4M15 3v4M9 17v4M15 17v4M3 9h4M3 15h4M17 9h4M17 15h4"/><rect x="7" y="7" width="10" height="10" rx="1.5"/>'},
+    {id:'devices',i18n:'tk_devices',adminOnly:true,icon:'<rect x="2" y="6" width="13" height="9" rx="1.5"/><path d="M17 9h5v9h-5zM6 19h6"/>'},
+    {id:'lang',i18n:'tk_lang',icon:'<path d="M4 5h10M9 3v2M11 5c0 5-3 9-7 11M7 10c0 3 3 6 7 7M13 21l4-10 4 10M14.5 18h5"/>'},
     {id:'comms',i18n:'tk_comms',adminOnly:true,icon:'<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/>'},
     {id:'settings',i18n:'tk_settings',icon:'<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09A1.65 1.65 0 008 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06A1.65 1.65 0 004.6 15a1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06A1.65 1.65 0 009 4.6a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06A1.65 1.65 0 0019.4 9c.14.36.47.62.86.7H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"/>'},
     {id:'ext',i18n:'tk_ext',icon:'<path d="M12 2l2 5 5-1-3 4 3 4-5-1-2 5-2-5-5 1 3-4-3-4 5 1z"/>'}
@@ -4122,7 +4183,7 @@ function tkT(k){return t(k);}
 
 var TK_I18N={
  fa:{toolkit:'جعبه‌ابزار امنیت',defensive:'دفاعی · فقط دارایی‌های خودتان',
-  tk_web:'اسکن وب‌سایت',tk_net:'اسکن شبکه',tk_ports:'بررسی پورت',tk_hash:'آزمایشگاه هش',tk_mobile:'اتصال موبایل',tk_hw:'سخت‌افزار',tk_ext:'افزونه‌ها',
+  tk_devices:'دستگاه‌ها',tk_lang:'گرامر و لحن',tk_web:'اسکن وب‌سایت',tk_net:'اسکن شبکه',tk_ports:'بررسی پورت',tk_hash:'آزمایشگاه هش',tk_mobile:'اتصال موبایل',tk_hw:'سخت‌افزار',tk_ext:'افزونه‌ها',
   tk_extHint:'قابلیت جدید اضافه کنید بدون ساختن دوباره‌ی برنامه: یک فایل .js در پوشه‌ی plugins کنار برنامه بگذارید و «بارگذاری مجدد» را بزنید. نمونه‌ها در همان پوشه هستند.',
   tk_reload:'بارگذاری مجدد',tk_noext:'هیچ افزونه‌ای پیدا نشد. یک فایل .js در پوشه‌ی plugins بگذارید.',tk_extRun:'اجرا',tk_extErr:'خطای بارگذاری',
   tk_webHint:'وب‌سایت خودتان را از نظر تنظیمات امنیتی بررسی می‌کند (هدرها، کوکی‌ها، HTTPS، افشای نسخه). این بررسی passive است — فقط صفحه خوانده می‌شود، هیچ حمله‌ای انجام نمی‌شود.',
@@ -4141,7 +4202,7 @@ var TK_I18N={
   tk_errPrivate:'فقط شبکه‌ی محلی خودتان قابل بررسی است.',tk_loading:'در حال بارگذاری…',
   weak:'ضعیف',ok:'قابل‌قبول',strong:'قوی',excellent:'عالی'},
  en:{toolkit:'Security toolkit',defensive:'Defensive · your own assets only',
-  tk_web:'Website scan',tk_net:'Network scan',tk_ports:'Port check',tk_hash:'Hash lab',tk_mobile:'Mobile link',tk_hw:'Hardware',tk_ext:'Extensions',
+  tk_devices:'Devices',tk_lang:'Grammar & voice',tk_web:'Website scan',tk_net:'Network scan',tk_ports:'Port check',tk_hash:'Hash lab',tk_mobile:'Mobile link',tk_hw:'Hardware',tk_ext:'Extensions',
   tk_extHint:'Add a new tool without rebuilding: drop a .js file into the plugins folder next to the app and press Reload. Sample plugins are already in that folder.',
   tk_reload:'Reload',tk_noext:'No extensions found. Put a .js file in the plugins folder.',tk_extRun:'Run',tk_extErr:'load error',
   tk_webHint:'Checks your own website for security misconfigurations (headers, cookies, HTTPS, version disclosure). This is passive — it only reads the page, it performs no attack.',
@@ -4241,6 +4302,8 @@ function showTkTab(id){
   else if(id==='learn')body.appendChild(tkLearnPanel());
   else if(id==='mobile')body.appendChild(tkMobilePanel());
   else if(id==='hw')body.appendChild(tkHwPanel());
+  else if(id==='devices')body.appendChild(tkDevicesPanel());
+  else if(id==='lang')body.appendChild(tkLangPanel());
   else if(id==='comms')body.appendChild(tkCommsPanel());
   else if(id==='settings')body.appendChild(tkSettingsPanel());
   else if(id==='ext')body.appendChild(tkExtPanel());
@@ -4762,6 +4825,272 @@ function tkMobilePanel(){
 }
 
 /* ---- Hardware (simulation) ---- */
+/* Devices: everything plugged in, paired, mounted or on the Wi-Fi — with a
+   safety read on each one, and control only for the ones the owner allowed. */
+/* Grammar for the three languages this family writes in, and the two settings
+   that decide how Setayesh writes back: which language letters come out in,
+   and how close she talks to this member. */
+function tkLangPanel(){
+  var p=el('div','tk-panel');
+  var w=el('div','tk-warn');
+  w.textContent='متن فارسی، انگلیسی یا آلمانی را بگذار — خودش زبان را می‌فهمد و غلط‌ها را نشان می‌دهد. '+
+    'نیم‌فاصله و حرف عربی در فارسی، das/dass و بزرگ‌نویسی در آلمانی، املا و هم‌آواها در انگلیسی.';
+  p.appendChild(w);
+
+  var ta=el('textarea','input');
+  ta.rows=6;ta.placeholder='متن را اینجا بنویس یا بچسبان…';
+  ta.style.cssText='width:100%;resize:vertical;font-size:13px;line-height:1.9;margin:10px 0';
+  p.appendChild(ta);
+
+  var row=el('div');row.style.cssText='display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px';
+  var langSel=el('select','input');langSel.style.cssText='font-size:12px;width:auto;padding:6px 10px';
+  [['','تشخیص خودکار'],['fa','فارسی'],['en','English'],['de','Deutsch']].forEach(function(o){
+    var x=el('option');x.value=o[0];x.textContent=o[1];langSel.appendChild(x);});
+  var boldSel=el('select','input');boldSel.style.cssText='font-size:12px;width:auto;padding:6px 10px';
+  [['sure','فقط مطمئن‌ها'],['likely','مطمئن + محتمل'],['all','همه‌ی پیشنهادها']].forEach(function(o){
+    var x=el('option');x.value=o[0];x.textContent=o[1];boldSel.appendChild(x);});
+  var go=el('button','btn');go.textContent='بررسی کن';go.style.fontSize='13px';
+  row.appendChild(langSel);row.appendChild(boldSel);row.appendChild(go);p.appendChild(row);
+
+  var out=el('div');p.appendChild(out);
+  var LANGNAME={fa:'فارسی',en:'انگلیسی',de:'آلمانی'};
+  var COL={sure:'#34d399',likely:'#fbbf24',maybe:'#8ea0c8'};
+  var CONF={sure:'مطمئن',likely:'محتمل',maybe:'شاید'};
+
+  go.addEventListener('click',function(){
+    var text=ta.value||'';
+    if(!text.trim()){out.innerHTML='<div class="tk-hint">اول متنی بنویس.</div>';return;}
+    out.innerHTML='<div class="tk-hint"><span class="spin"></span> بررسی…</div>';
+    tkFetch('/api/language/check',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({text:text,language:langSel.value||undefined,apply:boldSel.value})})
+      .then(function(d){
+        out.innerHTML='';
+        var head=el('div','tk-hint');
+        head.textContent='زبان: '+(LANGNAME[d.lang]||d.lang||'?')+
+          (d.detection&&d.detection.reason?(' — '+d.detection.reason):'')+
+          ' · '+d.issues.length+' مورد';
+        out.appendChild(head);
+
+        if(d.issues.length){
+          var c=el('div','tk-card');
+          c.innerHTML='<div class="tk-card-h">موردها</div>';
+          var b=el('div','tk-card-b');c.appendChild(b);
+          d.issues.forEach(function(i){
+            var r=el('div');
+            r.style.cssText='padding:7px 0;border-bottom:1px solid rgba(255,255,255,.06);font-size:12.5px';
+            r.innerHTML='<span style="color:'+COL[i.confidence]+'">['+CONF[i.confidence]+'] '+esc(i.kind)+'</span> '+
+              '<span style="color:#fb7185">'+esc(i.found)+'</span> ← '+
+              '<span style="color:#6ee7b7">'+esc(i.suggestion)+'</span>'+
+              '<div style="color:#8ea0c8;font-size:11px;margin-top:3px">خط '+i.line+' · '+esc(i.why)+'</div>';
+            b.appendChild(r);
+          });
+          out.appendChild(c);
+        } else {
+          var okd=el('div','tk-hint');okd.style.color='#34d399';okd.textContent='چیزی پیدا نشد ✓';out.appendChild(okd);
+        }
+
+        if(d.changed){
+          var c2=el('div','tk-card');
+          c2.innerHTML='<div class="tk-card-h">متن اصلاح‌شده ('+d.applied+' تغییر)</div>';
+          var b2=el('div','tk-card-b');
+          var pre=el('div');
+          pre.style.cssText='font-size:13px;line-height:2;white-space:pre-wrap';
+          pre.textContent=d.corrected;
+          b2.appendChild(pre);
+          var use=el('button','btn ghost');use.style.cssText='font-size:12px;margin-top:8px';
+          use.textContent='جایگزین کن';
+          use.addEventListener('click',function(){ta.value=d.corrected;use.textContent='انجام شد ✓';});
+          b2.appendChild(use);
+          c2.appendChild(b2);out.appendChild(c2);
+        }
+        var lim=el('div','tk-hint');lim.textContent=d.note;out.appendChild(lim);
+      })
+      .catch(function(e){out.innerHTML='<div class="tk-hint" style="color:#fb7185">'+esc(e.message)+'</div>';});
+  });
+
+  /* --- the two preferences --------------------------------------------- */
+  var prefCard=el('div','tk-card');
+  prefCard.style.marginTop='14px';
+  prefCard.innerHTML='<div class="tk-card-h">زبان نوشتن و لحن</div>';
+  var pb=el('div','tk-card-b');prefCard.appendChild(pb);
+
+  function pick(label,hint,key,opts,current){
+    var wrap=el('div');wrap.style.cssText='margin-bottom:12px';
+    var l=el('div');l.style.cssText='font-size:12.5px;margin-bottom:4px';l.textContent=label;
+    var h=el('div','tk-hint');h.style.marginBottom='6px';h.textContent=hint;
+    var sel=el('select','input');sel.style.cssText='font-size:12.5px';
+    opts.forEach(function(o){var x=el('option');x.value=o[0];x.textContent=o[1];
+      if(o[0]===current)x.selected=true;sel.appendChild(x);});
+    sel.addEventListener('change',function(){
+      try{localStorage.setItem('setayesh.'+key,sel.value);}catch(e){}
+      pushPrefs();
+      note.style.color='#34d399';note.textContent='ذخیره شد ✓ — از پیام بعدی اعمال می‌شود.';
+    });
+    wrap.appendChild(l);wrap.appendChild(h);wrap.appendChild(sel);
+    return wrap;
+  }
+  var note=el('div');note.style.cssText='font-size:12px;min-height:16px';
+  var curW='',curT='';
+  try{curW=localStorage.getItem('setayesh.writeLang')||'';}catch(e){}
+  try{curT=localStorage.getItem('setayesh.tone')||'';}catch(e){}
+  pb.appendChild(pick('نامه و ایمیل را به چه زبانی بنویسد؟',
+    'این فقط برای نوشتن است — گفتگوی معمولی به زبان خودت می‌ماند.','writeLang',
+    [['','هر بار بپرسد'],['fa','فارسی'],['en','English'],['de','Deutsch']],curW));
+  pb.appendChild(pick('لحنش با تو چطور باشد؟',
+    'خودمونی یعنی محاوره‌ای و بی‌تعارف، مثل حرف زدن با یکی که می‌شناسیش.','tone',
+    [['','پیش‌فرض (خودمونی)'],['close','خیلی خودمونی'],['normal','معمولی'],['formal','رسمی']],curT));
+  pb.appendChild(note);
+  p.appendChild(prefCard);
+  return p;
+}
+
+function tkDevicesPanel(){
+  var p=el('div','tk-panel');
+  var w=el('div','tk-warn');
+  w.textContent='ستایش دستگاه‌های اطراف را پیدا می‌کند: USB، بلوتوث جفت‌شده، درایوها و هر چیزی روی وای‌فای خانه. '+
+    'پیدا کردن کاری با دستگاه ندارد — کنترل فقط برای دستگاهی که تو اجازه بدهی.';
+  p.appendChild(w);
+
+  var bar=el('div');bar.style.cssText='display:flex;gap:8px;flex-wrap:wrap;margin:10px 0';
+  var scanBtn=el('button','btn');scanBtn.textContent='جست‌وجوی دستگاه‌ها';scanBtn.style.fontSize='13px';
+  var netBtn=el('button','btn ghost');netBtn.textContent='وضعیت شبکه';netBtn.style.fontSize='13px';
+  bar.appendChild(scanBtn);bar.appendChild(netBtn);p.appendChild(bar);
+
+  var out=el('div');p.appendChild(out);
+  var TRANSPORT={usb:'USB',bluetooth:'بلوتوث',drive:'درایو',network:'شبکه'};
+  var LEVEL={high:['#fb7185','خطر'],medium:['#fbbf24','بررسی کن'],low:['#8ea0c8','نکته'],ok:['#34d399','سالم']};
+
+  function card(title){
+    var c=el('div','tk-card');
+    c.innerHTML='<div class="tk-card-h">'+esc(title)+'</div>';
+    var b=el('div','tk-card-b');c.appendChild(b);
+    return {card:c,body:b};
+  }
+  function allowToggle(dev,row){
+    var b=el('button','btn ghost');
+    b.style.cssText='font-size:11px;padding:4px 9px';
+    b.textContent=dev.allowed?'اجازه دارد ✓':'اجازه بده';
+    b.addEventListener('click',function(){
+      b.disabled=true;
+      tkFetch('/api/devices/allow',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({id:dev.id,allow:!dev.allowed})})
+        .then(function(){dev.allowed=!dev.allowed;b.disabled=false;
+          b.textContent=dev.allowed?'اجازه دارد ✓':'اجازه بده';renderControls(dev,row);})
+        .catch(function(){b.disabled=false;});
+    });
+    return b;
+  }
+  function renderControls(dev,row){
+    var old=row.querySelector('.devctl');if(old)old.remove();
+    if(!dev.allowed||!(dev.capabilities||[]).length)return;
+    var box=el('div','devctl');
+    box.style.cssText='flex-basis:100%;display:flex;gap:6px;flex-wrap:wrap;margin-top:6px';
+    var LABEL={play:'▶ پخش',pause:'⏸ مکث',stop:'⏹ توقف',next:'⏭ بعدی',previous:'⏮ قبلی',
+      mute:'🔇 بی‌صدا',unmute:'🔊 باصدا',status:'وضعیت'};
+    (dev.capabilities||[]).forEach(function(cap){
+      if(cap==='play_url'||cap==='volume'||cap==='browse')return;
+      var b=el('button','btn ghost');b.style.cssText='font-size:11px;padding:4px 9px';
+      b.textContent=LABEL[cap]||cap;
+      b.addEventListener('click',function(){
+        b.disabled=true;
+        tkFetch('/api/devices/command',{method:'POST',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({id:dev.id,action:cap})})
+          .then(function(d){b.disabled=false;
+            note.style.color=d.ok?'#34d399':'#fb7185';
+            note.textContent=d.ok?(dev.name+' — انجام شد'+(d.state?(' ('+d.state+')'):'')):(d.error||'انجام نشد');})
+          .catch(function(e){b.disabled=false;note.style.color='#fb7185';note.textContent=e.message;});
+      });
+      box.appendChild(b);
+    });
+    if((dev.capabilities||[]).indexOf('volume')>=0){
+      var v=el('input');v.type='range';v.min=0;v.max=100;v.value=30;
+      v.style.cssText='width:110px;vertical-align:middle';
+      v.addEventListener('change',function(){
+        tkFetch('/api/devices/command',{method:'POST',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({id:dev.id,action:'volume',value:v.value})})
+          .then(function(d){note.style.color=d.ok?'#34d399':'#fb7185';
+            note.textContent=d.ok?('صدا روی '+v.value):(d.error||'صدا تغییر نکرد');});
+      });
+      box.appendChild(v);
+    }
+    row.appendChild(box);
+  }
+  var note=el('div');note.style.cssText='font-size:12px;margin:8px 0;min-height:16px';
+  p.appendChild(note);
+
+  function render(d){
+    out.innerHTML='';
+    var sum=el('div','tk-hint');
+    sum.textContent='USB: '+d.counts.usb+' · بلوتوث: '+d.counts.bluetooth+' · درایو: '+d.counts.drive+
+      ' · شبکه: '+d.counts.network+'  ('+Math.round(d.tookMs/100)/10+' ثانیه)';
+    out.appendChild(sum);
+    (d.notes||[]).forEach(function(n){var x=el('div','tk-hint');x.style.color='#fbbf24';x.textContent=n;out.appendChild(x);});
+
+    if(d.safety&&d.safety.findings&&d.safety.findings.length){
+      var s=card('هشدارهای امنیتی');
+      d.safety.findings.forEach(function(f){
+        var L=LEVEL[f.level]||LEVEL.low;
+        var r=el('div');r.style.cssText='padding:7px 0;border-bottom:1px solid rgba(255,255,255,.06)';
+        r.innerHTML='<b style="color:'+L[0]+'">'+L[1]+'</b> — '+esc(f.name||f.id)+
+          '<div style="font-size:11.5px;color:#aeb7cf;margin-top:3px">'+
+          f.reasons.map(function(x){return esc(x.text);}).join('<br>')+'</div>'+
+          (f.advice?('<div style="font-size:11.5px;color:#6ee7b7;margin-top:3px">'+esc(f.advice)+'</div>'):'');
+        s.body.appendChild(r);
+      });
+      var lim=el('div','tk-hint');lim.textContent=d.safety.note;s.body.appendChild(lim);
+      out.appendChild(s.card);
+    }
+
+    ['network','usb','bluetooth','drive'].forEach(function(tr){
+      var list=(d.devices||[]).filter(function(x){return x.transport===tr;});
+      if(!list.length)return;
+      var c=card(TRANSPORT[tr]+' ('+list.length+')');
+      list.forEach(function(dev){
+        var row=el('div');
+        row.style.cssText='display:flex;gap:9px;align-items:center;flex-wrap:wrap;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.06)';
+        var main=el('div');main.style.cssText='flex:1;min-width:150px';
+        var sub=[dev.vendor,dev.model,dev.address||dev.device||dev.mac,dev.size,
+                 (dev.roles||[]).join('، '),dev.software].filter(Boolean).join(' · ');
+        main.innerHTML='<div style="font-size:12.5px">'+esc(dev.name||dev.id)+'</div>'+
+          (sub?('<div style="font-size:11px;color:#8ea0c8;margin-top:2px;direction:ltr;text-align:right">'+esc(sub)+'</div>'):'');
+        row.appendChild(main);
+        if((dev.capabilities||[]).length)row.appendChild(allowToggle(dev,row));
+        c.body.appendChild(row);
+        renderControls(dev,row);
+      });
+      out.appendChild(c.card);
+    });
+    if(!(d.devices||[]).length){
+      var e=el('div','tk-hint');e.textContent='هیچ دستگاهی پیدا نشد.';out.appendChild(e);
+    }
+  }
+
+  scanBtn.addEventListener('click',function(){
+    out.innerHTML='<div class="tk-hint"><span class="spin"></span> در حال گشتن روی USB، بلوتوث، درایوها و شبکه…</div>';
+    note.textContent='';
+    tkFetch('/api/devices/scan').then(render)
+      .catch(function(e){out.innerHTML='<div class="tk-hint" style="color:#fb7185">'+esc(e.message)+'</div>';});
+  });
+  netBtn.addEventListener('click',function(){
+    out.innerHTML='<div class="tk-hint"><span class="spin"></span> بررسی شبکه…</div>';
+    tkFetch('/api/network/status').then(function(d){
+      out.innerHTML='';
+      var c=card('وضعیت شبکه');
+      var col=d.trust==='ok'?'#34d399':(d.trust==='caution'?'#fbbf24':'#fb7185');
+      c.body.innerHTML='<div style="font-size:13px;color:'+col+'">'+
+        (d.online?('آنلاین · '+d.latencyMs+' میلی‌ثانیه'):'آفلاین')+'</div>'+
+        '<div class="tk-hint" style="margin-top:6px">'+
+        (d.interfaces||[]).map(function(i){return esc(i.name+' — '+i.address);}).join('<br>')+'</div>'+
+        (d.warnings||[]).map(function(x){
+          return '<div style="font-size:12px;color:'+(x.level==='high'?'#fb7185':'#fbbf24')+';margin-top:6px">'+esc(x.text)+'</div>';
+        }).join('')+
+        (d.advice?('<div style="font-size:12px;color:#6ee7b7;margin-top:8px">'+esc(d.advice)+'</div>'):'');
+      out.appendChild(c.card);
+    }).catch(function(e){out.innerHTML='<div class="tk-hint" style="color:#fb7185">'+esc(e.message)+'</div>';});
+  });
+  return p;
+}
+
 function tkHwPanel(){
   var p=el('div','tk-panel');
   var w=el('div','tk-warn');w.textContent=t('tk_hwHint');p.appendChild(w);
