@@ -1,4 +1,4 @@
-/* SETAYESH_BUILD 9.9.88 */
+/* SETAYESH_BUILD 9.9.89 */
 (function(){
 'use strict';
 
@@ -4203,6 +4203,7 @@ var TK={
     {id:'bt',i18n:'tk_bt',needLevel:1,icon:'<path d="M7 7l10 10-5 4V3l5 4L7 17"/>'},
     {id:'cable',i18n:'tk_cable',needLevel:1,icon:'<path d="M7 3v6a5 5 0 0010 0V3M9 3h2M13 3h2M12 14v7M9 21h6"/>'},
     {id:'phonehw',i18n:'tk_phonehw',needLevel:1,icon:'<rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 6l4 4-4 4M12 18h.01"/>'},
+    {id:'devlibs',i18n:'tk_devlibs',adminOnly:true,icon:'<path d="M4 5h11v14H4zM15 7h5v12h-5M8 9h3M8 13h3"/>'},
     {id:'comms',i18n:'tk_comms',adminOnly:true,icon:'<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/>'},
     {id:'settings',i18n:'tk_settings',icon:'<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09A1.65 1.65 0 008 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06A1.65 1.65 0 004.6 15a1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06A1.65 1.65 0 009 4.6a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06A1.65 1.65 0 0019.4 9c.14.36.47.62.86.7H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"/>'},
     {id:'ext',i18n:'tk_ext',icon:'<path d="M12 2l2 5 5-1-3 4 3 4-5-1-2 5-2-5-5 1 3-4-3-4 5 1z"/>'}
@@ -4213,7 +4214,7 @@ function tkT(k){return t(k);}
 
 var TK_I18N={
  fa:{toolkit:'جعبه‌ابزار امنیت',defensive:'دفاعی · فقط دارایی‌های خودتان',
-  tk_devices:'دستگاه‌ها',tk_lang:'گرامر و لحن',tk_bt:'بلوتوث',tk_cable:'کابل و سریال',tk_phonehw:'بلوتوث/کابلِ گوشی',tk_web:'اسکن وب‌سایت',tk_net:'اسکن شبکه',tk_ports:'بررسی پورت',tk_hash:'آزمایشگاه هش',tk_mobile:'اتصال موبایل',tk_hw:'سخت‌افزار',tk_ext:'افزونه‌ها',
+  tk_devices:'دستگاه‌ها',tk_lang:'گرامر و لحن',tk_bt:'بلوتوث',tk_cable:'کابل و سریال',tk_phonehw:'بلوتوث/کابلِ گوشی',tk_devlibs:'کتابخانه‌ها',tk_web:'اسکن وب‌سایت',tk_net:'اسکن شبکه',tk_ports:'بررسی پورت',tk_hash:'آزمایشگاه هش',tk_mobile:'اتصال موبایل',tk_hw:'سخت‌افزار',tk_ext:'افزونه‌ها',
   tk_extHint:'قابلیت جدید اضافه کنید بدون ساختن دوباره‌ی برنامه: یک فایل .js در پوشه‌ی plugins کنار برنامه بگذارید و «بارگذاری مجدد» را بزنید. نمونه‌ها در همان پوشه هستند.',
   tk_reload:'بارگذاری مجدد',tk_noext:'هیچ افزونه‌ای پیدا نشد. یک فایل .js در پوشه‌ی plugins بگذارید.',tk_extRun:'اجرا',tk_extErr:'خطای بارگذاری',
   tk_webHint:'وب‌سایت خودتان را از نظر تنظیمات امنیتی بررسی می‌کند (هدرها، کوکی‌ها، HTTPS، افشای نسخه). این بررسی passive است — فقط صفحه خوانده می‌شود، هیچ حمله‌ای انجام نمی‌شود.',
@@ -4232,7 +4233,7 @@ var TK_I18N={
   tk_errPrivate:'فقط شبکه‌ی محلی خودتان قابل بررسی است.',tk_loading:'در حال بارگذاری…',
   weak:'ضعیف',ok:'قابل‌قبول',strong:'قوی',excellent:'عالی'},
  en:{toolkit:'Security toolkit',defensive:'Defensive · your own assets only',
-  tk_devices:'Devices',tk_lang:'Grammar & voice',tk_bt:'Bluetooth',tk_cable:'Cable & serial',tk_phonehw:'Phone Bluetooth/USB',tk_web:'Website scan',tk_net:'Network scan',tk_ports:'Port check',tk_hash:'Hash lab',tk_mobile:'Mobile link',tk_hw:'Hardware',tk_ext:'Extensions',
+  tk_devices:'Devices',tk_lang:'Grammar & voice',tk_bt:'Bluetooth',tk_cable:'Cable & serial',tk_phonehw:'Phone Bluetooth/USB',tk_devlibs:'Dev libraries',tk_web:'Website scan',tk_net:'Network scan',tk_ports:'Port check',tk_hash:'Hash lab',tk_mobile:'Mobile link',tk_hw:'Hardware',tk_ext:'Extensions',
   tk_extHint:'Add a new tool without rebuilding: drop a .js file into the plugins folder next to the app and press Reload. Sample plugins are already in that folder.',
   tk_reload:'Reload',tk_noext:'No extensions found. Put a .js file in the plugins folder.',tk_extRun:'Run',tk_extErr:'load error',
   tk_webHint:'Checks your own website for security misconfigurations (headers, cookies, HTTPS, version disclosure). This is passive — it only reads the page, it performs no attack.',
@@ -4344,6 +4345,7 @@ function showTkTab(id){
     if(window.renderPhoneHwPanel)window.renderPhoneHwPanel(ph,deviceLevel());
     else ph.appendChild(el('div','tk-hint','بخش گوشی بارگذاری نشد.'));
     body.appendChild(ph); }
+  else if(id==='devlibs')body.appendChild(tkDevlibsPanel());
   else if(id==='comms')body.appendChild(tkCommsPanel());
   else if(id==='settings')body.appendChild(tkSettingsPanel());
   else if(id==='ext')body.appendChild(tkExtPanel());
@@ -5218,6 +5220,78 @@ function hwSerialConsole(port){
   });
   cmd.addEventListener('keydown',function(e){if(e.key==='Enter')send.click();});
   return wrap;
+}
+
+function tkDevlibsPanel(){
+  var p=el('div','tk-panel');
+  var w=el('div','tk-warn');
+  w.textContent='قفسه‌ی کتابخانه‌های برنامه‌نویسی: بهترین و پرکاربردترین‌ها برای هر زبان. '+
+    'فقط از مدیرهای بسته‌ای که روی این کامپیوتر نصب‌اند دانلود می‌شود، و دانلود هیچ اسکریپت نصبی اجرا نمی‌کند.';
+  p.appendChild(w);
+  var note=el('div');note.style.cssText='font-size:12px;min-height:16px;margin:8px 0';p.appendChild(note);
+  var out=el('div');out.innerHTML='<div class="tk-hint"><span class="spin"></span> خواندن قفسه…</div>';p.appendChild(out);
+
+  var logTimers={};
+  function watch(lang,logBox){
+    if(logTimers[lang])clearInterval(logTimers[lang]);
+    logTimers[lang]=setInterval(function(){
+      tkFetch('/api/admin/devlibs/log?lang='+encodeURIComponent(lang)).then(function(d){
+        logBox.textContent=(d.log||'').slice(-1400);logBox.scrollTop=logBox.scrollHeight;
+        if(!d.running){ clearInterval(logTimers[lang]); logTimers[lang]=null;
+          note.style.color=d.ok?'#34d399':'#fbbf24';
+          note.textContent=d.ok?('دانلود کتابخانه‌های '+lang+' تمام شد ✓'):('دانلود '+lang+' با نکته تمام شد — لاگ را ببین.');
+          load(); }
+      }).catch(function(){});
+    },1200);
+  }
+
+  function render(d){
+    out.innerHTML='';
+    var haveMgr=el('div','tk-hint');
+    haveMgr.textContent='مدیرهای نصب‌شده: '+(d.catalog.filter(function(c){return c.ready;}).map(function(c){return c.manager;})
+      .filter(function(v,i,a){return a.indexOf(v)===i;}).join('، ')||'—');
+    out.appendChild(haveMgr);
+
+    d.catalog.forEach(function(c){
+      var card=el('div','tk-card');card.style.marginBottom='8px';
+      var b=el('div','tk-card-b');
+      var head=el('div');head.style.cssText='display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px';
+      var title=el('b','',c.label);title.style.fontSize='13px';
+      head.appendChild(title);
+      var eco=el('span');eco.style.cssText='font-size:10.5px;color:#8ea0c8';eco.textContent=c.ecosystem||c.manager;head.appendChild(eco);
+      var cnt=el('span');cnt.style.cssText='font-size:10.5px;color:#8ea0c8';cnt.textContent='· '+c.count+' کتابخانه';head.appendChild(cnt);
+      var have=(d.installed&&d.installed[c.id])||0;
+      if(have){var hv=el('span');hv.style.cssText='font-size:10.5px;color:#34d399';hv.textContent='· '+have+' فایل دانلود شده';head.appendChild(hv);}
+      b.appendChild(head);
+
+      var libs=el('div');libs.style.cssText='font-size:11.5px;color:#aeb7cf;line-height:1.9;margin-bottom:7px';
+      libs.innerHTML=c.libs.map(function(l){return '<span title="'+esc(l.use)+'"><code style="color:#c7d0e8">'+esc(l.name)+'</code></span>';}).join(' · ');
+      b.appendChild(libs);
+
+      var dl=el('button','btn',c.ready?'دانلودِ همه':'مدیرش نصب نیست');
+      dl.style.cssText='font-size:12px';
+      if(!c.ready){ dl.disabled=true; dl.title='برای این زبان به '+c.manager+' نیاز است که روی این کامپیوتر نصب نیست.'; }
+      var logBox=el('div');
+      logBox.style.cssText='display:none;font-size:11px;direction:ltr;text-align:left;white-space:pre-wrap;'+
+        'max-height:150px;overflow:auto;background:rgba(0,0,0,.22);border-radius:8px;padding:7px 9px;margin-top:7px';
+      dl.addEventListener('click',function(){
+        dl.disabled=true;dl.textContent='در حال دانلود…';logBox.style.display='';
+        note.style.color='';note.textContent='دانلود '+c.label+' شروع شد…';
+        tkFetch('/api/admin/devlibs/download',{method:'POST',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({lang:c.id})})
+          .then(function(){ watch(c.id,logBox); })
+          .catch(function(e){ dl.disabled=false;dl.textContent='دانلودِ همه'; note.style.color='#fb7185';note.textContent=e.message; });
+      });
+      b.appendChild(dl);b.appendChild(logBox);
+      card.appendChild(b);out.appendChild(card);
+    });
+  }
+  function load(){
+    tkFetch('/api/admin/devlibs').then(render)
+      .catch(function(e){out.innerHTML='<div class="tk-hint" style="color:#fb7185">'+esc(e.message)+'</div>';});
+  }
+  load();
+  return p;
 }
 
 function tkBtPanel(){

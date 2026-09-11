@@ -122,6 +122,8 @@ const netguard = require('./netguard');
 const language = require('./language');
 // Talking to a device over Bluetooth or down a cable: pair, read, write.
 const hwlink = require('./hwlink');
+// The stocked shelf of the best libraries per language, and a safe downloader.
+const devlibs = require('./devlibs');
 
 // Optional feature modules (Google connectors, Telegram). If one of these files
 // is missing — e.g. a half-finished manual update where not every file was
@@ -194,7 +196,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.88';
+const APP_VERSION = '9.9.89';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -1925,6 +1927,18 @@ const TOOLS_SPEC = [
       required: ['port'],
     },
   },
+  {
+    name: 'dev_libraries',
+    description: "The household's stocked shelf of the best libraries for every programming language it works in. action 'catalog' returns the curated top libraries per language (Python, JS/TS, front-end/design, Rust, Go, Java, C#, PHP, Ruby, C/C++, Swift, Dart) and which package managers are installed on this machine; action 'download' fetches a language's set into a local folder using the installed manager (download only, no install scripts run). Use when the owner asks what the best library for X is, to set up a language, or to stock the machine.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', description: "'catalog' (default) or 'download'" },
+        language: { type: 'string', description: 'python, javascript, typescript, frontend, rust, go, java, csharp, php, ruby, cpp, swift, dart' },
+        names: { type: 'array', items: { type: 'string' }, description: 'Optional subset; omit to fetch the whole shelf for that language.' },
+      },
+    },
+  },
   // ---- Language: grammar and letters ---------------------------------------
   {
     name: 'check_grammar',
@@ -3035,6 +3049,35 @@ async function dispatchTool(name, input, ctx) {
         } catch (e) { return { error: e.message }; }
       }
 
+      // ---- dev libraries ---------------------------------------------------
+      case 'dev_libraries': {
+        if (!ctx.isAdmin) return { error: 'قفسه‌ی کتابخانه‌ها فقط برای حساب مدیر است.' };
+        const chains = await devlibs.toolchains();
+        if (String(input.action) === 'download') {
+          const lang = String(input.language || '');
+          if (!devlibs.CATALOG[lang]) return { error: 'زبان را مشخص کن: ' + Object.keys(devlibs.CATALOG).join('، ') };
+          const dir = path.join(DATA_DIR, 'devlibs', lang);
+          // Run it to completion here so the model can report the real result.
+          let logTail = '';
+          const r = await devlibs.download(lang, dir, input.names || null, (t) => { logTail = (logTail + t).slice(-1200); });
+          return { action: 'download', language: lang, ok: !!r.ok, manual: !!r.manual,
+            command: r.command || undefined, note: r.note || undefined, logTail };
+        }
+        // catalog
+        const lang = input.language && devlibs.CATALOG[input.language] ? input.language : null;
+        const cat = lang
+          ? { [lang]: devlibs.CATALOG[lang] }
+          : devlibs.CATALOG;
+        return {
+          action: 'catalog',
+          managersInstalled: Object.entries(chains.managerReady).filter(([, v]) => v).map(([k]) => k),
+          languages: Object.entries(cat).map(([id, e]) => ({
+            id, label: e.label, manager: e.manager, ready: chains.managerReady[e.manager] === true,
+            libs: e.libs,
+          })),
+        };
+      }
+
       // ---- language --------------------------------------------------------
       case 'check_grammar':
         return language.check(String(input.text || ''), input.language, { apply: input.apply });
@@ -3210,6 +3253,7 @@ function toolsFor(ctx) {
     // The hardware tools follow the member's own device level rather than the
     // admin flag, because the point of the levels is that Javid can open these
     // to somebody else without making them an administrator of everything.
+    if (t.name === 'dev_libraries') return !!(ctx && ctx.isAdmin);
     if (['hardware_inventory', 'bluetooth_devices', 'bluetooth_info'].includes(t.name)) {
       return deviceLevelOf(ctx && ctx.username) >= 1;
     }
@@ -4960,6 +5004,9 @@ app.get('/api/language/letter', requireAuth, (req, res) => {
   res.json(language.letterConventions(String(req.query.language || 'en'), req.query.formality,
     { recipientName: req.query.recipientName, authority: req.query.authority === '1' }));
 });
+
+// ---------------- Dev libraries: the stocked shelf ----------------
+devlibs.register(app, { requireAuth, requireAdmin, DATA_DIR, nightLog });
 
 // ---------------- Devices, safety and the network ----------------
 //
@@ -8801,6 +8848,12 @@ const server = (TLS ? https.createServer({ cert: TLS.cert, key: TLS.key }, app) 
     const tools = [formats.mediaTool('image') ? 'image' : '', formats.mediaTool('video') ? 'audio/video' : '']
       .filter(Boolean).join(', ') || 'none (text/data/Office/PDF still work)';
     console.log(`   Formats: ${w.extensions} extensions, FORMATS.md written. Media codecs: ${tools}`);
+  } catch (e) { /* read-only install */ }
+
+  // The dev-library shelf note, generated from the catalog so it never drifts.
+  try {
+    const d = devlibs.writeCatalogDocs(DATA_DIR);
+    console.log(`   Dev libraries: ${d.total} across ${d.languages} languages, DEV-LIBRARIES.md written.`);
   } catch (e) { /* read-only install */ }
 
   // If the previous boot was a self-update, prove it works or roll it back.

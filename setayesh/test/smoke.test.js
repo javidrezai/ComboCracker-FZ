@@ -1155,3 +1155,62 @@ test('a network scan says what each host is, not only where', async () => {
     assert.equal(r.status, 400, 'a refused scan must be a clean 400');
   }
 });
+
+// ---- Dev library shelf ----
+test('the dev-library catalog is well formed and comprehensive', () => {
+  const devlibs = require(path.join(ROOT, 'devlibs.js'));
+  const langs = Object.keys(devlibs.CATALOG);
+  assert.ok(langs.length >= 10, 'expected a shelf for many languages, got ' + langs.length);
+  let total = 0;
+  for (const [lang, e] of Object.entries(devlibs.CATALOG)) {
+    assert.ok(e.label && e.manager && e.ecosystem, 'incomplete language entry: ' + lang);
+    assert.ok(Array.isArray(e.libs) && e.libs.length, lang + ' has no libraries');
+    for (const l of e.libs) {
+      assert.ok(l.name, lang + ' has a nameless library');
+      assert.ok(l.use, l.name + ' has no description');
+    }
+    total += e.libs.length;
+  }
+  assert.ok(total >= 80, 'expected a real shelf, got ' + total + ' libraries');
+  // The staples must be there.
+  assert.ok(devlibs.CATALOG.python.libs.some((l) => l.name === 'numpy'));
+  assert.ok(devlibs.CATALOG.javascript.libs.some((l) => l.name === 'express'));
+  assert.ok(devlibs.CATALOG.frontend.libs.some((l) => l.name === 'tailwindcss'));
+});
+
+test('the shelf is served with which managers are installed here', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  const d = await (await api('/api/admin/devlibs', { token })).json();
+  assert.ok(Array.isArray(d.catalog) && d.catalog.length >= 10);
+  for (const c of d.catalog) {
+    assert.ok(c.id && c.label && c.manager);
+    assert.equal(typeof c.ready, 'boolean', c.id + ' must say whether its manager is installed');
+  }
+  assert.ok(d.tools && 'node' in d.tools, 'the toolchain probe must report node');
+});
+
+test('the download planner never runs an install script', () => {
+  const devlibs = require(path.join(ROOT, 'devlibs.js'));
+  // npm goes through `npm pack` (no scripts), pip through `pip download`
+  // (no install). Assert the commands are the download-only ones.
+  const npm = devlibs.plan('javascript', '/tmp/x', ['express']);
+  assert.equal(npm.cmd, 'npm');
+  assert.equal(npm.args[0], 'pack', 'npm must use pack, never install');
+  const pip = devlibs.plan('python', '/tmp/x', ['requests']);
+  assert.equal(pip.args[0], '-m');
+  assert.deepEqual(pip.args.slice(1, 3), ['pip', 'download'], 'pip must download, never install');
+  assert.ok(!pip.args.includes('install'));
+});
+
+test('an unknown language is refused, not guessed', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  const r = await api('/api/admin/devlibs/download', { method: 'POST', token, body: { lang: 'cobol' } });
+  assert.equal(r.status, 400);
+});
+
+test('the shelf is admin-only', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  const kid = await mkUser(token, 'shelfkid', 'pass12345');
+  assert.equal((await api('/api/admin/devlibs', { token: kid })).status, 403);
+  assert.equal((await api('/api/admin/devlibs/download', { method: 'POST', token: kid, body: { lang: 'python' } })).status, 403);
+});

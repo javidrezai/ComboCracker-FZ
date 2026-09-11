@@ -109,6 +109,20 @@ via the app's own self-editing feature.
   that grants permission must not be able to lock itself out of granting it.
   Enforce on the SERVER for every route AND inside `dispatchTool`; the UI check
   is only cosmetic. Granting level 2 must never imply admin rights.
+- **`devlibs.js`** — the curated per-language library shelf + a safe downloader.
+  `CATALOG` is knowledge (works offline); `toolchains()` reports which package
+  managers are actually installed; `download()` is DOWNLOAD-ONLY — `npm pack`
+  and `pip download` fetch archives without running any install script, cargo/go
+  fetch fill read-only caches. Never add an install-with-scripts path here: a
+  package manager's install hooks are the classic supply-chain foothold.
+  `DEV-LIBRARIES.md` and the brain note are generated from `CATALOG` at boot.
+  Admin-only, tool + `/api/admin/devlibs*` routes + the "کتابخانه‌ها" tab.
+- **`public/webbt.js`** — the phone's own Web Bluetooth / Web Serial client,
+  run in the browser (independent of the PC). It is gated by the browser's own
+  secure-context + chooser rules; the panel explains honestly when they are not
+  met (http, or iOS) rather than showing a dead button. A web page cannot make
+  the phone a HID *peripheral* (a keyboard to another machine) — that is stated,
+  never faked.
 - **Voice**: `voiceBlock()` in index.js builds the tone rules from each member's
   `tone` and `writeLang` prefs. Children never get the adult "خودمونی" register.
 
