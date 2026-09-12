@@ -65,6 +65,25 @@ via the app's own self-editing feature.
   item) is shown to the admin in `openSheet()` — it had been hard-hidden with
   `display:none !important`.
 
+## Awareness: the internal search engine + memory fabric (9.9.94)
+- **`insight.js`** is Setayesh's own private search engine — one BM25 index over
+  everything she knows: each user's long-term **memories**, past **chats**, the
+  **knowledge** vault, and her own **repositories** (source is described via
+  `SELF_MAP`, plus README/CLAUDE/RULES/FORMATS/DEV-LIBRARIES and the vault notes).
+  Sources are registered in index.js with lazy loaders that read live state;
+  `reindexInsight()` runs at boot and every 5 minutes.
+- **Privacy scoping is enforced in the engine**: a document with an owner is
+  visible only to that user (or to an admin's `all` search); a document with no
+  owner (repo/knowledge) is shared. Snippets are `redactOutbound`-ed before they
+  reach a cloud model, exactly like the static memory block.
+- Two ways it feeds the brain: the **`search_mind` tool** (the model calls it to
+  ground itself — broader than `recall`, which is memories only), and **automatic
+  grounding** — every chat turn runs the index on the question and folds the top
+  few hits into the system prompt, so she draws on long-term memory without being
+  asked. Short-term memory is the live conversation; this is the long-term half.
+- BM25 (k1=1.5, b=0.75) with a title/exact-phrase boost, Persian+English via
+  `rag.tokenize`. It is lexical retrieval, not neural embeddings — honest scope.
+
 ## Default routing: local-first, cloud fallback (9.9.93)
 - `resolveTarget` is **local-first by default** (disable with `LOCAL_FIRST=0`):
   plain conversation prefers the Python brain, then a local Ollama/LM-Studio

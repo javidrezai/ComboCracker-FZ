@@ -183,7 +183,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.93';
+const APP_VERSION = '9.9.94';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -292,6 +292,78 @@ const telegram = makeTelegram({ getCfg: () => cfg });
 // Light local RAG — private semantic-ish search over the family's own notes
 // and memories, no external service. See rag.js.
 const rag = makeRag({ storeFile: process.env.SETAYESH_RAG_FILE || path.join(DATA_DIR, '.setayesh-rag.json') });
+
+// Setayesh's internal search engine + memory fabric — her "awareness": one
+// strong BM25 index over everything she knows (memories, past chats, the
+// knowledge vault, her own repositories and module map). Sources are registered
+// just below with lazy loaders that read the LIVE state; nothing is loaded until
+// reindex() runs (at boot and on a timer), so referencing later-declared module
+// state from these closures is safe. See insight.js.
+const insight = require('./insight').makeInsight();
+insight.register('memory', () => {
+  const out = [];
+  try {
+    for (const u of users.keys()) {
+      for (const m of memoryFor(u)) {
+        out.push({ id: 'mem:' + m.id, user: u, source: 'memory', title: m.kind || 'یادداشت', text: m.text, at: m.createdAt });
+      }
+    }
+  } catch (e) {}
+  return out;
+});
+insight.register('chats', () => {
+  const out = [];
+  try {
+    if (!fs.existsSync(CHATS_DIR)) return out;
+    for (const f of fs.readdirSync(CHATS_DIR)) {
+      if (!f.endsWith('.json')) continue;
+      let user = 'default';
+      try { user = decodeURIComponent(f.replace(/\.json$/, '')); } catch (e) {}
+      let data;
+      try { data = JSON.parse(fs.readFileSync(path.join(CHATS_DIR, f), 'utf8')); } catch (e) { continue; }
+      const list = Array.isArray(data) ? data : (data.chats || []);
+      for (const c of list.slice(0, 60)) {
+        const msgs = (c.messages || c.msgs || c.history || [])
+          .slice(-14).map((m) => String(m.text || m.content || '')).filter(Boolean).join('\n');
+        if (!msgs && !c.title) continue;
+        out.push({ id: 'chat:' + user + ':' + (c.id || out.length), user, source: 'chat',
+                   title: c.title || 'گفتگو', text: msgs, at: c.at || c.createdAt || '' });
+      }
+    }
+  } catch (e) {}
+  return out;
+});
+insight.register('knowledge', () => {
+  try {
+    return (knowledge || []).filter((k) => k.status === 'approved')
+      .map((k) => ({ id: 'kn:' + k.id, user: '', source: 'knowledge', title: k.topic, text: k.content, at: k.createdAt }));
+  } catch (e) { return []; }
+});
+insight.register('self', () => {
+  try {
+    return Object.entries(SELF_MAP).map(([file, desc]) =>
+      ({ id: 'self:' + file, user: '', source: 'self', title: file, text: desc, path: file }));
+  } catch (e) { return []; }
+});
+insight.register('docs', () => {
+  const out = [];
+  for (const rel of ['README.md', 'CLAUDE.md', 'RULES.md', 'FORMATS.md', 'DEV-LIBRARIES.md']) {
+    try {
+      const p = path.join(DATA_DIR, rel);
+      if (fs.existsSync(p)) out.push({ id: 'doc:' + rel, user: '', source: 'docs', title: rel, text: fs.readFileSync(p, 'utf8'), path: rel });
+    } catch (e) {}
+  }
+  try {
+    const vdir = path.join(DATA_DIR, 'pybrain', 'vault', 'knowledge');
+    for (const f of fs.readdirSync(vdir)) {
+      if (!f.endsWith('.md')) continue;
+      try { out.push({ id: 'vault:' + f, user: '', source: 'vault', title: f.replace(/\.md$/, ''),
+                       text: fs.readFileSync(path.join(vdir, f), 'utf8'), path: 'pybrain/vault/knowledge/' + f }); } catch (e) {}
+    }
+  } catch (e) {}
+  return out;
+});
+function reindexInsight() { try { return insight.reindex(); } catch (e) { return null; } }
 
 const keys = {};           // providerId -> api key
 for (const id of Object.keys(PROVIDERS)) {
@@ -2260,6 +2332,19 @@ const TOOLS_SPEC = [
       required: ['query'],
     },
   },
+  {
+    name: 'search_mind',
+    description: "Setayesh's OWN internal search engine — a single strong index over EVERYTHING she knows: this user's long-term memories, past conversations, the family knowledge vault, and her own repositories (her source code, docs, and the module map of how she works). This is broader than `recall`. Use it liberally to ground yourself BEFORE answering — 'where did I save X', 'what do I know about Y', 'how does my own Z work', 'have we talked about this before'. Everything is local and private. Returns ranked hits with source, title and a snippet; each hit's `source` says where it came from (memory / chat / knowledge / vault / docs / self).",
+    input_schema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'what to look for, in the user\'s own words' },
+        sources: { type: 'array', items: { type: 'string' }, description: "optional filter: any of memory, chat, knowledge, vault, docs, self" },
+        limit: { type: 'number', description: '1–20, default 8' },
+      },
+      required: ['query'],
+    },
+  },
 ];
 
 // ---------------- Outbound privacy guard ----------------
@@ -3299,6 +3384,17 @@ async function dispatchTool(name, input, ctx) {
         const hits = rag.search(String(input.query || ''), Number(input.limit) || 5, { user: ctx && ctx.username, all: !!(ctx && ctx.isAdmin) });
         return hits.length ? { matches: hits.map((h) => ({ text: h.snippet, source: h.source, when: h.at, score: h.score })) } : { matches: [], note: 'چیزی در حافظه پیدا نشد.' };
       }
+      case 'search_mind': {
+        const hits = insight.search(String(input.query || ''), {
+          user: ctx && ctx.username, all: !!(ctx && ctx.isAdmin),
+          limit: Number(input.limit) || 8,
+          sources: Array.isArray(input.sources) && input.sources.length ? input.sources : null,
+        });
+        return hits.length
+          ? { matches: hits.map((h) => ({ source: h.source, title: h.title, path: h.path,
+                text: redactOutbound(String(h.snippet || '')).replace(/\s+/g, ' ').slice(0, 260), when: h.at, score: h.score })) }
+          : { matches: [], note: 'در حافظه و مخازن خودم چیزی پیدا نشد.' };
+      }
       default:
         return { error: 'ابزار ناشناخته: ' + name };
     }
@@ -4284,6 +4380,19 @@ app.post('/api/chat', requireAuth, chatLimiter, upload.array('files', 8), async 
     // Observe usage shape (not content) so Setayesh can suggest improvements.
     try { noteUsage('mode', req.body.mode || 'chat'); noteUsage('event', 'chat'); } catch (e) {}
     let systemPrompt = promptFor(req.username, req.body.mode, safe, req.body.codelib, message);
+    // Awareness: every turn, run the internal search engine on the question and
+    // fold the few most relevant things Setayesh already knows (long-term memory,
+    // past chats, the knowledge vault, her own repos) into the prompt — so she
+    // draws on her memory automatically, without being told to. Redacted on the
+    // way out, exactly like the static memory block. Best-effort; never blocks.
+    try {
+      const ground = insight.search(message, { user: req.username, all: isAdmin(req.username), limit: 4 });
+      if (ground.length) {
+        const lines = ground.map((h) => '• [' + h.source + (h.title ? '؛ ' + h.title : '') + '] '
+          + redactOutbound(String(h.snippet || '')).replace(/\s+/g, ' ').slice(0, 200)).join('\n');
+        systemPrompt += '\n\n🔎 آنچه از حافظه و مخازنِ خودت مرتبط پیدا شد (جستجوی داخلی — اگر به کار آمد استفاده کن، وگرنه نادیده بگیر؛ چیزی را از خودت نساز):\n' + lines;
+      }
+    } catch (e) { /* grounding is a bonus, never a blocker */ }
     // Model-independent auto web search: when the question needs fresh info but
     // Gemini grounding isn't available (no Gemini key, or a non-Gemini engine is
     // chosen), fetch results with the KEYLESS search and hand them to the brain
@@ -8931,6 +9040,13 @@ function localLanIps() {
 const server = (TLS ? https.createServer({ cert: TLS.cert, key: TLS.key }, app) : http.createServer(app))
   .listen(PORT, HOST, () => {
   ensureGeminiModel();   // pick a Gemini model this key can actually use
+  // Build Setayesh's internal search index (her memory/repos), then keep it
+  // fresh on a timer so new memories, chats and notes become searchable.
+  try {
+    const st = reindexInsight();
+    if (st) console.log(`   ✓  Internal search ready — ${st.docs} items indexed (memory, chats, knowledge, repos).`);
+  } catch (e) {}
+  setInterval(() => { try { reindexInsight(); } catch (e) {} }, 5 * 60 * 1000).unref();
   const configured = Object.keys(PROVIDERS).filter(isConfigured);
   const scheme = TLS ? 'https' : 'http';
   console.log('');

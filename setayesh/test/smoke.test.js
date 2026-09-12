@@ -1349,3 +1349,55 @@ test('the Mistral engine offers a general (non-code) model for chat', () => {
   const general = (mistral.models || []).find((m) => m.best !== 'code');
   assert.ok(general, 'mistral must list a non-code model so chat is not stuck on Codestral');
 });
+
+// ---- Internal search engine (insight.js): Setayesh's memory/repos search ----
+// جاوید asked for a strong internal search engine fully at the brain's disposal,
+// with short- and long-term memory. These assert BM25 ranking finds the right
+// item and that privacy scoping holds (one member never sees another's private
+// notes; shared repo/knowledge is visible to all; admin sees everything).
+test('insight ranks the on-topic document first (BM25)', () => {
+  const { makeInsight } = require(path.join(ROOT, 'insight.js'));
+  const ix = makeInsight();
+  ix.register('docs', () => ([
+    { id: 'a', user: '', source: 'knowledge', title: 'خرید نان', text: 'یادداشت درباره خرید نان و شیر از مغازه' },
+    { id: 'b', user: '', source: 'knowledge', title: 'قرار دندانپزشک', text: 'قرار ملاقات دندانپزشکی برای پنجشنبه' },
+    { id: 'c', user: '', source: 'docs', title: 'راهنما', text: 'متن بی‌ربط درباره چیز دیگری' },
+  ]));
+  ix.reindex();
+  const hits = ix.search('دندانپزشک پنجشنبه', { limit: 3 });
+  assert.ok(hits.length >= 1);
+  assert.equal(hits[0].id, 'b', 'the dentist note must rank first');
+});
+
+test('insight keeps private docs private but shares repo/knowledge', () => {
+  const { makeInsight } = require(path.join(ROOT, 'insight.js'));
+  const ix = makeInsight();
+  ix.register('mem', () => ([
+    { id: 'ja', user: 'javid', source: 'memory', title: '', text: 'راز مالیات جاوید' },
+    { id: 'sa', user: 'sara',  source: 'memory', title: '', text: 'راز مدرسه سارا' },
+    { id: 'sh', user: '',      source: 'knowledge', title: 'راز', text: 'دانش مشترک خانواده راز' },
+  ]));
+  ix.reindex();
+  // sara searching "راز": sees her own + the shared one, never javid's
+  const sara = ix.search('راز', { user: 'sara', limit: 10 }).map((h) => h.id);
+  assert.ok(sara.includes('sa') && sara.includes('sh'), 'sara sees her own + shared');
+  assert.ok(!sara.includes('ja'), 'sara must NOT see javid\'s private memory');
+  // admin (all) sees everything
+  const admin = ix.search('راز', { all: true, limit: 10 }).map((h) => h.id);
+  assert.ok(admin.includes('ja') && admin.includes('sa') && admin.includes('sh'), 'admin sees all');
+});
+
+test('insight can filter by source and reindexes live changes', () => {
+  const { makeInsight } = require(path.join(ROOT, 'insight.js'));
+  const ix = makeInsight();
+  let extra = [];
+  ix.register('self', () => ([{ id: 's1', user: '', source: 'self', title: 'index.js', text: 'سرور اصلی و مسیرها' }]));
+  ix.register('mem', () => extra);
+  ix.reindex();
+  assert.equal(ix.search('سرور', { sources: ['self'], limit: 5 })[0].source, 'self');
+  assert.equal(ix.search('سرور', { sources: ['mem'], limit: 5 }).length, 0, 'source filter excludes other sources');
+  // a newly added memory becomes searchable after reindex
+  extra = [{ id: 'm9', user: 'javid', source: 'memory', title: '', text: 'قرار مهم فردا ساعت ده' }];
+  ix.reindex();
+  assert.ok(ix.search('قرار فردا', { user: 'javid', limit: 5 }).some((h) => h.id === 'm9'));
+});
