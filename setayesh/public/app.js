@@ -1,4 +1,4 @@
-/* SETAYESH_BUILD 9.9.94 */
+/* SETAYESH_BUILD 9.9.95 */
 (function(){
 'use strict';
 
@@ -2670,7 +2670,16 @@ function loadCCLocalModels(){
   if(sv)sv.addEventListener('click',function(){
     var n=$('ccLocalModelsNote'); n.style.color='var(--muted)'; n.textContent='در حال ذخیره...';
     adminFetch('/api/admin/local-models',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({models:_localModels})})
-      .then(function(d){ n.style.color='#34d399'; n.textContent='ذخیره شد. فهرست موتورها به‌روز شد.'; if(CFG&&CFG.providers){var lp=CFG.providers.find(function(p){return p.id==='local';}); if(lp)lp.models=(d.active||[]).map(function(m){return {id:m,label:m};});} buildModelPicker&&buildModelPicker(); })
+      .then(function(d){
+        // refreshConfig re-fetches /api/config, so the now-enabled local engine
+        // shows up in the picker immediately — no restart, no extra checkbox.
+        if(typeof refreshConfig==='function')refreshConfig();
+        var cl=$('ccLocal'); if(cl&&d.localEnabled)cl.checked=true;
+        n.style.color='#34d399';
+        n.textContent=(d.active&&d.active.length)
+          ? ('آماده شد ✅ موتور محلی روشن و وصل شد: '+d.active.join('، ')+'. حالا از فهرست موتورها انتخابش کن.')
+          : 'ذخیره شد.';
+      })
       .catch(function(e){ n.style.color='#fb7185'; n.textContent=e.message; });
   });
   // Telegram, right inside the connectors panel the owner already knows.

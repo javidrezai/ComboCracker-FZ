@@ -65,6 +65,16 @@ via the app's own self-editing feature.
   item) is shown to the admin in `openSheet()` — it had been hard-hidden with
   `display:none !important`.
 
+## Local models: name-and-go (9.9.95)
+- Control centre → Power → "مدل‌های لوکال (Ollama)": type a model name (or hit
+  «شناسایی از Ollama», which calls `detectOllamaModels()` → the local `/api/tags`),
+  Save. `POST /api/admin/local-models` now **auto-enables the local engine** when
+  the list is non-empty (persists `ENABLE_LOCAL=1`, sets `keys.local`), so there
+  is no separate checkbox to find — adding a model IS connecting it. The client
+  `refreshConfig()`s so it appears in the picker at once. Detection has a 4s
+  `timeoutMs` (was a dead `timeout` key that let it hang up to 60s when Ollama
+  was down). Models persist in `.setayesh-local-models.json`.
+
 ## Awareness: the internal search engine + memory fabric (9.9.94)
 - **`insight.js`** is Setayesh's own private search engine — one BM25 index over
   everything she knows: each user's long-term **memories**, past **chats**, the

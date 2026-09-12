@@ -1401,3 +1401,24 @@ test('insight can filter by source and reindexes live changes', () => {
   ix.reindex();
   assert.ok(ix.search('قرار فردا', { user: 'javid', limit: 5 }).some((h) => h.id === 'm9'));
 });
+
+// ---- Local models: add a name → local engine auto-connects (v9.9.95) ----
+// جاوید wanted to just type his Ollama model name and have it work with no
+// other settings. Saving a model must flip the local engine ON by itself.
+test('adding a local model name auto-enables the local engine', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  // before: local not configured
+  let cfg = await (await api('/api/config', { token })).json();
+  const localBefore = (cfg.providers || []).find((p) => p.id === 'local');
+  assert.ok(localBefore && !localBefore.configured, 'local starts not configured');
+  // add a model name (as the UI does)
+  const r = await (await api('/api/admin/local-models', { method: 'POST', token, body: { models: ['qwen2.5'] } })).json();
+  assert.equal(r.ok, true);
+  assert.deepEqual(r.active, ['qwen2.5']);
+  assert.equal(r.localEnabled, true, 'saving a model must auto-enable local');
+  // after: /api/config now shows local configured, with the model listed
+  cfg = await (await api('/api/config', { token })).json();
+  const localAfter = (cfg.providers || []).find((p) => p.id === 'local');
+  assert.ok(localAfter && localAfter.configured, 'local must be configured now');
+  assert.ok((localAfter.models || []).some((m) => m.id === 'qwen2.5'), 'the model must be listed');
+});

@@ -183,7 +183,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.94';
+const APP_VERSION = '9.9.95';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -6431,7 +6431,7 @@ applyLocalModels();
 async function detectOllamaModels() {
   try {
     const base = (baseUrlFor('local') || 'http://localhost:11434/v1').replace(/\/v1\/?$/, '');
-    const r = await fetchWithTimeout(base + '/api/tags', { timeout: 4000 });
+    const r = await fetchWithTimeout(base + '/api/tags', { timeoutMs: 4000 });
     const d = await r.json();
     return (d.models || []).map((m) => m.name).filter(Boolean);
   } catch (e) { return []; }
@@ -6448,7 +6448,19 @@ app.post('/api/admin/local-models', requireAuth, requireAdmin, (req, res) => {
     : [];
   saveJsonFile(LOCAL_MODELS_FILE, { models });
   applyLocalModels();
-  res.json({ ok: true, active: (PROVIDERS.local.models || []).map((m) => m.id) });
+  // "Just give the name and it connects" — the moment there's a local model,
+  // switch the local engine ON automatically (persisted), so جاوید never has to
+  // find a separate checkbox. Adding a model IS enabling local.
+  let enabled = isConfigured('local');
+  if (models.length && !enabled) {
+    try {
+      writeConfigFile({ ENABLE_LOCAL: '1' });
+      cfg.ENABLE_LOCAL = '1';
+      keys.local = keys.local || 'local';
+      enabled = true;
+    } catch (e) {}
+  }
+  res.json({ ok: true, active: (PROVIDERS.local.models || []).map((m) => m.id), localEnabled: enabled });
 });
 
 // ---- Hide built-in AI engines you don't use (add/remove from the picker) ----
