@@ -85,6 +85,16 @@ via the app's own self-editing feature.
   `timeoutMs` (was a dead `timeout` key that let it hang up to 60s when Ollama
   was down). Models persist in `.setayesh-local-models.json`.
 
+## Phone side drawer = full desktop menu (9.9.100)
+- `tidySidebar()` used to HIDE every feature button on phones (moving them to a
+  bottom sheet), leaving the burger's side drawer empty below the chat list. It
+  now does the opposite: it FILLS the side drawer with the whole menu — toolkit,
+  devices, brain, and (admin) users/board/control-centre/learn — so the phone
+  menu is the desktop menu, sliding in from the side. `setProperty(...,'important')`
+  is required because ccBtn/learnBtn carry inline `display:none !important` and
+  brainMapBtn is force-hidden at init. The composer "+" bottom sheet stays as a
+  shortcut (its `#moreBtn` is `!important` in CSS; not fought).
+
 ## Always-learning: auto-research on by default (9.9.99)
 - Background research now defaults to **enabled + autoApprove** (`research` object)
   and is force-enabled on boot unless the kill switch `ENABLE_RESEARCH=0` is set —

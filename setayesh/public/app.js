@@ -1,4 +1,4 @@
-/* SETAYESH_BUILD 9.9.99 */
+/* SETAYESH_BUILD 9.9.100 */
 (function(){
 'use strict';
 
@@ -4119,19 +4119,22 @@ function collapseSidebarModes(){
 }
 
 function tidySidebar(){
-  // These all have drawer entries; remove the duplicates.
-  ['toolkitBtn','devicesBtn','commsBtn','brainMapBtn','adminBtn','boardBtn','ccBtn','learnBtn','settingsBtn','langBtn']
-    .forEach(function(id){ var e=$(id); if(e)e.style.display='none'; });
-
+  // جاوید wants the phone menu to be the FULL desktop menu in the side drawer
+  // (the burger opens it, sliding in from the side) — not an empty panel with
+  // the features hidden away. So on a phone we now FILL the side drawer with
+  // every menu button (respecting admin gating), exactly like the desktop menu.
+  // (The composer's "+" still opens the quick bottom sheet as a shortcut.)
   collapseSidebarModes();
-  // Composer: keep writing, attaching and sending. Voice and speech stay
-  // because they are used mid-sentence; the rest moved to the drawer.
   ['cmpBtn','searchBtn','settingsBtnComposer'].forEach(function(id){
     var e=$(id); if(e)e.style.display='none';
   });
-  // One clear way in.
-  var mb=$('moreBtn');
-  if(mb){ mb.style.display='inline-flex'; mb.title='منو'; }
+  // Show the menu buttons in the side drawer. setProperty w/ important beats the
+  // inline "display:none !important" some of them carry in the HTML. .mode-btn
+  // rows are flex; the foot .ibtn buttons are grid (matching the init).
+  var admin=!!(CFG&&CFG.isAdmin);
+  ['toolkitBtn','devicesBtn','boardBtn'].forEach(function(id){ var e=$(id); if(e)e.style.setProperty('display','flex','important'); });
+  if($('brainMapBtn'))$('brainMapBtn').style.setProperty('display', admin?'flex':'none','important');
+  ['adminBtn','ccBtn','learnBtn'].forEach(function(id){ var e=$(id); if(e)e.style.setProperty('display', admin?'grid':'none','important'); });
 }
 
 /* ===== Simple mode for family accounts =====
