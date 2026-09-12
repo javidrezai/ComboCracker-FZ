@@ -65,6 +65,16 @@ via the app's own self-editing feature.
   item) is shown to the admin in `openSheet()` — it had been hard-hidden with
   `display:none !important`.
 
+## Brain map on the phone + bigger memory (9.9.96)
+- The 3D globe (`brain3d-globe.js`) now has **pinch-to-zoom** (two-finger) and a
+  `window.brainGlobeZoom(delta)` API; drag already rotated it. The brain overlay's
+  controls moved to a **bottom bar** (✕ بستن, ↻ بازخوانی, +/−) above the safe area —
+  the old ✕ sat under the iOS status bar and was untappable. The header logo is
+  the chosen face (`window.setBrainLogoFace()`), like everywhere else.
+- Memory caps raised for a large long-term store: `MEMORY_MAX_PER_USER` 200→20000,
+  `KNOWLEDGE_MAX_ENTRIES` 500→50000, RAG `maxDocs` 5000→200000. (These are ceilings
+  so it CAN grow large as she's used/researches; the app does not ship gigabytes.)
+
 ## Local models: name-and-go (9.9.95)
 - Control centre → Power → "مدل‌های لوکال (Ollama)": type a model name (or hit
   «شناسایی از Ollama», which calls `detectOllamaModels()` → the local `/api/tags`),

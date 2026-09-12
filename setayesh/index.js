@@ -183,7 +183,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.95';
+const APP_VERSION = '9.9.96';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -291,7 +291,7 @@ const telegram = makeTelegram({ getCfg: () => cfg });
 
 // Light local RAG — private semantic-ish search over the family's own notes
 // and memories, no external service. See rag.js.
-const rag = makeRag({ storeFile: process.env.SETAYESH_RAG_FILE || path.join(DATA_DIR, '.setayesh-rag.json') });
+const rag = makeRag({ storeFile: process.env.SETAYESH_RAG_FILE || path.join(DATA_DIR, '.setayesh-rag.json'), maxDocs: 200000 });
 
 // Setayesh's internal search engine + memory fabric — her "awareness": one
 // strong BM25 index over everything she knows (memories, past chats, the
@@ -4726,7 +4726,7 @@ app.post('/api/council', requireAuth, chatLimiter, async (req, res) => {
 // editable/deletable from the admin panel — nothing is hidden.
 const KNOWLEDGE_FILE = process.env.SETAYESH_KNOWLEDGE_FILE || path.join(DATA_DIR, '.setayesh-knowledge.json');
 const RESEARCH_FILE = process.env.SETAYESH_RESEARCH_FILE || path.join(DATA_DIR, '.setayesh-research.json');
-const KNOWLEDGE_MAX_ENTRIES = 500;       // oldest entries drop past this
+const KNOWLEDGE_MAX_ENTRIES = 50000;     // big long-term store (was 500)
 const KNOWLEDGE_INJECT_CHARS = 1800;     // budget injected into each chat's system prompt.
                                          // Kept small on purpose: this rides along on EVERY
                                          // message, and free tiers (Groq: 8000 tokens/min)

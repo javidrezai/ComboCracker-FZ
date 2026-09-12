@@ -1,4 +1,4 @@
-/* SETAYESH_BUILD 9.9.95 */
+/* SETAYESH_BUILD 9.9.96 */
 /* Brain map — a living picture of Setayesh's whole self: a central hexagon
    core with every file as a node around it, colour-coded by area, green when
    healthy / red when missing. Click a node to see what it does and edit it.
@@ -321,6 +321,7 @@
   function open(){
     var ov=el('brainMapOverlay'); if(!ov)return;
     ov.style.display='block';
+    try{ if(window.setBrainLogoFace)window.setBrainLogoFace(); }catch(e){}
     var p=panel(); if(p){ p.style.display='none'; }
     el('brainMapView').innerHTML='<div style="color:#8ea0c8;text-align:center;padding:40px">در حال ساخت نقشه…</div>';
     fetch('/api/admin/brain/map',{headers:authH()}).then(function(r){return r.json();}).then(function(d){
@@ -341,9 +342,25 @@
   window.openBrainMap=open; window.closeBrainMap=close;
   // the 3D globe renderer drives the same detail/edit panels
   window.__bmPanel={ node:selectNode, pybrain:selectPybrain, core:selectCore };
+  // The header logo is Setayesh's chosen face, like everywhere else.
+  function setBrainLogoFace(){
+    var box=el('brainMapLogo'); if(!box)return;
+    var face=window.SETAYESH_FACE||window.SETAYESH_FACE_DEFAULT||'';
+    if(!face)return;
+    var img=document.createElement('img');
+    img.src=face; img.alt='ستایش'; img.style.cssText='width:100%;height:100%;object-fit:cover;display:block';
+    img.onerror=function(){ /* keep the built-in star gradient */ };
+    box.innerHTML=''; box.appendChild(img);
+  }
   document.addEventListener('DOMContentLoaded',function(){
     var c=el('brainMapClose'); if(c)c.addEventListener('click',close);
     var b=el('brainMapBtn'); if(b)b.addEventListener('click',open);
     var sh=el('shBrainMap'); if(sh)sh.addEventListener('click',function(){ if(typeof closeSheet==='function')closeSheet(); setTimeout(open,160); });
+    var rf=el('brainMapRefresh'); if(rf)rf.addEventListener('click',open);   // re-fetch + re-render
+    var zi=el('brainMapZoomIn'); if(zi)zi.addEventListener('click',function(){ if(window.brainGlobeZoom)window.brainGlobeZoom(-3); });
+    var zo=el('brainMapZoomOut'); if(zo)zo.addEventListener('click',function(){ if(window.brainGlobeZoom)window.brainGlobeZoom(3); });
+    setBrainLogoFace();
   });
+  // keep the logo in sync if the face is chosen/changed after load
+  window.setBrainLogoFace=setBrainLogoFace;
 })();

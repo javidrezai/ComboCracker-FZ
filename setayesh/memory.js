@@ -27,7 +27,7 @@ function saveMemory() {
   try { if (typeof afterMemoryWrite === 'function') afterMemoryWrite(memory); } catch (e) {}
 }
 
-const MEMORY_MAX_PER_USER = 200;
+const MEMORY_MAX_PER_USER = 20000;
 const MEMORY_INJECT_CHARS = 2200;
 
 function memoryFor(username) { return memory[username] || []; }

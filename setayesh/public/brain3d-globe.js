@@ -284,15 +284,35 @@
       rotY += dx * 0.005; rotX += dy * 0.005;
       if (e.cancelable) e.preventDefault();
     }
-    function onUp() { dragging = false; canvas.style.cursor = 'grab'; setTimeout(function () { auto = true; }, 2500); }
+    function onUp() { dragging = false; pinch = 0; canvas.style.cursor = 'grab'; setTimeout(function () { auto = true; }, 2500); }
+    function setDist(v) { dist = Math.max(6, Math.min(40, v)); }
+    // Zoom API used by the on-screen +/- buttons (phones have no scroll wheel).
+    window.brainGlobeZoom = function (delta) { auto = false; setDist(dist + delta); setTimeout(function () { auto = true; }, 2500); };
+    // Two-finger pinch = zoom on touch screens (the whole point of "زوم روی گوشی").
+    var pinch = 0;
+    function pinchDist(t) { var dx = t[0].clientX - t[1].clientX, dy = t[0].clientY - t[1].clientY; return Math.sqrt(dx * dx + dy * dy); }
+    function onTouchStart(e) {
+      if (e.touches && e.touches.length >= 2) { pinch = pinchDist(e.touches); dragging = false; auto = false; }
+      else onDown(e);
+    }
+    function onTouchMove(e) {
+      if (e.touches && e.touches.length >= 2) {
+        var d = pinchDist(e.touches);
+        if (pinch) setDist(dist - (d - pinch) * 0.03);   // fingers apart → zoom in
+        pinch = d;
+        if (e.cancelable) e.preventDefault();
+        return;
+      }
+      onMove(e);
+    }
     canvas.addEventListener('mousedown', onDown);
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
-    canvas.addEventListener('touchstart', onDown, { passive: true });
-    canvas.addEventListener('touchmove', onMove, { passive: false });
+    canvas.addEventListener('touchstart', onTouchStart, { passive: true });
+    canvas.addEventListener('touchmove', onTouchMove, { passive: false });
     canvas.addEventListener('touchend', onUp);
     canvas.addEventListener('wheel', function (e) {
-      dist = Math.max(8, Math.min(34, dist + (e.deltaY > 0 ? 1 : -1)));
+      setDist(dist + (e.deltaY > 0 ? 1.4 : -1.4));
       e.preventDefault();
     }, { passive: false });
 
