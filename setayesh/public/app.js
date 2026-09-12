@@ -1,4 +1,4 @@
-/* SETAYESH_BUILD 9.9.105 */
+/* SETAYESH_BUILD 9.9.106 */
 (function(){
 'use strict';
 
@@ -1427,7 +1427,7 @@ async function enterApp(){
       if(window.innerWidth<=860) tidySidebar();
       if(!CFG.isAdmin) simplifyForFamily();
       showVersion();
-      if(CFG.isAdmin){ startNotifications(); checkIntegrity(); }
+      if(CFG.isAdmin){ startNotifications(); checkIntegrity(); autoDetectLocalEngine(); }
       loadFace();   // every account sees the chosen face on the logos
       removeDuplicateSettings();
       renderPhoneAccess();
@@ -2643,6 +2643,27 @@ function renderLocalModelChips(){
     chip.appendChild(x); box.appendChild(chip);
   });
 }
+/* Silent, one-shot local-engine detection on load (admin only). If Ollama is
+   running with a model installed, enable the local engine and rebuild the
+   picker — so جاوید sees his qwen2.5 alongside the cloud engines without
+   opening any panel. If Ollama is off, it changes nothing. This is why the
+   picker no longer collapses to "just two engines". */
+function autoDetectLocalEngine(){
+  try{
+    adminFetch('/api/admin/local-models').then(function(d){
+      var det=(d&&d.detected)||[], active=(d&&d.active)||[];
+      if(!det.length)return;                       // Ollama off — leave as is
+      var missing=det.some(function(m){return active.indexOf(m)<0;});
+      if(!missing && CFG && CFG.providers && CFG.providers.some(function(p){return p.id==='local'&&p.configured;})) return; // already present
+      var merged=active.slice();
+      det.forEach(function(m){ if(merged.indexOf(m)<0)merged.push(m); });
+      adminFetch('/api/admin/local-models',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({models:merged})})
+        .then(function(){ if(typeof refreshConfig==='function')refreshConfig(); })
+        .catch(function(){});
+    }).catch(function(){});
+  }catch(e){}
+}
+
 function loadCCLocalModels(){
   adminFetch('/api/admin/local-models').then(function(d){
     _localModels=(d.active||[]).slice();

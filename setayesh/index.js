@@ -183,7 +183,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.105';
+const APP_VERSION = '9.9.106';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -6523,7 +6523,19 @@ async function autoSyncLocalModels() {
     // real installed tags first, then any the owner added by hand, unique
     const merged = [...new Set([...detected, ...savedList])].slice(0, 30);
     PROVIDERS.local.models = merged.map((t) => ({ id: t, label: t + ' (local)' }));
+    // "فقط اسم لوکال رو بدم و خودش اتومات مچ شود": the moment Ollama answers with
+    // a real model, keep it. PERSIST it (ENABLE_LOCAL=1 + the detected tags) so
+    // local never vanishes from the picker just because Ollama was still warming
+    // up the next time the app booted — which is how جاوید ended up with "only
+    // two engines". Once seen, local stays a usable choice.
     if (!isConfigured('local')) { keys.local = keys.local || 'local'; }  // usable at once
+    const newTags = detected.some((t) => !savedList.includes(t));
+    if (newTags || cfg.ENABLE_LOCAL !== '1') {
+      try {
+        saveJsonFile(LOCAL_MODELS_FILE, { models: merged });
+        if (cfg.ENABLE_LOCAL !== '1') { writeConfigFile({ ENABLE_LOCAL: '1' }); cfg.ENABLE_LOCAL = '1'; }
+      } catch (e) {}
+    }
   } catch (e) { /* Ollama not reachable — keep whatever is configured */ }
 }
 
