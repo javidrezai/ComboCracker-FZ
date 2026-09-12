@@ -183,7 +183,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.98';
+const APP_VERSION = '9.9.99';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -4753,9 +4753,18 @@ function saveJsonFile(file, data) {
 // is on — this is the "father reviews what the child learned" gate.
 let knowledge = loadJsonFile(KNOWLEDGE_FILE, []); // [{ id, topic, content, sources, status, createdAt }]
 let research = Object.assign(
-  { enabled: false, intervalMinutes: 240, maxPerDay: 3, autoApprove: false, useWeb: true, allowedDomains: [], topics: [], runsToday: 0, runsDate: '', lastRunAt: null, lastError: null },
+  // Always-learning by default (جاوید: "تحقیق خودکار همیشه روشن، همیشه در حال
+  // رشد"). It grows the knowledge store continuously; autoApprove means what she
+  // learns is used right away (the owner can still prune it in the knowledge
+  // panel). Kill switch: ENABLE_RESEARCH=0.
+  { enabled: true, intervalMinutes: 120, maxPerDay: 8, autoApprove: true, useWeb: true, allowedDomains: [], topics: [], runsToday: 0, runsDate: '', lastRunAt: null, lastError: null },
   loadJsonFile(RESEARCH_FILE, {}),
 );
+// Force it on regardless of any stale saved "off", unless the owner set the
+// explicit kill switch. This is what makes "always growing, everywhere" hold
+// across restarts and existing installs.
+const RESEARCH_KILLED = /^(0|false|off|no)$/i.test(String(cfg.ENABLE_RESEARCH != null ? cfg.ENABLE_RESEARCH : (process.env.SETAYESH_ENABLE_RESEARCH || '')));
+if (!RESEARCH_KILLED && !research.enabled) research.enabled = true;
 // Older knowledge files predate the review workflow — treat anything without
 // a status as already-approved so nothing already trusted disappears.
 let _migratedKnowledge = false;
@@ -8353,6 +8362,7 @@ const EDITABLE_KEYS = {
   KEY_TAVILY:    { secret: true,  label: 'Tavily Search' },
   PROVIDER:      { secret: false, label: 'موتور پیش‌فرض' },
   ENABLE_LOCAL:  { secret: false, label: 'موتور محلی (Ollama)' },
+  ENABLE_RESEARCH: { secret: false, label: 'تحقیق و یادگیریِ خودکار (۱=همیشه روشن، ۰=خاموش)' },
   ENABLE_PYTHON: { secret: false, label: 'اجرای کد پایتون' },
   ENABLE_SELF_EDIT: { secret: false, label: 'اجازه‌ی تغییر کد خودش (با تأیید تو)' },
   AUTO_TLS:          { secret: false, label: 'اتصال امن HTTPS برای گوشی (گواهی خودساخته — یک‌بار باید در مرورگر تأیید شود)' },

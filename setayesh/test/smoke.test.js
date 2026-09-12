@@ -1456,3 +1456,12 @@ test('an explicit "remember ..." message is auto-learned into memory', async () 
   assert.ok(after.length > before.length, 'a new memory should have been learned automatically');
   assert.ok(after.some((m) => /پنجشنبه|قرار مهم/.test(m.text)), 'the learned fact should be the stated commitment');
 });
+
+// ---- Always-learning (v9.9.99): auto-research on by default ----
+// جاوید asked that automatic research/learning be always on so she keeps
+// growing. It must report enabled without anyone turning it on.
+test('automatic research is ON by default (always-growing)', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  const d = await (await api('/api/admin/research', { token })).json();
+  assert.equal(d.settings.enabled, true, 'research should be enabled by default');
+});

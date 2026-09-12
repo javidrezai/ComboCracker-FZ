@@ -85,6 +85,20 @@ via the app's own self-editing feature.
   `timeoutMs` (was a dead `timeout` key that let it hang up to 60s when Ollama
   was down). Models persist in `.setayesh-local-models.json`.
 
+## Always-learning: auto-research on by default (9.9.99)
+- Background research now defaults to **enabled + autoApprove** (`research` object)
+  and is force-enabled on boot unless the kill switch `ENABLE_RESEARCH=0` is set —
+  so it keeps growing the knowledge store everywhere, across restarts and existing
+  installs. Interval 120 min, `maxPerDay` 8 (under the 24 hard cap). The existing
+  scheduler (5-min tick, `.unref()`) and `runResearchCycle` guards are unchanged:
+  it still skips when disabled/capped/no-provider, and still scans every topic
+  through the outbound privacy filter before anything leaves the machine.
+- NB the "model" itself cannot be enlarged in code — intelligence is the chosen
+  engine (local Ollama model or cloud). What grows automatically is her KNOWLEDGE
+  (research + `autoLearn` + the internal search), and hard questions still route
+  to the cloud. Tell the owner to install a larger Ollama model for more local
+  power; don't imply the code makes the model bigger.
+
 ## Automatic self-learning + memory in the toolbox (9.9.98)
 - **`autoLearn(username, message)`** runs on every chat turn (fire-and-forget,
   before the engine, so it survives even the no-engine path). It distils DURABLE
