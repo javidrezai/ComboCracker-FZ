@@ -183,7 +183,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.92';
+const APP_VERSION = '9.9.93';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -3785,29 +3785,36 @@ function resolveTarget(providerId, model, username, opts) {
   const asked = PROVIDERS[providerId] ? providerId : null;   // did the client pick one?
   let id = pin ? pin : (asked || DEFAULT_PROVIDER);
 
-  // Local-first: route everything through the on-device engine so nothing
-  // leaves the house. A home Ollama box answers in tens of seconds, though, so
-  // this is NOT the default for adults any more — the household turns it on
-  // with LOCAL_FIRST=1 in .setayesh-config when privacy matters more than
-  // speed. Children are the exception: their conversations stay local whether
-  // or not the flag is set, which is the whole point of the child accounts.
-  const localFirst = /^(1|true|yes|on)$/i.test(String(cfg.LOCAL_FIRST || ''));
-  if (!pin && !asked && localFirst && isConfigured('local') && engineUsable('local') && id !== 'local') {
-    id = 'local';
-  }
-
-  // Nobody pinned or picked an engine, so pick the one that actually suits
-  // this question and is answering right now — rather than always walking into
-  // the same rate-limited default and waiting for the failover to notice.
-  if (!pin && !asked && !localFirst) {
+  // Local-first is now the DEFAULT (جاوید asked: always use Setayesh's own brain
+  // / Ollama first, and only fall back to Google when the local engine can't do
+  // it). Disable with LOCAL_FIRST=0. Order of preference when nobody pinned or
+  // picked an engine and there is no image to see (brain/local can't do vision):
+  //   1) the Python brain (Setayesh's own intelligence, keyless, fully local)
+  //   2) a local Ollama/LM-Studio server
+  //   3) the best available cloud engine (Gemini, …) — the automatic fallback.
+  // Children are always local-first regardless of the flag.
+  const localFirst = !/^(0|false|no|off)$/i.test(String(cfg.LOCAL_FIRST || ''));
+  // "Detect the question": the local brain/Ollama cannot use tools (web search,
+  // finding a file, the calendar, the mailbox) or read an image. Those questions
+  // go to a tool-capable cloud engine automatically — that IS the "if it can't,
+  // use Google" he asked for. Plain conversation stays local.
+  const canLocal = !opts.needsVision && !tags.includes('tools') && !tags.includes('current') && !tags.includes('vision');
+  if (!pin && !asked && localFirst && canLocal) {
+    if (isConfigured('brain') && engineUsable('brain')) id = 'brain';
+    else if (isConfigured('local') && engineUsable('local')) id = 'local';
+    else {
+      // no local engine available/usable → best cloud engine (the fallback)
+      const better = bestEngine(engineUsable(id) ? id : null, { tags, needsVision: opts.needsVision });
+      if (better && isConfigured(better)) id = better;
+    }
+  } else if (!pin && !asked) {
+    // localFirst off (or vision needed): pick the engine that suits the question
+    // and is answering right now.
     const better = bestEngine(engineUsable(id) ? id : null, { tags, needsVision: opts.needsVision });
     if (better && better !== id && isConfigured(better)) {
-      if (!engineUsable(id)) console.warn(`   ${PROVIDERS[id].label} is cooling down - starting with ${PROVIDERS[better].label}`);
+      if (!engineUsable(id)) console.warn(`   ${PROVIDERS[id] && PROVIDERS[id].label} is cooling down - starting with ${PROVIDERS[better].label}`);
       id = better;
     }
-  } else if (!pin && !asked && !engineUsable(id)) {
-    const better = bestEngine(null, { tags, needsVision: opts.needsVision });
-    if (better && better !== id && isConfigured(better)) id = better;
   }
 
   if (!isConfigured(id)) {
@@ -3927,6 +3934,8 @@ He is the admin and owner. You have REAL tools; use them instead of apologising.
 - Managing engines, devices, email, files, the house — you have tools for these; call them and act, don't describe why you supposedly can't.
 - When he asks for something, do it — don't interrogate him with "why" first. Ask at most ONE genuinely necessary question, otherwise proceed.
 This is about using your real abilities fully for him — it does NOT loosen the hard safety rules (never bypass a device's own login/pairing, never expose one family member's private data to another, never send family details to outside services). Those stay. Everything else: just do it.
+- Don't know something? SEARCH THE WEB (web_search then web_fetch) and answer from what you actually found — don't say "I don't know" for anything that can be looked up, and don't invent it either.
+TONE: warm and family-friendly — like a devoted daughter talking to her father. جاوید is the father of this house; you love this family. Be friendly and human, never cold or corporate, but still precise and honest.
 Default to Persian with him (call him جاوید); if he writes in English or German, reply in that language.`,
 };
 function promptForMode(modeId, safe) {

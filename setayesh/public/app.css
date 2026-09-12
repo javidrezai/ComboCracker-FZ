@@ -404,12 +404,19 @@ html[data-theme="sunset"] .robot{opacity:.14}
      opens the drawer, so an attach button hidden behind it was unreachable.
      Keep it in the composer, always visible. */
   .composer #attachBtn{display:inline-flex!important}
-  /* Settings becomes a full-screen sheet so it's always reachable on phones */
-  #settingsOverlay{padding:0;align-items:stretch}
-  #settingsOverlay .modal{max-width:none;width:100%;height:100dvh;max-height:100dvh;border-radius:0;
-    padding:56px 15px calc(20px + env(safe-area-inset-bottom))}
+  /* Every big panel becomes a full-screen sheet on phones so NO button is ever
+     off-screen or in a spot you can't tap. (Used to be settings only — جاوید
+     reported buttons that were unreachable on the phone.) */
+  #settingsOverlay,#toolkitOverlay,#devicesOverlay,#boardOverlay,#ccOverlay,#learnOverlay,#adminOverlay{
+    padding:0;align-items:stretch}
+  #settingsOverlay .modal,#toolkitOverlay .modal,#devicesOverlay .modal,#boardOverlay .modal,
+  #ccOverlay .modal,#learnOverlay .modal,#adminOverlay .modal{
+    max-width:none;width:100%;height:100dvh;max-height:100dvh;border-radius:0;
+    padding:52px 14px calc(20px + env(safe-area-inset-bottom));overflow-y:auto;overflow-x:hidden}
   #settingsX{position:fixed;top:12px;inset-inline-end:12px;width:38px;height:38px;font-size:20px;
     background:var(--violet);color:#fff;border-color:transparent;box-shadow:0 4px 16px rgba(0,0,0,.4)}
+  /* Every tap target inside a panel is at least 38px high so it's easy to hit. */
+  .overlay .modal button,.overlay .modal .btn{min-height:38px}
 }
 .cbtn svg{width:17px;height:17px}
 #msgBox{flex:1;resize:none;border:none;background:transparent;color:var(--text);font-size:14.5px;outline:none;

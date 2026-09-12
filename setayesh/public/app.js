@@ -1,4 +1,4 @@
-/* SETAYESH_BUILD 9.9.92 */
+/* SETAYESH_BUILD 9.9.93 */
 (function(){
 'use strict';
 
@@ -2391,6 +2391,13 @@ function loadCC(){
         tg.addEventListener('click',function(){ toggleEngineHidden(p.id,!p.hidden); });
         top.appendChild(tg);
       }
+      // Clear this engine's API key — a delete button in front of every key
+      // that actually has one set.
+      if(st&&st.set){
+        var clr=el('button','btn ghost'); clr.textContent='🗑 پاک کردن کلید'; clr.style.cssText='font-size:11px;padding:2px 8px;color:#fb7185';
+        clr.addEventListener('click',function(){ clearEngineKey(key,p.label); });
+        top.appendChild(clr);
+      }
       row.appendChild(top);
       if(st){
         var inp=el('input','input');
@@ -2528,6 +2535,13 @@ function toggleEngineHidden(id,hide){
   if(hide)set.push(id);
   adminFetch('/api/admin/hidden-engines',{method:'POST',body:JSON.stringify({hidden:set})})
     .then(function(){ ccNote(hide?'موتور پنهان شد.':'موتور نمایش داده شد.'); loadCC(); refreshConfig(); })
+    .catch(function(e){ ccNote(e.message,true); });
+}
+function clearEngineKey(key,label){
+  if(!confirm('کلید «'+(label||key)+'» پاک شود؟'))return;
+  var upd={}; upd[key]='';
+  adminFetch('/api/admin/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({updates:upd})})
+    .then(function(){ ccNote('کلید پاک شد.'); loadCC(); refreshConfig(); })
     .catch(function(e){ ccNote(e.message,true); });
 }
 function removeCustomEngine(id,label){

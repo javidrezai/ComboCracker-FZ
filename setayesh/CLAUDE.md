@@ -65,6 +65,20 @@ via the app's own self-editing feature.
   item) is shown to the admin in `openSheet()` — it had been hard-hidden with
   `display:none !important`.
 
+## Default routing: local-first, cloud fallback (9.9.93)
+- `resolveTarget` is **local-first by default** (disable with `LOCAL_FIRST=0`):
+  plain conversation prefers the Python brain, then a local Ollama/LM-Studio
+  server. But the local engines cannot call tools or read images, so any
+  question tagged `tools`/`current`/`vision` (mail, files, calendar, live info,
+  an attached picture) is routed to a tool-capable CLOUD engine automatically —
+  this is the owner's "use Ollama/brain by default; if it can't, use Google".
+  An explicit pin/pick still wins and sticks (client persists it in
+  localStorage). On error the failover reaches the cloud engines.
+- Each API key in the control centre has a "پاک کردن کلید" (clear) button; it
+  POSTs an empty value to `/api/admin/settings`, which deletes the key.
+- On phones every big overlay (settings, toolkit, devices, board, control
+  centre, learn, admin) is a full-screen sheet so no button is off-screen.
+
 ## Engine routing, failover and chat memory
 - **The failover in `/api/chat` must be able to see everything it passes on.**
   Anything the `catch` block hands to a substitute engine (`callOpts`,
