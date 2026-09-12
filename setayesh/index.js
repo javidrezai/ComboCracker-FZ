@@ -183,7 +183,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.97';
+const APP_VERSION = '9.9.98';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -4283,6 +4283,10 @@ app.post('/api/chat', requireAuth, chatLimiter, upload.array('files', 8), async 
   // one-line greeting goes to the fast engine and a refactor goes to the one
   // that can actually do it.
   const askTags = classifyQuestion(message, { needsVision: hasFiles });
+  // Grow on her own: learn any durable facts from this message, in the
+  // background, so it never delays the answer. Uses the RAW message (local
+  // memory never leaves the machine), so she remembers the real name/detail.
+  setImmediate(() => autoLearn(req.username, message));
 
   let target;
   try {
@@ -8193,6 +8197,62 @@ function detectCommitment(message) {
     }
   }
   return null;
+}
+
+// ---------------- Automatic self-learning (growth) ----------------
+// Setayesh grows on her own. After each message she quietly distils DURABLE
+// facts the family states about themselves — an explicit "remember this", a
+// name, where they live/work, a clear like/dislike, a commitment — and files
+// them in long-term memory (deduped), then re-indexes so they are searchable
+// and auto-grounded from the very next turn. Local and rule-based: no model
+// call, no cost, fully automatic. Deliberately selective — it only captures
+// clearly-marked facts, because junk memory would make her worse, not better;
+// the owner can delete anything wrong from the memory panel.
+const LEARN_PATTERNS = [
+  // explicit "remember" — highest confidence
+  { kind: 'fact', re: /(?:یادت\s*باشه|به\s*خاطر\s*بسپار|یادداشت\s*کن|حفظ\s*کن)\s*(?:که\s*)?(.{3,160}?)(?:[.،]|$)/ },
+  { kind: 'fact', re: /\bremember(?:\s+that)?\s+(.{3,160}?)(?:[.,]|$)/i },
+  // identity / stable self-facts
+  { kind: 'fact', re: /اسم(?:م| من| منه)?\s*(?:هست\s*)?([آ-ی][آ-ی‌ ]{1,38}?)(?:\s*(?:است|هست|ه)|[.،]|$)/ },
+  { kind: 'fact', re: /\bmy name is\s+([A-Za-z][A-Za-z ]{1,38})/i },
+  { kind: 'fact', re: /(?:من\s+)?(?:در|تو)\s+([^.،\n]{2,50}?)\s+(?:کار\s*می[‌ ]?کنم|زندگی\s*می[‌ ]?کنم)/ },
+  { kind: 'fact', re: /\bI (?:live|work)\b[^.,\n]{0,4}\b(?:in|at|as)\s+([^.,\n]{2,50}?)(?:[.,]|$)/i },
+  // preferences
+  { kind: 'preference', re: /([^.،\n]{2,60}?)\s*(?:رو|را)\s*(?:خیلی\s*)?(?:دوست\s*دارم|دوست\s*ندارم|ترجیح\s*می[‌ ]?دهم)/ },
+  { kind: 'preference', re: /\bI (?:like|love|hate|prefer)\s+([^.,\n]{2,60}?)(?:[.,]|$)/i },
+];
+function extractFacts(message) {
+  const text = String(message || '').trim();
+  if (!text || text.length > 500) return [];   // long pastes aren't personal facts
+  const out = [];
+  for (const p of LEARN_PATTERNS) {
+    const m = text.match(p.re);
+    if (m && m[1]) {
+      const v = m[1].trim().replace(/\s+/g, ' ');
+      if (v.length < 2 || v.length > 170) continue;
+      out.push({ text: v, kind: p.kind });
+    }
+  }
+  const commit = detectCommitment(text);
+  if (commit) out.push({ text: commit.text, kind: 'deadline', due: commit.due });
+  return out;
+}
+function autoLearn(username, message) {
+  if (!username) return;
+  try {
+    const facts = extractFacts(message);
+    if (!facts.length) return;
+    const existing = memoryFor(username).map((m) => String(m.text || '').toLowerCase());
+    let added = 0;
+    for (const f of facts) {
+      const key = f.text.toLowerCase();
+      if (key.length < 2) continue;
+      if (existing.some((e) => e === key || e.includes(key) || key.includes(e))) continue; // dedup / superset
+      try { addMemory(username, f); existing.push(key); added++; } catch (e) {}
+      if (added >= 4) break;   // a few per turn at most
+    }
+    if (added) { try { reindexInsight(); } catch (e) {} }
+  } catch (e) { /* learning is a bonus, never a blocker */ }
 }
 
 // ---------------- Daily briefing ----------------

@@ -1,4 +1,4 @@
-/* SETAYESH_BUILD 9.9.97 */
+/* SETAYESH_BUILD 9.9.98 */
 (function(){
 'use strict';
 
@@ -4286,6 +4286,7 @@ document.addEventListener('keydown',function(e){
 /* ================= TOOLKIT ================= */
 var TK={
   tabs:[
+    {id:'memory',i18n:'tk_memory',icon:'<path d="M12 2a4 4 0 00-4 4 3 3 0 00-2 5.2A3 3 0 006 17a3 3 0 003 3 3 3 0 003 1 3 3 0 003-1 3 3 0 003-3 3 3 0 000-5.8A3 3 0 0016 6a4 4 0 00-4-4z"/><path d="M12 2v19"/>'},
     {id:'web',i18n:'tk_web',icon:'<circle cx="12" cy="12" r="9"/><path d="M12 3v18M3 12h18M5.6 5.6l12.8 12.8M18.4 5.6L5.6 18.4"/>'},
     {id:'net',i18n:'tk_net',icon:'<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 010 18M12 3a15 15 0 000 18"/>'},
     {id:'ports',i18n:'tk_ports',icon:'<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/>'},
@@ -4315,6 +4316,7 @@ function tkT(k){return t(k);}
 var TK_I18N={
  fa:{toolkit:'جعبه‌ابزار امنیت',defensive:'دفاعی · فقط دارایی‌های خودتان',
   tk_devices:'دستگاه‌ها',tk_lang:'گرامر و لحن',tk_bt:'بلوتوث',tk_cable:'کابل و سریال',tk_phonehw:'بلوتوث/کابلِ گوشی',tk_devlibs:'کتابخانه‌ها',tk_web:'اسکن وب‌سایت',tk_net:'اسکن شبکه',tk_ports:'بررسی پورت',tk_hash:'آزمایشگاه هش',tk_mobile:'اتصال موبایل',tk_hw:'سخت‌افزار',tk_ext:'افزونه‌ها',
+  tk_memory:'حافظه',tk_memoryHint:'حافظه‌ی کوتاه‌مدت و بلندمدتِ ستایش درباره‌ی تو — هرچه یاد گرفته اینجاست. باز کن تا ببینی و ویرایش کنی.',tk_memoryOpen:'📂 باز کردن حافظه‌ی من',
   tk_extHint:'قابلیت جدید اضافه کنید بدون ساختن دوباره‌ی برنامه: یک فایل .js در پوشه‌ی plugins کنار برنامه بگذارید و «بارگذاری مجدد» را بزنید. نمونه‌ها در همان پوشه هستند.',
   tk_reload:'بارگذاری مجدد',tk_noext:'هیچ افزونه‌ای پیدا نشد. یک فایل .js در پوشه‌ی plugins بگذارید.',tk_extRun:'اجرا',tk_extErr:'خطای بارگذاری',
   tk_webHint:'وب‌سایت خودتان را از نظر تنظیمات امنیتی بررسی می‌کند (هدرها، کوکی‌ها، HTTPS، افشای نسخه). این بررسی passive است — فقط صفحه خوانده می‌شود، هیچ حمله‌ای انجام نمی‌شود.',
@@ -4334,6 +4336,7 @@ var TK_I18N={
   weak:'ضعیف',ok:'قابل‌قبول',strong:'قوی',excellent:'عالی'},
  en:{toolkit:'Security toolkit',defensive:'Defensive · your own assets only',
   tk_devices:'Devices',tk_lang:'Grammar & voice',tk_bt:'Bluetooth',tk_cable:'Cable & serial',tk_phonehw:'Phone Bluetooth/USB',tk_devlibs:'Dev libraries',tk_web:'Website scan',tk_net:'Network scan',tk_ports:'Port check',tk_hash:'Hash lab',tk_mobile:'Mobile link',tk_hw:'Hardware',tk_ext:'Extensions',
+  tk_memory:'Memory',tk_memoryHint:'Setayesh\'s short- and long-term memory about you — everything she has learned lives here. Open it to view and edit.',tk_memoryOpen:'📂 Open my memory',
   tk_extHint:'Add a new tool without rebuilding: drop a .js file into the plugins folder next to the app and press Reload. Sample plugins are already in that folder.',
   tk_reload:'Reload',tk_noext:'No extensions found. Put a .js file in the plugins folder.',tk_extRun:'Run',tk_extErr:'load error',
   tk_webHint:'Checks your own website for security misconfigurations (headers, cookies, HTTPS, version disclosure). This is passive — it only reads the page, it performs no attack.',
@@ -4425,7 +4428,8 @@ function buildTkTabs(){
 function showTkTab(id){
   TK.active=id;buildTkTabs();
   var body=$('tkBody');body.innerHTML='';
-  if(id==='web')body.appendChild(tkWebPanel());
+  if(id==='memory'){ body.appendChild(tkMemoryPanel()); if(window.openMemoryPanel)try{window.openMemoryPanel();}catch(e){} }
+  else if(id==='web')body.appendChild(tkWebPanel());
   else if(id==='net')body.appendChild(tkNetPanel());
   else if(id==='ports')body.appendChild(tkPortsPanel());
   else if(id==='hash')body.appendChild(tkHashPanel());
@@ -4449,6 +4453,16 @@ function showTkTab(id){
   else if(id==='comms')body.appendChild(tkCommsPanel());
   else if(id==='settings')body.appendChild(tkSettingsPanel());
   else if(id==='ext')body.appendChild(tkExtPanel());
+}
+function tkMemoryPanel(){
+  var w=el('div','tk-panel');
+  var h=el('div'); h.style.cssText='font-size:13px;color:var(--muted);line-height:1.9;margin-bottom:12px';
+  h.textContent=t('tk_memoryHint');
+  var b=el('button','btn'); b.style.cssText='width:100%;padding:11px;font-size:13px;font-weight:700';
+  b.textContent=t('tk_memoryOpen');
+  b.addEventListener('click',function(){ if(window.openMemoryPanel)window.openMemoryPanel(); });
+  w.appendChild(h); w.appendChild(b);
+  return w;
 }
 function tkSettingsPanel(){
   var w=el('div'); w.style.cssText='padding:4px 2px';

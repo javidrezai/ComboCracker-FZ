@@ -1435,3 +1435,24 @@ test('gmail/calendar endpoints answer 409 (not 502/500) when Google is not conne
     assert.equal(d.connected, false);
   }
 });
+
+// ---- Automatic self-learning (v9.9.98): grow from conversation ----
+// A message that clearly states something durable should be filed in long-term
+// memory on its own — no tool call, no engine needed (it runs before the engine
+// and survives even the no-engine degraded path). This is the "grows every
+// moment" behaviour جاوید asked for.
+test('an explicit "remember ..." message is auto-learned into memory', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  const before = (await (await api('/api/memory', { token })).json()).memory || [];
+  // no engine configured in tests → chat returns a graceful 200; autoLearn still runs.
+  // Use multipart (FormData), exactly like the real client, so req.body.message is read.
+  const form = new FormData();
+  form.set('message', 'یادت باشه قرار مهم من پنجشنبه ساعت ده است');
+  form.set('history', '[]'); form.set('mode', 'chat');
+  await fetch(BASE + '/api/chat', { method: 'POST', headers: { Authorization: 'Bearer ' + token }, body: form });
+  // give the setImmediate hook a moment, then read memory back
+  await new Promise((r) => setTimeout(r, 400));
+  const after = (await (await api('/api/memory', { token })).json()).memory || [];
+  assert.ok(after.length > before.length, 'a new memory should have been learned automatically');
+  assert.ok(after.some((m) => /پنجشنبه|قرار مهم/.test(m.text)), 'the learned fact should be the stated commitment');
+});

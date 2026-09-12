@@ -85,6 +85,22 @@ via the app's own self-editing feature.
   `timeoutMs` (was a dead `timeout` key that let it hang up to 60s when Ollama
   was down). Models persist in `.setayesh-local-models.json`.
 
+## Automatic self-learning + memory in the toolbox (9.9.98)
+- **`autoLearn(username, message)`** runs on every chat turn (fire-and-forget,
+  before the engine, so it survives even the no-engine path). It distils DURABLE
+  facts from the RAW message — an explicit "یادت باشه/remember", a name, where
+  they live/work, a clear like/dislike, a commitment (via `detectCommitment`) —
+  and files them in long-term memory (deduped, ≤4/turn), then `reindexInsight()`
+  so they're searchable and auto-grounded from the next turn. Local, rule-based,
+  no model call. Deliberately selective (clear markers only) — junk memory makes
+  her worse. The owner deletes anything wrong from the memory panel. A smoke test
+  drives it end-to-end through `/api/chat`.
+- The **memory panel moved into the toolbox** (جعبه‌ابزار → «حافظه», first tab,
+  `tkMemoryPanel` → `window.openMemoryPanel()`); the old drawer item `shMemory`
+  is hidden (kept for its badge wiring). Intelligence itself still depends on the
+  engine — a small local model won't match Claude; local-first→cloud routing and
+  this growth machinery are what's in our control.
+
 ## Awareness: the internal search engine + memory fabric (9.9.94)
 - **`insight.js`** is Setayesh's own private search engine — one BM25 index over
   everything she knows: each user's long-term **memories**, past **chats**, the
