@@ -54,22 +54,31 @@ function register(app, deps) {
     res.json({ ok: true });
   });
 
+  // A "Google isn't connected yet" precondition is not an upstream (502)
+  // failure — it's a 409 the UI can show as "connect Google first". A real
+  // Google/network error stays 502. This keeps a not-connected call from
+  // looking like a server crash.
+  function connErr(res, e) {
+    const msg = (e && e.message) || 'خطا';
+    const notConnected = /متصل نیست|not connected|درایو داده نشده|دسترسی .* داده نشده/.test(msg) || !connectors.connected();
+    res.status(notConnected ? 409 : 502).json({ error: msg, connected: connectors.connected() });
+  }
   // Direct actions (admin) — these also back the AI tools, so the feature works
   // regardless of which engine is active.
   app.get('/api/connectors/gmail', requireAuth, requireAdmin, async (req, res) => {
-    try { res.json(await connectors.gmailList(req.query.limit)); } catch (e) { res.status(502).json({ error: e.message }); }
+    try { res.json(await connectors.gmailList(req.query.limit)); } catch (e) { connErr(res, e); }
   });
   app.get('/api/connectors/gmail/:id', requireAuth, requireAdmin, async (req, res) => {
-    try { res.json(await connectors.gmailGet(req.params.id)); } catch (e) { res.status(502).json({ error: e.message }); }
+    try { res.json(await connectors.gmailGet(req.params.id)); } catch (e) { connErr(res, e); }
   });
   app.post('/api/connectors/gmail/send', requireAuth, requireAdmin, async (req, res) => {
-    try { res.json(await connectors.gmailSend(req.body || {})); } catch (e) { res.status(502).json({ error: e.message }); }
+    try { res.json(await connectors.gmailSend(req.body || {})); } catch (e) { connErr(res, e); }
   });
   app.get('/api/connectors/calendar', requireAuth, requireAdmin, async (req, res) => {
-    try { res.json(await connectors.calendarList(req.query.limit)); } catch (e) { res.status(502).json({ error: e.message }); }
+    try { res.json(await connectors.calendarList(req.query.limit)); } catch (e) { connErr(res, e); }
   });
   app.post('/api/connectors/calendar/add', requireAuth, requireAdmin, async (req, res) => {
-    try { res.json(await connectors.calendarAdd(req.body || {})); } catch (e) { res.status(502).json({ error: e.message }); }
+    try { res.json(await connectors.calendarAdd(req.body || {})); } catch (e) { connErr(res, e); }
   });
 }
 

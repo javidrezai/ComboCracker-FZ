@@ -1422,3 +1422,16 @@ test('adding a local model name auto-enables the local engine', async () => {
   assert.ok(localAfter && localAfter.configured, 'local must be configured now');
   assert.ok((localAfter.models || []).some((m) => m.id === 'qwen2.5'), 'the model must be listed');
 });
+
+// ---- Full-app audit fix (v9.9.97): connector precondition status ----
+// A "Google isn't connected yet" call must read as a clean precondition (409),
+// not a scary upstream failure (502) or a crash (500). Found in the route sweep.
+test('gmail/calendar endpoints answer 409 (not 502/500) when Google is not connected', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  for (const p of ['/api/connectors/gmail', '/api/connectors/calendar']) {
+    const r = await api(p, { token });
+    assert.equal(r.status, 409, `${p} must be 409 when not connected`);
+    const d = await r.json();
+    assert.equal(d.connected, false);
+  }
+});
