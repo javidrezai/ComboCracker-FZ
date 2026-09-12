@@ -1,0 +1,41 @@
+# Dependencies
+node_modules/
+
+# Runtime-generated state (never commit — may contain secrets)
+.setayesh-*
+.setayesh-config
+*.log
+error.log
+
+# Runtime data & artifacts
+backups/
+code-library/
+plugins/
+rollback/
+data/
+uploads/
+inbox/
+workspace/
+assets.generated.js
+antivirus-root.pem
+
+# Local TLS cert/key (never commit)
+tls-cert.pem
+tls-key.pem
+*.pem
+node_modules
+/node_modules
+
+# Python brain library store — packages are downloaded on the user's machine,
+# never committed. Keep only the folder, its README and the keep-marker.
+pybrain/libs/*
+!pybrain/libs/README.md
+!pybrain/libs/.gitkeep
+__pycache__/
+*.pyc
+
+# Auto-generated mirror of the app's private memory into the brain vault — per machine, never committed.
+pybrain/vault/knowledge/app-memory.md
+
+# the owner-chosen Setayesh face (user data, not app code)
+public/faces/
