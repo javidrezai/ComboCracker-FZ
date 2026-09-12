@@ -183,7 +183,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.103';
+const APP_VERSION = '9.9.104';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -4465,7 +4465,10 @@ app.post('/api/chat', requireAuth, chatLimiter, upload.array('files', 8), async 
     if (worthRetrying) {
       // Best engine for THIS question first, health weighted heaviest — not
       // just whatever happens to be next in the list.
-      const alternatives = rankEngines(askTags, { needsVision, exclude: [target.id] });
+      // Never fail over to the toy Python brain — its one-liner garbage
+      // ("چه بپرسم؟") is worse than an honest "busy, try again". It only
+      // answers when the owner picks it on purpose.
+      const alternatives = rankEngines(askTags, { needsVision, exclude: [target.id, 'brain'] });
 
       for (const altId of alternatives) {
         try {
@@ -4498,10 +4501,10 @@ app.post('/api/chat', requireAuth, chatLimiter, upload.array('files', 8), async 
     const mapped = friendlyProviderError(err, PROVIDERS[target.id].label);
 
     // The owner asked for no error banners: she should answer, not throw a
-    // red box. So the last thing we try is HER OWN brain — the local Python
-    // agent and the on-device model need no key and no quota, and between
-    // them they can still handle memory, notes and a plain conversation.
-    const lastResort = ['brain', 'local'].filter((id) =>
+    // red box. The last thing we try is a REAL local model (Ollama) — no key,
+    // no quota. The toy Python brain is deliberately NOT here: a garbage
+    // one-liner from it is worse than the honest "engines are busy" note below.
+    const lastResort = ['local'].filter((id) =>
       id !== target.id && isConfigured(id) && !(needsVision && !PROVIDERS[id].vision));
     for (const id of lastResort) {
       try {
@@ -5638,6 +5641,14 @@ async function runResearchCycle(opts) {
   const preferredId = best.id;
   if (preferredId === 'gemini') { try { await ensureGeminiModel(); } catch (e) {} }
   const preferredModel = best.model;
+  // Don't pile background research onto an engine that is already rate-limited /
+  // cooling — that is exactly what was starving Gemini's free quota and making
+  // the user's own chat fall back to weaker engines. Wait for the next cycle.
+  if (!opts.force && !engineUsable(preferredId)) {
+    research.lastError = 'موتور فعلاً شلوغ است؛ تحقیق به دور بعد موکول شد.';
+    saveResearch();
+    return { skipped: 'engine-cooling' };
+  }
 
   let topic = (research.topics.shift() || '').trim();
   saveResearch();
@@ -5659,7 +5670,10 @@ async function runResearchCycle(opts) {
   }
 
   try {
-    const members = pickCouncilMembers(preferredId, 3);
+    // Single strong engine, NOT a 3-model council: a council tripled the calls
+    // and burned the free Gemini quota that the user's own chat needs. One good
+    // engine + real web grounding is plenty for a background knowledge note.
+    const members = [];
     const researchSystemPrompt = 'You are researching a GENERAL, public, technical topic in the background. Be concise, concrete, and factual. No filler. You have no information about any user or family and must never ask for or speculate about any.';
 
     // Read the actual internet, not just what other models remember.
