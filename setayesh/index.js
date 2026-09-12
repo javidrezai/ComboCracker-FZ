@@ -183,7 +183,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.101';
+const APP_VERSION = '9.9.102';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -6473,6 +6473,25 @@ app.post('/api/admin/local-models', requireAuth, requireAdmin, (req, res) => {
   res.json({ ok: true, active: (PROVIDERS.local.models || []).map((m) => m.id), localEnabled: enabled });
 });
 
+// Auto-sync the local model list with what Ollama ACTUALLY has installed, at
+// boot and on a timer. Without this, the picker showed generic guesses
+// (`qwen2.5`, `llama3.1`, …) that don't match the real installed tag
+// (`qwen2.5:7b`) — selecting one 404s in Ollama and looks like the engine is
+// broken. Now the picker shows the real tags, and local is enabled the moment a
+// model is found. If Ollama is off, we leave the list untouched.
+async function autoSyncLocalModels() {
+  try {
+    const detected = await detectOllamaModels();
+    if (!detected || !detected.length) return;
+    const saved = loadJsonFile(LOCAL_MODELS_FILE, null);
+    const savedList = (saved && Array.isArray(saved.models)) ? saved.models : [];
+    // real installed tags first, then any the owner added by hand, unique
+    const merged = [...new Set([...detected, ...savedList])].slice(0, 30);
+    PROVIDERS.local.models = merged.map((t) => ({ id: t, label: t + ' (local)' }));
+    if (!isConfigured('local')) { keys.local = keys.local || 'local'; }  // usable at once
+  } catch (e) { /* Ollama not reachable — keep whatever is configured */ }
+}
+
 // ---- Hide built-in AI engines you don't use (add/remove from the picker) ----
 const HIDDEN_ENGINES_FILE = process.env.SETAYESH_HIDDEN_ENGINES_FILE || path.join(DATA_DIR, '.setayesh-hidden-engines.json');
 function hiddenEngines() { const d = loadJsonFile(HIDDEN_ENGINES_FILE, { ids: [] }); return Array.isArray(d.ids) ? d.ids : []; }
@@ -9126,6 +9145,10 @@ const server = (TLS ? https.createServer({ cert: TLS.cert, key: TLS.key }, app) 
     if (st) console.log(`   ✓  Internal search ready — ${st.docs} items indexed (memory, chats, knowledge, repos).`);
   } catch (e) {}
   setInterval(() => { try { reindexInsight(); } catch (e) {} }, 5 * 60 * 1000).unref();
+  // Discover installed Ollama models so the picker shows real tags (qwen2.5:7b),
+  // not generic guesses. Refresh every few minutes so a newly-pulled model shows.
+  autoSyncLocalModels().catch(() => {});
+  setInterval(() => { autoSyncLocalModels().catch(() => {}); }, 4 * 60 * 1000).unref();
   const configured = Object.keys(PROVIDERS).filter(isConfigured);
   const scheme = TLS ? 'https' : 'http';
   console.log('');
