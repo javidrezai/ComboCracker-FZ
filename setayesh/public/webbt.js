@@ -382,9 +382,9 @@
   };
 
   // One-tap "turn on the secure link" for the admin. Calls the server to enable
-  // AUTO_TLS + generate the certificate, then tells them to restart and reopen
-  // on https. We are honest: the browser will warn once (self-signed), and
-  // Tailscale/mkcert removes that warning for good.
+  // AUTO_TLS, generate the certificate, and switch the live listener to https
+  // WITHOUT a restart — so the admin just reopens the https address. We are
+  // honest: the browser warns once (self-signed); Tailscale/mkcert removes it.
   function secureLinkButton() {
     var wrap = el('div');
     wrap.style.cssText = 'margin:4px 0 12px;padding:12px 13px;border-radius:12px;background:rgba(34,211,238,.08);border:1px solid rgba(34,211,238,.28)';
@@ -403,8 +403,8 @@
         if (d && d.ok) {
           btn.style.display = 'none';
           var links = (d.urls || []).map(function (u) { return '<div style="font-family:var(--mono);color:#6ee7b7">' + u + '</div>'; }).join('');
-          msg.innerHTML = '<b style="color:#6ee7b7">آماده شد.</b><br>' +
-            'حالا ستایش را یک بار ری‌استارت کن، بعد روی گوشی این آدرس را باز کن:' + links +
+          msg.innerHTML = '<b style="color:#6ee7b7">آماده شد — همین الان فعال شد، بدون ری‌استارت.</b><br>' +
+            'روی گوشی این آدرس را باز کن:' + links +
             '<div style="margin-top:7px">بار اول مرورگر هشدار می‌دهد؛ «Advanced» بعد «Proceed / ادامه» را بزن. ' +
             'آن وقت همین بخش خودش روشن می‌شود. برای حذف کامل هشدار: Tailscale یا mkcert.</div>';
         } else {

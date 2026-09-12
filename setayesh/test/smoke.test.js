@@ -1294,13 +1294,18 @@ test('secure-link: admin can read state and turn on HTTPS, family cannot', async
   assert.equal(on.ok, true);
   assert.equal(on.on, true);
   assert.equal(on.generated, true, 'enabling must generate the cert immediately');
+  assert.equal(on.needsRestart, false, 'the secure link now applies live — no restart');
   const crypto = require('node:crypto');
   const x = new crypto.X509Certificate(fs.readFileSync(path.join(tmp, 'tls-cert.pem')));
   assert.match(x.subject, /CN=Setayesh/);
-  // turning it back off must not throw
+  // the ON choice is persisted and reflected by a fresh read
+  assert.equal((await (await api('/api/admin/secure-link', { token })).json()).on, true, 'ON must persist');
+  // turning it back off must not throw, and must STICK (stored as an explicit
+  // value, not dropped) so a LAN host can actually stay on http when asked.
   const off = await (await api('/api/admin/secure-link', { method: 'POST', token, body: { on: false } })).json();
   assert.equal(off.ok, true);
   assert.equal(off.on, false);
+  assert.equal((await (await api('/api/admin/secure-link', { token })).json()).on, false, 'OFF must persist, not revert');
 });
 
 // ---- App icon = the owner's face (v9.9.91) ----

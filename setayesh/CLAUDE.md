@@ -264,10 +264,20 @@ via the app's own self-editing feature.
   The cost of self-signed is a one-time per-device browser warning; that is
   stated plainly in the UI, and a real cert (Tailscale/mkcert) removes it. The
   loader order in index.js is: real cert > AUTO_TLS self-signed > plain HTTP.
-  `AUTO_TLS` (config/env `SETAYESH_AUTO_TLS`) is opt-in — an existing HTTP house
-  is never silently switched to HTTPS. Enabled via the settings key or the
-  `/api/admin/secure-link` route, which generates the cert on the spot so it is
-  on disk before the restart.
+  **HTTPS policy (v9.9.107):** `autoTlsEnabled()` is the single source of truth.
+  An explicit `AUTO_TLS` (config `SETAYESH_AUTO_TLS`) always wins; when UNSET it
+  DEFAULTS ON for a network bind (the phone/LAN case, which needs a secure
+  context) and OFF for a pure localhost bind (`127.0.0.1`/`localhost`/`::1`,
+  already a secure context — and this keeps the 127.0.0.1 test harness on plain
+  http). Because the config writer drops empty values, the secure-link "off"
+  choice is persisted as an explicit `'0'`, not `''` — otherwise a LAN host
+  could never be turned off. **Live switch:** `POST /api/admin/secure-link`
+  generates the cert, replies, then `applyTlsLive()` rebinds the listener
+  between http/https on the SAME port with no restart (replies first, swaps
+  ~300ms later; EADDRINUSE-retries while the old socket releases; `TLS`/`server`
+  are `let`s it reassigns). `applyTlsLive` no-ops on a localhost bind, so the
+  tab/tests there stay put. Switching scheme on one port drops the current
+  http tab — the UI tells the user to reopen the https address.
 - **Voice**: `voiceBlock()` in index.js builds the tone rules from each member's
   `tone` and `writeLang` prefs. Children never get the adult "خودمونی" register.
 
