@@ -229,12 +229,26 @@ const TOOLS = {
   git: ['git', ['--version']],
 };
 
+// On Windows the package managers are `.cmd`/`.bat` shims (npm, cargo, mvn,
+// gradle, composer, gem ...). Modern Node refuses to spawn a .cmd/.bat without
+// a shell (EINVAL), so probes and downloads silently failed and every shelf
+// showed «مدیرش نصب نیست». Running through the shell on Windows fixes both.
+const WIN = process.platform === 'win32';
+
+// shell:true means the command line is parsed by cmd.exe, so a crafted package
+// name could inject commands. Package/module names never need anything beyond
+// this charset, so we refuse the rest outright (defense-in-depth).
+const SAFE_PKG = /^[A-Za-z0-9._@/+\-]+$/;
+function sanitizePkgs(list) {
+  return (list || []).filter((p) => typeof p === 'string' && SAFE_PKG.test(p));
+}
+
 function probe(cmd, args) {
   return new Promise((resolve) => {
     let done = false;
     const finish = (v) => { if (!done) { done = true; resolve(v); } };
     try {
-      const child = execFile(cmd, args, { timeout: 6000, windowsHide: true, maxBuffer: 1 << 20 },
+      const child = execFile(cmd, args, { timeout: 6000, windowsHide: true, maxBuffer: 1 << 20, shell: WIN },
         (err, stdout, stderr) => {
           if (err && err.code === 'ENOENT') return finish(null);
           // Some tools (java) print the version to stderr; that is still found.
@@ -272,7 +286,10 @@ function pipCmd() { return process.platform === 'win32' ? 'python' : 'python3'; 
 function plan(lang, dir, names) {
   const entry = CATALOG[lang];
   if (!entry) return { error: 'زبان ناشناخته: ' + lang };
-  const pkgs = (names && names.length ? names : entry.libs.map((l) => l.name));
+  // Custom names are sanitized (shell:true on Windows); the built-in catalog
+  // names are already safe. An all-bad custom list falls back to the catalog.
+  let pkgs = names && names.length ? sanitizePkgs(names) : entry.libs.map((l) => l.name);
+  if (names && names.length && !pkgs.length) return { error: 'نام بسته‌ی نامعتبر' };
   const m = entry.manager;
   switch (m) {
     case 'pip':
@@ -304,7 +321,7 @@ function runOnce(cmd, args, opts, onData) {
     let out = '';
     let child;
     const cap = (d) => { out = (out + d.toString('utf8')).slice(-8000); if (onData) onData(d.toString('utf8')); };
-    try { child = spawn(cmd, args, { cwd: (opts && opts.cwd) || undefined, windowsHide: true }); }
+    try { child = spawn(cmd, args, { cwd: (opts && opts.cwd) || undefined, windowsHide: true, shell: WIN }); }
     catch (e) { return resolve({ ok: false, code: -1, out: 'اجرا نشد: ' + e.message }); }
     child.stdout.on('data', cap); child.stderr.on('data', cap);
     const timer = setTimeout(() => { try { child.kill('SIGKILL'); } catch (e) {} }, (opts && opts.timeout) || 300000);
@@ -348,7 +365,7 @@ async function download(lang, dir, names, onLog) {
   }
   if (p.mode === 'each') {
     const entry = CATALOG[lang];
-    const pkgs = (names && names.length ? names : entry.libs.map((l) => l.name));
+    const pkgs = (names && names.length ? sanitizePkgs(names) : entry.libs.map((l) => l.name));
     let allOk = true;
     for (const pkg of pkgs) {
       const c = p.each(pkg);

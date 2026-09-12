@@ -236,6 +236,13 @@ via the app's own self-editing feature.
   package manager's install hooks are the classic supply-chain foothold.
   `DEV-LIBRARIES.md` and the brain note are generated from `CATALOG` at boot.
   Admin-only, tool + `/api/admin/devlibs*` routes + the "کتابخانه‌ها" tab.
+  **Windows (v9.9.105):** npm/cargo/mvn/gradle/composer/gem are `.cmd`/`.bat`
+  shims that modern Node refuses to spawn without a shell, so both `probe()`
+  (detection) and `runOnce()` (downloads) pass `shell: process.platform ===
+  'win32'`; before v9.9.105 every shelf wrongly showed «مدیرش نصب نیست».
+  Because `shell:true` invites injection, custom package names are filtered
+  through `sanitizePkgs` (charset `[A-Za-z0-9._@/+-]`) in `plan()` and the
+  `each` path — an all-bad custom list is rejected; catalog names are trusted.
 - **`public/webbt.js`** — the phone's own Web Bluetooth / Web Serial client,
   run in the browser (independent of the PC). It is gated by the browser's own
   secure-context + chooser rules; the panel explains honestly when they are not

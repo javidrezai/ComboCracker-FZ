@@ -1465,3 +1465,27 @@ test('automatic research is ON by default (always-growing)', async () => {
   const d = await (await api('/api/admin/research', { token })).json();
   assert.equal(d.settings.enabled, true, 'research should be enabled by default');
 });
+
+// ---- Dev libraries: download plan is injection-safe (v9.9.105) ----
+// On Windows the package managers are .cmd/.bat shims, so downloads must run
+// through a shell. shell:true means a crafted package name could inject
+// commands, so plan() must reject anything outside the safe charset and keep
+// well-formed custom names. (The Windows-detection fix itself is exercised by
+// whichever managers are installed on the host at runtime.)
+test('dev-library download plan rejects injection in package names', () => {
+  const devlibs = require(path.join(ROOT, 'devlibs.js'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'setayesh-shelf-'));
+  // A catalog language with the npm manager.
+  const lang = Object.keys(devlibs.CATALOG).find((k) => devlibs.CATALOG[k].manager === 'npm');
+  assert.ok(lang, 'expected at least one npm-managed language in the catalog');
+  // A malicious name must not survive into the command args.
+  const evil = devlibs.plan(lang, dir, ['lodash; rm -rf /']);
+  assert.ok(evil.error, 'an all-bad custom name list should be rejected');
+  // A legitimate scoped/plain name passes through untouched.
+  const good = devlibs.plan(lang, dir, ['@scope/pkg', 'left-pad']);
+  assert.ok(!good.error, 'valid names should be accepted');
+  assert.ok(good.args.includes('@scope/pkg') && good.args.includes('left-pad'),
+    'valid names should reach the download command');
+  assert.ok(!good.args.some((a) => /rm -rf|;/.test(a)), 'no shell metacharacters in the args');
+  try { fs.rmSync(dir, { recursive: true, force: true }); } catch (e) {}
+});
