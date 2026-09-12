@@ -183,7 +183,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.100';
+const APP_VERSION = '9.9.101';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -3884,25 +3884,22 @@ function resolveTarget(providerId, model, username, opts) {
   // Local-first is now the DEFAULT (جاوید asked: always use Setayesh's own brain
   // / Ollama first, and only fall back to Google when the local engine can't do
   // it). Disable with LOCAL_FIRST=0. Order of preference when nobody pinned or
-  // picked an engine and there is no image to see (brain/local can't do vision):
-  //   1) the Python brain (Setayesh's own intelligence, keyless, fully local)
-  //   2) a local Ollama/LM-Studio server
-  //   3) the best available cloud engine (Gemini, …) — the automatic fallback.
+  // picked an engine and there is no image to see:
+  //   1) a local Ollama/LM-Studio server (a REAL model, e.g. qwen2.5:7b)
+  //   2) the best available cloud engine (Gemini, …) — the automatic fallback
+  //   3) the Python "brain" — LAST resort only (it is a tiny toy agent and, on
+  //      its own, produces garbage like "# Ollama Ollama:"; it must never be the
+  //      default voice, only the keyless safety net when everything else is gone,
+  //      which the failover already handles further down).
   // Children are always local-first regardless of the flag.
   const localFirst = !/^(0|false|no|off)$/i.test(String(cfg.LOCAL_FIRST || ''));
-  // "Detect the question": the local brain/Ollama cannot use tools (web search,
-  // finding a file, the calendar, the mailbox) or read an image. Those questions
-  // go to a tool-capable cloud engine automatically — that IS the "if it can't,
-  // use Google" he asked for. Plain conversation stays local.
+  // "Detect the question": the local model cannot use tools (web search, finding
+  // a file, the calendar, the mailbox) or read an image. Those questions go to a
+  // tool-capable cloud engine automatically — that IS the "if it can't, use
+  // Google" he asked for. Plain conversation stays on the local model.
   const canLocal = !opts.needsVision && !tags.includes('tools') && !tags.includes('current') && !tags.includes('vision');
-  if (!pin && !asked && localFirst && canLocal) {
-    if (isConfigured('brain') && engineUsable('brain')) id = 'brain';
-    else if (isConfigured('local') && engineUsable('local')) id = 'local';
-    else {
-      // no local engine available/usable → best cloud engine (the fallback)
-      const better = bestEngine(engineUsable(id) ? id : null, { tags, needsVision: opts.needsVision });
-      if (better && isConfigured(better)) id = better;
-    }
+  if (!pin && !asked && localFirst && canLocal && isConfigured('local') && engineUsable('local')) {
+    id = 'local';                       // the real local LLM (Ollama) — preferred
   } else if (!pin && !asked) {
     // localFirst off (or vision needed): pick the engine that suits the question
     // and is answering right now.
