@@ -311,6 +311,15 @@ via the app's own self-editing feature.
   tokens never reach a person. `runTelegramTurn` also locks output to Persian,
   routes news/"today" questions to a tool-capable engine (not a code model),
   and bans tool/JSON/markup syntax in the answer.
+  **Telegram engine (v9.9.113):** Telegram must NOT use the weak local model or
+  the toy brain — they were slow and produced gibberish ("half-gateway of this
+  world" for a weather question). `runTelegramTurn` now picks the strongest
+  HEALTHY cloud engine via `rankEngines(tags, {exclude:['brain','local']})` and
+  its general model (gemini allowed — answering is its job), falling back to
+  local/brain only if nothing else is configured. `classifyQuestion` also tags
+  weather/forecast/"فردا"/prices as `current`, and the Telegram prompt then
+  tells the model to web_search first and to say "I don't know" rather than
+  invent — no more baseless answers.
 - **Voice**: `voiceBlock()` in index.js builds the tone rules from each member's
   `tone` and `writeLang` prefs. Children never get the adult "خودمونی" register.
 

@@ -189,7 +189,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.112';
+const APP_VERSION = '9.9.113';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -3811,7 +3811,7 @@ function classifyQuestion(text, opts) {
   if (opts.needsVision) tags.push('vision');
   if (/```|\bfunction\b|\bclass\b|\bimport\b|\bconst \b|\bdef \b|<\/?[a-z]+>|\bnpm\b|\bgit\b|\bsql\b|\bregex\b|\bbug\b|\berror\b|کد|برنامه‌?نویس|اسکریپت|باگ|خطای|دیباگ/i.test(s)) tags.push('code');
   if (/\bwhy\b|\bprove\b|\bdesign\b|\barchitect|\bcompare\b|\btrade-?off|\bstrategy\b|چرا|تحلیل|مقایسه|طراحی|استدلال|اثبات/i.test(s)) tags.push('reasoning');
-  if (/\btoday\b|\bnews\b|\bprice\b|\blatest\b|\b20\d\d\b|امروز|اخبار|قیمت|جدیدترین|الان/i.test(s)) tags.push('current');
+  if (/\btoday\b|\btomorrow\b|\bnews\b|\bprice\b|\blatest\b|\bweather\b|\bforecast\b|\b20\d\d\b|امروز|فردا|دیروز|اخبار|قیمت|جدیدترین|الان|هوا|آب.?و.?هوا|دما|هواشناسی|بارون|باران|برف|نرخ|دلار|بورس/i.test(s)) tags.push('current');
   if (s.length > 4000) tags.push('long');
   // Things only a tool can answer — mail, calendar, files, the house itself.
   if (/\bemail\b|\bmail\b|\binbox\b|\bcalendar\b|ایمیل|میل|صندوق|تقویم|قرار|یادآور|فایل|زیپ|pdf/i.test(s)) tags.push('tools');
@@ -6825,15 +6825,39 @@ async function runTelegramTurn(text) {
   // never a code-completion model, which answered in the wrong language.
   const cls = classifyQuestion(msg);
   const tags = Array.isArray(cls) && cls.length ? cls : ['general'];
+  // Telegram must be FAST and SMART. NEVER the weak local model (qwen on a
+  // laptop — slow) or the toy Python brain: those produced the slow, gibberish
+  // "half-gateway of this world" answers جاوید saw. Pick the strongest HEALTHY
+  // CLOUD engine (gemini is allowed here — answering is its job) and its GENERAL
+  // model, so replies are real and quick.
   let target;
-  try { target = resolveTarget(undefined, undefined, adminUser, { tags }); }
-  catch (e) { return e.message || 'موتوری در دسترس نیست.'; }
+  const cloud = rankEngines(tags, { exclude: ['brain', 'local'] });
+  const id = cloud.find((x) => isConfigured(x) && engineUsable(x))
+          || cloud.find((x) => isConfigured(x))
+          || Object.keys(PROVIDERS).filter((x) => x !== 'brain' && x !== 'local').find(isConfigured);
+  if (id) {
+    const models = PROVIDERS[id].models || [];
+    const codeModel = (models.find((m) => m.best === 'code') || {}).id;
+    const generalModel = (models.find((m) => m.best !== 'code') || {}).id;
+    const model = id === 'gemini' ? GEMINI_MODEL
+      : (tags.includes('code') ? (codeModel || generalModel) : (generalModel || codeModel)) || (models[0] || {}).id;
+    target = { id, model };
+  } else {
+    // Only local/brain is configured — still answer rather than refuse.
+    try { target = resolveTarget(undefined, undefined, adminUser, { tags }); }
+    catch (e) { return e.message || 'موتوری در دسترس نیست.'; }
+  }
   // Telegram had replied in Chinese/Thai and dumped raw <tool_call> JSON. Lock
   // the output: Persian only, human sentences only, no tool/JSON/markup syntax.
-  const telegramRules = '\n\n=== قانون پاسخ در تلگرام ===\n'
+  let telegramRules = '\n\n=== قانون پاسخ در تلگرام ===\n'
     + '۱) فقط و فقط فارسی بنویس. هرگز چینی، تایلندی یا زبان دیگری به کار نبر مگر کاربر صریحاً بخواهد.\n'
     + '۲) هیچ‌وقت متنِ ابزار، JSON، یا برچسب‌هایی مثل <tool_call> ننویس. ابزارها را در پس‌زمینه استفاده کن و فقط جوابِ انسانیِ نهایی را بده.\n'
-    + '۳) کوتاه، مهربان و خانوادگی جواب بده. اگر منبعی نداری، حدس نزن و لینک جعلی نساز.';
+    + '۳) کوتاه، روشن و خانوادگی جواب بده. مستقیم به همان چیزی که پرسیده جواب بده؛ حرفِ نامربوط، شاعرانه یا بی‌معنی نزن.\n'
+    + '۴) هرگز چیزی از خودت نساز. اگر واقعیت را نمی‌دانی، صادقانه بگو «نمی‌دانم» یا منبع را پیشنهاد بده — هرگز جوابِ الکی نده.';
+  if (tags.includes('current')) {
+    telegramRules += '\n۵) این سؤال به اطلاعاتِ روز نیاز دارد (هوا، اخبار، قیمت…). '
+      + 'اول ابزار web_search را صدا بزن، از نتایج واقعی جواب بده و اگر جستجو چیزی نداد، صادقانه بگو که اطلاعاتِ زنده در دسترس نیست — چیزی از خودت نساز.';
+  }
   const systemPrompt = promptFor(adminUser, 'chat', false, null, msg) + telegramRules;
   const toolCtx = { preferredId: target.id, basePrompt: systemPrompt, message: msg, sideEffects: {}, pinned: !!target.pinned, isAdmin: true, username: adminUser };
   let reply = await callWithTools(target.id, target.model, systemPrompt, [{ role: 'user', content: msg }], toolCtx, {});
