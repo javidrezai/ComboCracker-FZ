@@ -1,4 +1,4 @@
-/* SETAYESH_BUILD 9.9.110 */
+/* SETAYESH_BUILD 9.9.111 */
 (function(){
 'use strict';
 
@@ -65,23 +65,23 @@ function makeSaveBtn(getText){
    answer doesn't have to be copied and retyped somewhere else. */
 function makeShareBtn(getText){
   var sh=document.createElement('button');
-  sh.className='msgsave'; sh.type='button'; sh.title='فرستادن به تابلوی خانواده';
-  sh.innerHTML='<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5a2 2 0 012-2h14a2 2 0 012 2v10a2 2 0 01-2 2H8l-5 4V5z"/></svg><span>به خانواده</span>';
+  sh.className='msgsave'; sh.type='button'; sh.title=t('toFamilyTitle');
+  sh.innerHTML='<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5a2 2 0 012-2h14a2 2 0 012 2v10a2 2 0 01-2 2H8l-5 4V5z"/></svg><span>'+t('toFamily')+'</span>';
   sh.addEventListener('click',function(){
     var txt=(getText()||'').trim();
     if(!txt)return;
     sh.disabled=true;
     var span=sh.querySelector('span');
     shareToBoard(txt,'setayesh').then(function(){
-      if(span)span.textContent='فرستاده شد ✓';
+      if(span)span.textContent=t('toFamilySent');
       refreshBoardBadge();
       watchForUpdates();
       initAutoLock();
       showBriefing();
-      setTimeout(function(){ if(span)span.textContent='به خانواده'; sh.disabled=false; },2500);
+      setTimeout(function(){ if(span)span.textContent=t('toFamily'); sh.disabled=false; },2500);
     }).catch(function(e){
-      if(span)span.textContent='نشد';
-      setTimeout(function(){ if(span)span.textContent='به خانواده'; sh.disabled=false; },2500);
+      if(span)span.textContent=t('toFamilyFail');
+      setTimeout(function(){ if(span)span.textContent=t('toFamily'); sh.disabled=false; },2500);
     });
   });
   return sh;
@@ -4296,7 +4296,11 @@ document.addEventListener('DOMContentLoaded', function(){
       .catch(function(e){ note.style.color='#fb7185'; note.textContent='✗ '+e.message; });
   });
 });
-$('shLang').addEventListener('click',function(){ switchLang(); var t=$('shLangTxt'); if(t)t.innerHTML=(lang==='fa'?'English':'فارسی')+'<span class="si-sub">تغییر زبان برنامه</span>'; });
+// switchLang() calls applyLang(), which retranslates every [data-i18n] node —
+// including this button's label and sub-label — so there is nothing to set by
+// hand here. (Doing it by hand is exactly what left "English" mixed with a
+// Persian sub-label before.)
+$('shLang').addEventListener('click',function(){ switchLang(); });
 
 // Alt+1..4 switches mode
 document.addEventListener('keydown',function(e){

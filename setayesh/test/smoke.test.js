@@ -1491,6 +1491,51 @@ test('automatic research is ON by default (always-growing)', async () => {
   assert.equal(d.settings.enabled, true, 'research should be enabled by default');
 });
 
+// ---- Modularization: netutil.js pure helpers (v9.9.111) ----
+// Part of the ongoing "break the monolith into modules" work — pure helpers
+// split out of index.js. Testing them here proves the split kept them correct.
+test('netutil.versionGreater and localLanIps behave', () => {
+  const nu = require(path.join(ROOT, 'netutil.js'));
+  assert.equal(nu.versionGreater('9.9.110', '9.9.108'), true);
+  assert.equal(nu.versionGreater('9.9.108', '9.9.108'), false);
+  assert.equal(nu.versionGreater('9.9.9', '9.10.0'), false, '10 > 9 per component, not lexically');
+  assert.equal(nu.versionGreater('10.0.0', '9.9.999'), true);
+  const ips = nu.localLanIps();
+  assert.ok(Array.isArray(ips), 'localLanIps returns an array');
+  assert.ok(ips.every((ip) => /^\d+\.\d+\.\d+\.\d+$/.test(ip)), 'entries are IPv4 strings');
+});
+
+// ---- UI language purity: fa and en dictionaries stay in sync (v9.9.111) ----
+// جاوید: «انگلیسی فقط انگلیسی، فارسی فقط فارسی». The sidebar buttons leaked a
+// mix (an English label over a Persian sub-label) because they were hard-coded
+// and half of them had no translation. Every UI key must exist in BOTH fa and
+// en, so switching the app language flips the WHOLE button, never half of it.
+test('every UI string is translated in both fa and en (no half-translated buttons)', () => {
+  const vm = require('node:vm');
+  const code = fs.readFileSync(path.join(ROOT, 'public', 'app-i18n.js'), 'utf8');
+  const sandbox = { window: {} };
+  vm.runInNewContext(code, sandbox);
+  const L = sandbox.window.__LANG;
+  assert.ok(L && L.fa && L.en, 'both fa and en dictionaries must exist');
+  const missingEn = Object.keys(L.fa).filter((k) => !(k in L.en));
+  const missingFa = Object.keys(L.en).filter((k) => !(k in L.fa));
+  assert.deepEqual(missingEn, [], 'keys in fa but missing in en: ' + missingEn.join(', '));
+  assert.deepEqual(missingFa, [], 'keys in en but missing in fa: ' + missingFa.join(', '));
+  // The sidebar + reply-action keys this release added must all resolve.
+  ['sb_chats', 'sb_cc', 'sb_lang', 'sb_lang_s', 'sb_logout', 'toFamily'].forEach((k) => {
+    assert.ok(L.fa[k] && L.en[k], 'missing translation for ' + k);
+  });
+  // Every sidebar (sb_*) key referenced in index.html must resolve — those are
+  // the buttons that were leaking a language mix. (Other i18n keys live in
+  // app.js's own dictionaries, so only the sidebar set is checked here.)
+  const html = fs.readFileSync(path.join(ROOT, 'public', 'index.html'), 'utf8');
+  const used = new Set();
+  const re = /data-i18n(?:-placeholder|-arialabel)?="([^"]+)"/g;
+  let m; while ((m = re.exec(html))) used.add(m[1]);
+  const unknownSidebar = [...used].filter((k) => k.startsWith('sb_') && !(k in L.fa));
+  assert.deepEqual(unknownSidebar, [], 'index.html sidebar keys with no translation: ' + unknownSidebar.join(', '));
+});
+
 // ---- Telegram/chat: harmony tool-call noise never reaches a person (v9.9.108) ----
 // gpt-oss and friends sometimes write a tool call as PLAIN TEXT instead of the
 // structured tool_calls field; on Telegram that leaked as gibberish

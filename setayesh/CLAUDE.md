@@ -289,6 +289,18 @@ via the app's own self-editing feature.
   reply" rule for every adult reply — never two languages mixed, never a stray
   third (the Chinese/Thai leak), the only exception being an untranslatable
   technical proper noun.
+- **UI language purity (v9.9.111):** the side-drawer buttons were hard-coded
+  Persian (main label + Persian sub-label) and never localized, so switching the
+  app to English left a Persian menu — a language mix inside every button. Every
+  sidebar label/sub-label and section title now carries a `data-i18n` key
+  (`sb_*`), translated in both `fa` and `en` in `public/app-i18n.js`; the outer
+  `si-txt` wraps two inner `data-i18n` spans so `applyLang()` swaps each half
+  without wiping the other. The reply "به خانواده" button was likewise hard-coded
+  next to a localized "Save" — now `t('toFamily')`. A smoke test asserts fa/en
+  key parity and that every `sb_*` key used in index.html resolves.
+- **`netutil.js`** (v9.9.111) — `versionGreater` + `localLanIps`, pure helpers
+  split out of index.js as another step of the incremental modularization
+  (alongside `toolnoise.js`, `app-i18n.js`, `selfsign.js`, `insight.js`, …).
 - **`toolnoise.js`** — `parseTextToolCalls`/`stripToolNoise`. gpt-oss "harmony"
   models sometimes emit a tool call as PLAIN TEXT
   (`<tool_call>{…}</tool_call>` or a bare `{"name","arguments"}` object) instead

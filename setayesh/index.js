@@ -97,6 +97,7 @@ const tls = require('tls');
 const http = require('http');
 const https = require('https');
 const net = require('net');
+const { versionGreater, localLanIps } = require('./netutil');
 const selfsign = require('./selfsign');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
@@ -188,7 +189,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.110';
+const APP_VERSION = '9.9.111';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -7476,14 +7477,7 @@ app.post('/api/admin/run-path', requireAuth, requireAdmin, async (req, res) => {
 // Off by default. The owner turns it on deliberately.
 const UPDATES_DIR = process.env.SETAYESH_UPDATES_DIR || path.join(DATA_DIR, 'updates');
 
-function versionGreater(a, b) {
-  const pa = String(a).split('.').map(Number), pb = String(b).split('.').map(Number);
-  for (let i = 0; i < 3; i++) {
-    if ((pa[i] || 0) > (pb[i] || 0)) return true;
-    if ((pa[i] || 0) < (pb[i] || 0)) return false;
-  }
-  return false;
-}
+// versionGreater / localLanIps now live in netutil.js (required at the top).
 
 // Minimal zip reader — enough to list and extract a stored/deflated archive
 // without adding a dependency.
@@ -9239,24 +9233,6 @@ if (EMBEDDED_ASSETS) {
     },
   }));
   app.get('*', (req, res) => serveShell(res));
-}
-
-function localLanIps() {
-  const nets = os.networkInterfaces();
-  const out = [];
-  for (const name of Object.keys(nets)) {
-    for (const net of nets[name] || []) {
-      if (net.family === 'IPv4' && !net.internal && !net.address.startsWith('169.')) {
-        out.push(net.address);
-      }
-    }
-  }
-  // Prefer real home-network (RFC1918) addresses over VPN/virtual adapters
-  // (e.g. Radmin/Hamachi 25.x/26.x), so the QR / phone link uses the Wi-Fi IP.
-  const rank = (ip) => ip.startsWith('192.168.') ? 0
-    : ip.startsWith('10.') ? 1
-    : /^172\.(1[6-9]|2\d|3[01])\./.test(ip) ? 2 : 3;
-  return out.sort((a, b) => rank(a) - rank(b));
 }
 
 // ONE smart port serves BOTH http and https, so there is a single address
