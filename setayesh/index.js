@@ -96,6 +96,7 @@ const express = require('express');
 const tls = require('tls');
 const http = require('http');
 const https = require('https');
+const net = require('net');
 const selfsign = require('./selfsign');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
@@ -171,18 +172,15 @@ const DATA_DIR = IS_PACKAGED ? path.dirname(process.execPath) : __dirname;
 
 const PORT = Number(process.env.PORT) || 3000;
 const HOST = process.env.SETAYESH_HOST || '0.0.0.0';
-// The companion HTTPS port (see the secure-link section). Default: main + 443
-// (3000 → 3443), overridable with SETAYESH_TLS_PORT.
-const TLS_PORT = Number(process.env.SETAYESH_TLS_PORT) || (PORT < 1024 ? 8443 : PORT + 443);
 
 // Local HTTPS is set up just below, after the config file is read (it needs the
 // AUTO_TLS preference). The loader lives in loadTls().
 const TLS_CERT_PATH = process.env.SETAYESH_TLS_CERT || path.join(DATA_DIR, 'tls-cert.pem');
 const TLS_KEY_PATH = process.env.SETAYESH_TLS_KEY || path.join(DATA_DIR, 'tls-key.pem');
-// HTTPS runs on its OWN companion port, never on the main one — so plain
-// http://localhost:PORT (what Start-Setayesh.bat opens) NEVER breaks when the
-// secure link is on. The phone opens https://<lan-ip>:TLS_PORT for its secure
-// context (Web Bluetooth/Serial).
+// HTTP and HTTPS share ONE smart port (see the listener near the bottom): a
+// single address (…:PORT) works for both the desktop and the phone, so there is
+// no companion port and no scheme-mismatch dead-end. The phone opens
+// https://<lan-ip>:PORT for its secure context (Web Bluetooth/Serial).
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 // How long a "remember this device" trust lasts before the password is asked
 // for again. Deliberately the same length as a session: one habit, one rhythm.
@@ -190,7 +188,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.109';
+const APP_VERSION = '9.9.110';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -711,27 +709,6 @@ function persistUserPassword(username, plainPassword) {
 // camera or read location. Microphone and geolocation ARE allowed, because
 // voice notes and "send my location" on the family board need them — camera
 // and everything else are switched off, since nothing here uses them.
-// Phone secure-link redirect. When the secure link is ON and someone opens the
-// PLAIN http LAN address on their phone (the same address they'd naturally
-// type), bounce the page to the https companion port so it loads over a secure
-// context and Web Bluetooth / Web Serial work — جاوید shouldn't have to know a
-// special port. Localhost stays on http (already a secure context; the desktop
-// launcher uses it), and only top-level page loads are redirected so an
-// in-flight API/asset call is never broken.
-app.use((req, res, next) => {
-  try {
-    if (!req.socket.encrypted && typeof httpsServer !== 'undefined' && httpsServer) {
-      const host = String(req.headers.host || '').split(':')[0];
-      const isLocal = !host || host === 'localhost' || host === '127.0.0.1' || host === '::1';
-      const wantsPage = req.method === 'GET' && /text\/html/i.test(req.headers.accept || '');
-      if (!isLocal && wantsPage) {
-        return res.redirect(302, `https://${host}:${TLS_PORT}${req.originalUrl || req.url}`);
-      }
-    }
-  } catch (e) { /* never let the guard break a request */ }
-  next();
-});
-
 app.use((req, res, next) => {
   res.setHeader('Permissions-Policy',
     'geolocation=(self), microphone=(self), camera=(), payment=(), usb=(), ' +
@@ -6929,9 +6906,9 @@ function checkPendingVerification() {
 
   // Prove the server is actually serving, then clear the marker.
   setTimeout(() => {
-    // Match the server's protocol; the loopback self-signed cert is not worth
-    // verifying for a 127.0.0.1 health probe (this is not provider traffic).
-    const probe = TLS ? require('https') : require('http');
+    // The single smart port always serves localhost over plain http (localhost
+    // is already a secure context), so a loopback health probe uses http.
+    const probe = require('http');
     const req = probe.get(
       { host: '127.0.0.1', port: PORT, path: '/api/health', timeout: 4000, rejectUnauthorized: false },
       (res) => {
@@ -8613,13 +8590,12 @@ app.post('/api/admin/settings', requireAuth, requireAdmin, (req, res) => {
   }
 });
 
-// Secure link (HTTPS) for the phone. The admin taps one button: we turn on
-// AUTO_TLS, generate a self-signed certificate on the spot, and START A SEPARATE
-// https listener on TLS_PORT — the main http address is never touched, so the
-// desktop keeps working while the phone gets its secure context (Web Bluetooth /
-// Web Serial need HTTPS and refuse plain http on the LAN). GET reports state;
-// POST toggles, live, with no restart.
-function secureUrls() { return localLanIps().map((ip) => `https://${ip}:${TLS_PORT}`); }
+// Secure link (HTTPS) for the phone. One button: turn on AUTO_TLS, generate a
+// self-signed certificate on the spot, and build the in-memory TLS handler that
+// the single smart port dispatches TLS sockets to. HTTPS then answers on the
+// SAME address/port as http (…:PORT) — one address for desktop and phone, no
+// companion port, no dead-end. GET reports state; POST toggles, live, no restart.
+function secureUrls() { return localLanIps().map((ip) => `https://${ip}:${PORT}`); }
 app.get('/api/admin/secure-link', requireAuth, requireAdmin, (req, res) => {
   let expires = null, self = false;
   try {
@@ -8630,15 +8606,13 @@ app.get('/api/admin/secure-link', requireAuth, requireAdmin, (req, res) => {
   } catch (_) {}
   res.json({
     on: autoTlsEnabled(),
-    running: !!httpsServer,
+    running: !!httpsHandler,
     selfSigned: TLS ? !!TLS.selfSigned : self,
     certExists: (() => { try { return fs.existsSync(TLS_CERT_PATH); } catch (_) { return false; } })(),
     certExpires: expires,
     port: PORT,
-    tlsPort: TLS_PORT,
-    httpUrls: localLanIps().map((ip) => `http://${ip}:${PORT}`),
     urls: secureUrls(),
-    note: 'گواهی خودساخته است؛ مرورگر بار اول هشدار می‌دهد — «Advanced → Proceed» را بزن. آدرس دسکتاپ روی http همیشه کار می‌کند. برای حذف کامل هشدار، Tailscale یا mkcert.',
+    note: 'گواهی خودساخته است؛ مرورگر بار اول هشدار می‌دهد — «Advanced → Proceed» را بزن. آدرس روی همان پورت است (http و https هر دو کار می‌کنند). برای حذف کامل هشدار، Tailscale یا mkcert.',
   });
 });
 app.post('/api/admin/secure-link', requireAuth, requireAdmin, async (req, res) => {
@@ -8664,24 +8638,21 @@ app.post('/api/admin/secure-link', requireAuth, requireAdmin, async (req, res) =
         made = selfsign.ensure({ certPath: TLS_CERT_PATH, keyPath: TLS_KEY_PATH, ips: localLanIps() });
       }
     }
-    // Start / stop the SEPARATE https listener live. The main http listener is
-    // untouched, so there is nothing to cut off mid-response.
+    // Build / drop the in-memory TLS handler live (same smart port, no restart).
     const r = want ? await startHttps() : await stopHttps();
     res.json({
       ok: want ? !!(r && r.ok) : true,
       on: want,
       generated: !!made,
       live: true,
-      running: !!httpsServer,
-      tlsPort: TLS_PORT,
+      running: !!httpsHandler,
+      port: PORT,
       urls: secureUrls(),
       note: want
         ? ((r && r.ok)
-            ? `اتصال امن روشن شد — همین الان فعال است، بدون ری‌استارت. آدرس دسکتاپت (http://localhost:${PORT}) هم مثل قبل کار می‌کند. روی گوشی این آدرس را باز کن و بار اول هشدار گواهی را بپذیر (Advanced → Proceed): ${secureUrls().join('  ')}`
-            : (r && r.error === 'port-in-use'
-                ? `پورت ${TLS_PORT} گرفته است — احتمالاً یک نسخه‌ی قدیمی هنوز باز است. آن پنجره را ببند و دوباره امتحان کن.`
-                : 'گواهی ساخته شد ولی شنونده‌ی امن بالا نیامد. دوباره امتحان کن.'))
-        : 'اتصال امن خاموش شد — همین الان، بدون ری‌استارت. دسکتاپ روی http مثل قبل کار می‌کند.',
+            ? `اتصال امن روشن شد — همین الان روی همان پورت ${PORT} فعال شد، بدون ری‌استارت. حالا با https هم باز می‌شود؛ روی گوشی بار اول هشدار گواهی را بپذیر (Advanced → Proceed). دسکتاپت هم مثل قبل کار می‌کند. آدرس‌ها: ${secureUrls().join('  ')}`
+            : 'گواهی ساخته شد ولی اتصال امن بالا نیامد. دوباره امتحان کن.')
+        : `اتصال امن خاموش شد — همین الان، بدون ری‌استارت. برنامه روی http پورت ${PORT} مثل قبل کار می‌کند.`,
       needsRestart: false,
     });
   } catch (e) {
@@ -9288,12 +9259,44 @@ function localLanIps() {
   return out.sort((a, b) => rank(a) - rank(b));
 }
 
-// The MAIN listener is ALWAYS plain http on PORT — this is what the desktop /
-// Start-Setayesh.bat open (http://localhost:PORT), so it must never turn into a
-// TLS socket (that is exactly what caused ERR_EMPTY_RESPONSE). HTTPS, when on,
-// is a SEPARATE listener on TLS_PORT started just below.
-let server = http.createServer(app)
-  .listen(PORT, HOST, () => {
+// ONE smart port serves BOTH http and https, so there is a single address
+// (…:PORT) that works on the desktop and the phone — no companion port, no
+// scheme mismatch, and never an ERR_EMPTY_RESPONSE dead-end.
+//
+//  • httpsHandler  — serves the app over TLS (built when the secure link is on).
+//  • httpHandler   — plaintext. localhost is served directly (already a secure
+//                    context, no cert warning); a LAN/phone host is 301-redirected
+//                    to https on the SAME port when the secure link is on.
+//  • the net front — peeks the first byte of each connection: 0x16 = a TLS
+//                    handshake → httpsHandler; anything else → httpHandler.
+let httpsHandler = null;
+const httpHandler = http.createServer((req, res) => {
+  try {
+    const host = String(req.headers.host || '').split(':')[0];
+    const isLocal = !host || host === 'localhost' || host === '127.0.0.1' || host === '::1';
+    if (httpsHandler && !isLocal) {
+      res.writeHead(301, { Location: `https://${host}:${PORT}${req.url || '/'}` });
+      return res.end();
+    }
+  } catch (e) { /* fall through to serving the app */ }
+  app(req, res);
+});
+let server = net.createServer((socket) => {
+  socket.once('error', () => { try { socket.destroy(); } catch (e) {} });
+  // Peek the first byte WITHOUT consuming it: 0x16 (22) starts a TLS handshake
+  // → hand the untouched socket to the https handler; anything else → http.
+  // Using 'readable' + read(1) + unshift (not 'data') keeps the byte in the
+  // stream so the TLS layer receives the full handshake.
+  socket.once('readable', () => {
+    let buf;
+    try { buf = socket.read(1); } catch (e) { buf = null; }
+    if (!buf || !buf.length) { try { socket.destroy(); } catch (e) {} return; }
+    try { socket.unshift(buf); } catch (e) {}
+    const target = (buf[0] === 0x16 && httpsHandler) ? httpsHandler : httpHandler;
+    target.emit('connection', socket);
+  });
+});
+server.listen(PORT, HOST, () => {
   ensureGeminiModel();   // pick a Gemini model this key can actually use
   // Build Setayesh's internal search index (her memory/repos), then keep it
   // fresh on a timer so new memories, chats and notes become searchable.
@@ -9307,25 +9310,21 @@ let server = http.createServer(app)
   autoSyncLocalModels().catch(() => {});
   setInterval(() => { autoSyncLocalModels().catch(() => {}); }, 4 * 60 * 1000).unref();
   const configured = Object.keys(PROVIDERS).filter(isConfigured);
+  // Bring the TLS handler up (same port) BEFORE logging so the addresses show
+  // the right scheme. startHttps sets httpsHandler synchronously.
+  if (AUTO_TLS_ON) { try { startHttps(); } catch (e) {} }
+  const netScheme = httpsHandler ? 'https' : 'http';
   console.log('');
   console.log('   ╔══════════════════════════════════════════╗');
   console.log('   ║   S E T A Y E S H   A I                  ║');
   console.log('   ╚══════════════════════════════════════════╝');
   console.log('');
-  // The main address is ALWAYS plain http — this is the one the desktop opens.
+  // Same smart port for desktop and phone. localhost works on plain http (no
+  // cert warning); the phone/LAN address uses https (one-time warning).
   console.log(`   Local:      http://localhost:${PORT}`);
-  for (const ip of localLanIps()) console.log(`   Network:    http://${ip}:${PORT}`);
-  // Bring up the HTTPS companion (own port) if the secure link is enabled, then
-  // print its phone address. This never affects the http addresses above.
-  if (AUTO_TLS_ON) {
-    startHttps().then((r) => {
-      if (r && r.ok) {
-        console.log('');
-        console.log('   Secure link (for the phone — Bluetooth/USB):');
-        for (const ip of localLanIps()) console.log(`   Phone:      https://${ip}:${TLS_PORT}`);
-        console.log('   (first visit on each device shows a one-time certificate warning → Advanced → Proceed)');
-      }
-    }).catch(() => {});
+  for (const ip of localLanIps()) console.log(`   Network:    ${netScheme}://${ip}:${PORT}`);
+  if (httpsHandler) {
+    console.log('   (on the phone, the first visit shows a one-time certificate warning → Advanced → Proceed)');
   }
   console.log('');
   console.log(`   AI engines: ${configured.length ? configured.join(', ') : 'NONE — no API key configured'}`);
@@ -9452,48 +9451,40 @@ let server = http.createServer(app)
   try { telegram.start(runTelegramTurn); if (telegram.configured()) console.log('   Telegram: bot polling started ✓'); } catch (e) {}
 });
 
-// The HTTPS companion listener (on TLS_PORT). The main http listener is never
-// touched, so the desktop's http://localhost:PORT keeps working no matter what.
-// Turning the secure link on starts this listener live; turning it off stops it.
-// No restart, and never an ERR_EMPTY_RESPONSE on the main port.
-let httpsServer = null;
+// Build / drop the in-memory TLS handler that the net front dispatches TLS
+// sockets to. There is NO extra port to bind (the single front owns PORT), so
+// turning the secure link on/off is instant, cannot hit EADDRINUSE, and never
+// disturbs plaintext/localhost traffic on the same port.
 function startHttps() {
   return new Promise((resolve) => {
-    if (httpsServer) return resolve({ ok: true, https: true, already: true });
+    if (httpsHandler) return resolve({ ok: true, https: true, already: true });
     let cert = null;
     try { cert = loadTls(); } catch (e) { cert = null; }
     if (!cert) return resolve({ ok: false, https: false, error: 'no-cert' });
-    let settled = false;
-    const done = (r) => { if (!settled) { settled = true; resolve(r); } };
-    let srv;
-    try { srv = https.createServer({ cert: cert.cert, key: cert.key }, app); }
-    catch (e) { return done({ ok: false, https: false, error: e.message }); }
-    srv.once('error', (err) => {
-      // A stale instance may still hold TLS_PORT — report honestly, don't crash.
-      console.error('   ⚠ Could not start the secure (https) listener on port ' + TLS_PORT + ':', err && err.message);
-      httpsServer = null;
-      done({ ok: false, https: false, error: err && err.code === 'EADDRINUSE' ? 'port-in-use' : (err && err.message) });
-    });
-    srv.listen(TLS_PORT, HOST, () => {
-      httpsServer = srv;
-      TLS = cert;
+    try {
+      const srv = https.createServer({ cert: cert.cert, key: cert.key }, app);
       srv.on('error', (err) => {
-        console.error('   ⚠ Secure listener error (kept running):', err && err.message);
+        console.error('   ⚠ Secure handler error (kept running):', err && err.message);
         try { recordIncident('serverError', err); } catch (e) {}
       });
-      console.log(`   ✓  Secure link ON — https live on port ${TLS_PORT} (main http on ${PORT} untouched).`);
-      done({ ok: true, https: true });
-    });
+      httpsHandler = srv;
+      TLS = cert;
+      console.log(`   ✓  Secure link ON — https live on the SAME port ${PORT}.`);
+      resolve({ ok: true, https: true });
+    } catch (e) {
+      resolve({ ok: false, https: false, error: e && e.message });
+    }
   });
 }
 function stopHttps() {
   return new Promise((resolve) => {
-    const srv = httpsServer;
-    httpsServer = null;
-    if (!srv) return resolve({ ok: true, https: false });
-    try { if (typeof srv.closeAllConnections === 'function') srv.closeAllConnections(); } catch (e) {}
-    try { srv.close(() => {}); } catch (e) {}
-    console.log(`   ↻  Secure link OFF — https listener on port ${TLS_PORT} stopped (main http on ${PORT} untouched).`);
+    const srv = httpsHandler;
+    httpsHandler = null;
+    if (srv) {
+      try { if (typeof srv.closeAllConnections === 'function') srv.closeAllConnections(); } catch (e) {}
+      try { srv.close(() => {}); } catch (e) {}
+    }
+    console.log(`   ↻  Secure link OFF — http on port ${PORT} still serves.`);
     resolve({ ok: true, https: false });
   });
 }

@@ -263,31 +263,24 @@ via the app's own self-editing feature.
   the owner installed (it only refreshes one whose subject==issuer, CN=Setayesh).
   The cost of self-signed is a one-time per-device browser warning; that is
   stated plainly in the UI, and a real cert (Tailscale/mkcert) removes it. The
-  **HTTPS policy (v9.9.108) — TWO listeners, never one that flips scheme:** the
-  MAIN listener is ALWAYS plain http on `PORT` (`let server = http.createServer`)
-  — this is what the desktop / Start-Setayesh.bat open, so it must never become
-  a TLS socket (doing that on the same port is exactly what caused the
-  `ERR_EMPTY_RESPONSE` a browser shows when it speaks http to a TLS port).
-  HTTPS is a SEPARATE listener on `TLS_PORT` (`SETAYESH_TLS_PORT`, default
-  `PORT+443` → 3000→3443), started/stopped live by `startHttps()`/`stopHttps()`.
-  `autoTlsEnabled()` is the single source of truth for whether the companion is
-  on: explicit `AUTO_TLS` (config `SETAYESH_AUTO_TLS`) always wins; UNSET it
-  DEFAULTS ON for a network bind (phone/LAN) and OFF for a pure localhost bind
-  (`127.0.0.1`/`localhost`/`::1`, already a secure context, and keeps the
-  127.0.0.1 test harness on http). The secure-link "off" choice is persisted as
-  an explicit `'0'` (the config writer drops `''`), else a LAN host could never
-  be turned off. `POST /api/admin/secure-link` generates the cert then calls
-  startHttps/stopHttps — no restart, and the desktop http address is untouched
-  throughout; `startHttps` tolerates EADDRINUSE (reports `port-in-use`) so a
-  stale instance can't crash it. The phone opens `https://<lan-ip>:TLS_PORT`.
-  **Phone redirect (v9.9.109):** an early middleware bounces a phone that opens
-  the PLAIN http LAN address to the https companion — only when the secure link
-  is running, only for a non-localhost Host, and only for top-level page loads
-  (`Accept: text/html`), never for API/asset calls or localhost. So the owner
-  types the normal address on the phone and lands on secure https automatically,
-  while the desktop's `http://localhost` never dead-ends. (`req.socket.encrypted`
-  distinguishes the two listeners; `fetch`/undici drops a spoofed Host header, so
-  the test exercises this with a raw `http.request`.)
+  **HTTPS policy (v9.9.110) — ONE smart port serves BOTH http and https.** A
+  single `net.createServer` front owns `PORT`; on each connection it peeks the
+  first byte (`once('readable')` + `read(1)` + `unshift`, NOT `'data'`): `0x16`
+  (a TLS handshake) → the in-memory `httpsHandler`, anything else → `httpHandler`.
+  So `http://host:PORT` AND `https://host:PORT` both work on the same address —
+  no companion port, no scheme mismatch, and never the `ERR_EMPTY_RESPONSE` a
+  browser shows when it speaks http to a TLS port. `httpHandler` serves localhost
+  over plain http (already a secure context, no cert warning) and 301-redirects a
+  non-localhost host to https on the SAME port when the secure link is on;
+  `httpsHandler` serves the app over TLS. `startHttps()`/`stopHttps()` just build
+  or drop `httpsHandler` (no extra bind → instant, no EADDRINUSE). `autoTlsEnabled()`
+  is the single source of truth: explicit `AUTO_TLS` (config `SETAYESH_AUTO_TLS`)
+  wins; UNSET → ON for a network bind, OFF for localhost (also keeps the 127.0.0.1
+  test harness plain). "Off" is persisted as an explicit `'0'` (the config writer
+  drops `''`) so a LAN host can still be turned off. Everything is one port —
+  `SETAYESH_TLS_PORT` no longer exists. Earlier designs (same-port scheme-flip in
+  9.9.107, then a 3443 companion port in 9.9.108) both confused the owner; the
+  smart port is the resolution.
 - **Gemini is answering-only (v9.9.109):** `bestResearchEngine()` excludes
   `gemini` (via `RESEARCH_EXCLUDE`) so background research never spends its free
   quota — Gemini is reserved for chat replies (and, as a direct answer, image
