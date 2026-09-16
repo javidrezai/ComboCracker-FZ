@@ -1299,7 +1299,27 @@ test('secure-link: admin can read state and turn on HTTPS, family cannot', async
   const x = new crypto.X509Certificate(fs.readFileSync(path.join(tmp, 'tls-cert.pem')));
   assert.match(x.subject, /CN=Setayesh/);
   // the ON choice is persisted and reflected by a fresh read
-  assert.equal((await (await api('/api/admin/secure-link', { token })).json()).on, true, 'ON must persist');
+  const st2 = await (await api('/api/admin/secure-link', { token })).json();
+  assert.equal(st2.on, true, 'ON must persist');
+  assert.equal(st2.running, true, 'the https companion listener must actually be running');
+  assert.ok(st2.tlsPort && st2.tlsPort !== st2.port, 'https runs on its OWN companion port, not the main one');
+  // With the secure link ON, a PHONE opening the plain-http LAN address (a page
+  // load, not localhost) must be bounced to the https companion port — so the
+  // owner never needs to know the special port. The main http port itself
+  // stays alive (below) so the desktop never dead-ends. Use a RAW http request:
+  // fetch/undici silently drops a spoofed Host header, so it can't test this.
+  const rawGet = (headers) => new Promise((resolve, reject) => {
+    const req = require('node:http').request(
+      { host: '127.0.0.1', port: PORT, path: '/', method: 'GET', headers },
+      (r) => { resolve({ status: r.statusCode, location: r.headers.location }); r.resume(); });
+    req.on('error', reject); req.end();
+  });
+  const red = await rawGet({ Host: '10.0.0.5:' + PORT, Accept: 'text/html' });
+  assert.equal(red.status, 302, 'a phone page-load over http must redirect to https');
+  assert.match(red.location || '', new RegExp('^https://10\\.0\\.0\\.5:' + st2.tlsPort + '/'));
+  // localhost page-load stays on http (already a secure context) — no redirect.
+  const local = await rawGet({ Host: '127.0.0.1:' + PORT, Accept: 'text/html' });
+  assert.equal(local.status, 200, 'the desktop localhost address must never be redirected away');
   // turning it back off must not throw, and must STICK (stored as an explicit
   // value, not dropped) so a LAN host can actually stay on http when asked.
   const off = await (await api('/api/admin/secure-link', { method: 'POST', token, body: { on: false } })).json();

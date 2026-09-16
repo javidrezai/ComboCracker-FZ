@@ -190,7 +190,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.108';
+const APP_VERSION = '9.9.109';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -711,6 +711,27 @@ function persistUserPassword(username, plainPassword) {
 // camera or read location. Microphone and geolocation ARE allowed, because
 // voice notes and "send my location" on the family board need them — camera
 // and everything else are switched off, since nothing here uses them.
+// Phone secure-link redirect. When the secure link is ON and someone opens the
+// PLAIN http LAN address on their phone (the same address they'd naturally
+// type), bounce the page to the https companion port so it loads over a secure
+// context and Web Bluetooth / Web Serial work — جاوید shouldn't have to know a
+// special port. Localhost stays on http (already a secure context; the desktop
+// launcher uses it), and only top-level page loads are redirected so an
+// in-flight API/asset call is never broken.
+app.use((req, res, next) => {
+  try {
+    if (!req.socket.encrypted && typeof httpsServer !== 'undefined' && httpsServer) {
+      const host = String(req.headers.host || '').split(':')[0];
+      const isLocal = !host || host === 'localhost' || host === '127.0.0.1' || host === '::1';
+      const wantsPage = req.method === 'GET' && /text\/html/i.test(req.headers.accept || '');
+      if (!isLocal && wantsPage) {
+        return res.redirect(302, `https://${host}:${TLS_PORT}${req.originalUrl || req.url}`);
+      }
+    }
+  } catch (e) { /* never let the guard break a request */ }
+  next();
+});
+
 app.use((req, res, next) => {
   res.setHeader('Permissions-Policy',
     'geolocation=(self), microphone=(self), camera=(), payment=(), usb=(), ' +
@@ -4204,9 +4225,18 @@ function voiceBlock(username) {
   // household and the whole interface is Persian. Children are left alone: their
   // tutor prompt deliberately leans on English for practice.
   const cl = String(p.lang || '').toLowerCase() || (isChild ? '' : 'fa');
+  // Language PURITY (جاوید: «انگلیسی فقط انگلیسی، فارسی فقط فارسی»). One reply =
+  // one language, never two mixed together, and never a stray third language
+  // (the Chinese/Thai words that leaked before). Applied to every adult reply.
+  const PURITY = '\n\n*** یک زبان در هر پاسخ (مهم) ***\n'
+    + 'هر پاسخ باید کاملاً یک‌دست و فقط به یک زبان باشد. هرگز دو زبان را در یک جمله یا یک پاسخ قاطی نکن، '
+    + 'و هرگز از زبان سومی (چینی، تایلندی و…) حتی یک کلمه استفاده نکن. '
+    + 'تنها استثنا: نامِ خاصِ فنی که معادل فارسیِ رایج ندارد (مثل نام یک برنامه یا کتابخانه) — همان را همان‌طور بنویس.';
   if (!isChild && CHAT_NAME[cl]) {
     block = `\n\n*** زبان گفتگو (مهم — بر پیش‌فرض انگلیسی مقدم است) ***
-این کاربر زبان گفتگویش را **${CHAT_NAME[cl]}** انتخاب کرده. همیشه به همین زبان جواب بده، مگر اینکه خودش صریحاً به زبان دیگری بنویسد و بخواهد به همان زبان جواب بگیرد. حتی اگر پیام کوتاه، مبهم یا تک‌کلمه بود، باز هم ${CHAT_NAME[cl]} جواب بده — نه انگلیسی.` + block;
+این کاربر زبان گفتگویش را **${CHAT_NAME[cl]}** انتخاب کرده. همیشه به همین زبان جواب بده، مگر اینکه خودش صریحاً به زبان دیگری بنویسد و بخواهد به همان زبان جواب بگیرد. حتی اگر پیام کوتاه، مبهم یا تک‌کلمه بود، باز هم ${CHAT_NAME[cl]} جواب بده — نه انگلیسی.` + PURITY + block;
+  } else if (!isChild) {
+    block = PURITY + block;
   }
 
   // The language the member wants things WRITTEN in — letters, e-mail, a
@@ -5651,18 +5681,23 @@ app.get('/api/admin/activity', requireAuth, requireAdmin, (req, res) => {
   });
 });
 
-// The engine research should use: the STRONGEST healthy, fast engine that can
-// also read the web — never the slow local brain/Ollama (they can't ground on
-// the internet and would make research slow and weak). Prefer the best-ranked
-// cloud engine (Gemini, Claude, GPT, Groq…), and its GENERAL model, not a code
-// model. This is what makes background learning "قوی، بدون کندی و خنگی".
+// The engine background research should use: the strongest HEALTHY engine that
+// can also read the web — never the slow local brain/Ollama (they can't ground
+// on the internet). جاوید asked that GEMINI be kept for ANSWERING only, nothing
+// else — so Gemini is excluded from background research too (its free quota is
+// protected for chat replies). Prefer another cloud engine (Claude, GPT, Groq…)
+// and its GENERAL model, not a code model.
+const RESEARCH_EXCLUDE = ['brain', 'local', 'gemini'];
 function bestResearchEngine() {
-  const ranked = rankEngines(['reasoning', 'general', 'current'], { exclude: ['brain', 'local'] });
+  const ranked = rankEngines(['reasoning', 'general', 'current'], { exclude: RESEARCH_EXCLUDE });
+  const usableDefault = DEFAULT_PROVIDER && !RESEARCH_EXCLUDE.includes(DEFAULT_PROVIDER) && isConfigured(DEFAULT_PROVIDER);
   const id = ranked.find((x) => isConfigured(x) && engineUsable(x))
           || ranked.find((x) => isConfigured(x))
-          || (isConfigured(DEFAULT_PROVIDER) && DEFAULT_PROVIDER !== 'brain' && DEFAULT_PROVIDER !== 'local' ? DEFAULT_PROVIDER : null)
-          || Object.keys(PROVIDERS).filter((x) => x !== 'brain' && x !== 'local').find(isConfigured)
-          || Object.keys(PROVIDERS).find(isConfigured);
+          || (usableDefault ? DEFAULT_PROVIDER : null)
+          || Object.keys(PROVIDERS).filter((x) => !RESEARCH_EXCLUDE.includes(x)).find(isConfigured)
+          // Absolute last resort: only if NOTHING but Gemini exists do we allow it,
+          // so background learning still runs on a Gemini-only setup.
+          || Object.keys(PROVIDERS).filter((x) => x !== 'brain' && x !== 'local').find(isConfigured);
   if (!id) return null;
   const models = PROVIDERS[id].models || [];
   const model = id === 'gemini' ? GEMINI_MODEL : ((models.find((m) => m.best !== 'code') || models[0] || {}).id);

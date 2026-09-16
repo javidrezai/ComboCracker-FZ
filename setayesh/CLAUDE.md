@@ -280,6 +280,22 @@ via the app's own self-editing feature.
   startHttps/stopHttps — no restart, and the desktop http address is untouched
   throughout; `startHttps` tolerates EADDRINUSE (reports `port-in-use`) so a
   stale instance can't crash it. The phone opens `https://<lan-ip>:TLS_PORT`.
+  **Phone redirect (v9.9.109):** an early middleware bounces a phone that opens
+  the PLAIN http LAN address to the https companion — only when the secure link
+  is running, only for a non-localhost Host, and only for top-level page loads
+  (`Accept: text/html`), never for API/asset calls or localhost. So the owner
+  types the normal address on the phone and lands on secure https automatically,
+  while the desktop's `http://localhost` never dead-ends. (`req.socket.encrypted`
+  distinguishes the two listeners; `fetch`/undici drops a spoofed Host header, so
+  the test exercises this with a raw `http.request`.)
+- **Gemini is answering-only (v9.9.109):** `bestResearchEngine()` excludes
+  `gemini` (via `RESEARCH_EXCLUDE`) so background research never spends its free
+  quota — Gemini is reserved for chat replies (and, as a direct answer, image
+  generation). It is used for research only if it is the ONLY configured engine.
+- **Language purity (v9.9.109):** `voiceBlock()` adds a hard "one language per
+  reply" rule for every adult reply — never two languages mixed, never a stray
+  third (the Chinese/Thai leak), the only exception being an untranslatable
+  technical proper noun.
 - **`toolnoise.js`** — `parseTextToolCalls`/`stripToolNoise`. gpt-oss "harmony"
   models sometimes emit a tool call as PLAIN TEXT
   (`<tool_call>{…}</tool_call>` or a bare `{"name","arguments"}` object) instead
