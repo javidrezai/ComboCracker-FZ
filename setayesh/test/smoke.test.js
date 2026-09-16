@@ -1471,6 +1471,31 @@ test('automatic research is ON by default (always-growing)', async () => {
   assert.equal(d.settings.enabled, true, 'research should be enabled by default');
 });
 
+// ---- Telegram/chat: harmony tool-call noise never reaches a person (v9.9.108) ----
+// gpt-oss and friends sometimes write a tool call as PLAIN TEXT instead of the
+// structured tool_calls field; on Telegram that leaked as gibberish
+// ("茏 {"name":"web_search"…}"). parseTextToolCalls must recover it so it can be
+// run for real, and stripToolNoise must guarantee no reply ships raw JSON/tags.
+test('harmony tool-call text is parsed out and never leaks to the user', () => {
+  const tn = require(path.join(ROOT, 'toolnoise.js'));
+  // A wrapped <tool_call> block → recovered as a real call, stripped to nothing.
+  const wrapped = '<tool_call>\n{"name": "web_search", "arguments": {"query": "طلا", "count": 5}}\n</tool_call>';
+  const calls = tn.parseTextToolCalls(wrapped);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].name, 'web_search');
+  assert.equal(calls[0].arguments.query, 'طلا');
+  assert.equal(tn.stripToolNoise(wrapped), '', 'a pure tool-call block must strip to empty, never leak JSON');
+  // A bare JSON tool object (no wrapper) is still recovered.
+  const bare = '{"name":"web_search","arguments":{"query":"x"}}';
+  assert.equal(tn.parseTextToolCalls(bare).length, 1);
+  // Real prose is preserved; only the tool block + harmony tokens are removed.
+  const mixed = 'قیمت‌ها را می‌گیرم. <|channel|>\n<tool_call>{"name":"web_search","arguments":{"query":"x"}}</tool_call>';
+  assert.equal(tn.parseTextToolCalls(mixed).length, 1);
+  assert.equal(tn.stripToolNoise(mixed), 'قیمت‌ها را می‌گیرم.', 'the human sentence must survive, the noise must not');
+  // Plain text is left untouched.
+  assert.equal(tn.stripToolNoise('سلام جاوید'), 'سلام جاوید');
+});
+
 // ---- Dev libraries: download plan is injection-safe (v9.9.105) ----
 // On Windows the package managers are .cmd/.bat shims, so downloads must run
 // through a shell. shell:true means a crafted package name could inject

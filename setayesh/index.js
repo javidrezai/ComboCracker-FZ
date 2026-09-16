@@ -171,11 +171,18 @@ const DATA_DIR = IS_PACKAGED ? path.dirname(process.execPath) : __dirname;
 
 const PORT = Number(process.env.PORT) || 3000;
 const HOST = process.env.SETAYESH_HOST || '0.0.0.0';
+// The companion HTTPS port (see the secure-link section). Default: main + 443
+// (3000 → 3443), overridable with SETAYESH_TLS_PORT.
+const TLS_PORT = Number(process.env.SETAYESH_TLS_PORT) || (PORT < 1024 ? 8443 : PORT + 443);
 
 // Local HTTPS is set up just below, after the config file is read (it needs the
 // AUTO_TLS preference). The loader lives in loadTls().
 const TLS_CERT_PATH = process.env.SETAYESH_TLS_CERT || path.join(DATA_DIR, 'tls-cert.pem');
 const TLS_KEY_PATH = process.env.SETAYESH_TLS_KEY || path.join(DATA_DIR, 'tls-key.pem');
+// HTTPS runs on its OWN companion port, never on the main one — so plain
+// http://localhost:PORT (what Start-Setayesh.bat opens) NEVER breaks when the
+// secure link is on. The phone opens https://<lan-ip>:TLS_PORT for its secure
+// context (Web Bluetooth/Serial).
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 // How long a "remember this device" trust lasts before the password is asked
 // for again. Deliberately the same length as a session: one habit, one rhythm.
@@ -183,7 +190,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.107';
+const APP_VERSION = '9.9.108';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -3515,6 +3522,11 @@ function openAiToolsFrom(ctx) {
     function: { name: t.name, description: t.description, parameters: t.input_schema },
   }));
 }
+
+// Harmony models sometimes emit a tool call as plain text; these helpers parse
+// those out (so we run them for real) and strip any leftover tool-call/harmony
+// tokens so a reply is never raw JSON. See toolnoise.js for the details.
+const { toPlainText, parseTextToolCalls, stripToolNoise } = require('./toolnoise');
 async function callOpenAiWithTools(providerId, model, systemPrompt, messages, ctx, opts) {
   opts = opts || {};
   const tools = openAiToolsFrom(ctx);
@@ -3547,8 +3559,25 @@ async function callOpenAiWithTools(providerId, model, systemPrompt, messages, ct
     if (!msg) return '';
     const calls = msg.tool_calls || [];
     if (!calls.length) {
-      const c = msg.content;
-      return Array.isArray(c) ? c.filter((p) => p && p.type === 'text').map((p) => p.text).join('\n') : (c || '');
+      const textContent = toPlainText(msg.content);
+      // Harmony models put the tool call in the text — run it for real instead
+      // of dumping the JSON on the user, then loop so the model can answer.
+      const textCalls = parseTextToolCalls(textContent);
+      if (textCalls.length) {
+        if (round < 3) {
+          convo.push({ role: 'assistant', content: textContent });
+          for (const tc of textCalls) {
+            let result;
+            try { result = await dispatchTool(tc.name, tc.arguments, ctx); }
+            catch (e) { result = { error: String(e && e.message || e) }; }
+            convo.push({ role: 'user', content: `[نتیجه‌ی ابزار ${tc.name}]\n` + JSON.stringify(result).slice(0, 8000) });
+          }
+          continue;
+        }
+        return 'یک لحظه شلوغ شد و جمع‌بندی نشد — همان سؤال را دوباره بپرس.';
+      }
+      const clean = stripToolNoise(textContent);
+      return clean || 'یک لحظه شلوغ شد — دوباره بپرس.';
     }
     convo.push({ role: 'assistant', content: msg.content || '', tool_calls: calls });
     for (const call of calls) {
@@ -3564,10 +3593,14 @@ async function callOpenAiWithTools(providerId, model, systemPrompt, messages, ct
 // One entry point for a tool-enabled call, whichever engine family answers.
 function callWithTools(providerId, model, systemPrompt, messages, ctx, opts) {
   // The Python brain runs its own agent loop; hand it the question directly.
-  if (PROVIDERS[providerId].kind === 'brain') return askPythonBrain(messages);
-  return PROVIDERS[providerId].kind === 'anthropic'
-    ? callAnthropicWithTools(providerId, model, systemPrompt, messages, ctx)
-    : callOpenAiWithTools(providerId, model, systemPrompt, messages, ctx, opts);
+  const p = PROVIDERS[providerId].kind === 'brain'
+    ? askPythonBrain(messages)
+    : PROVIDERS[providerId].kind === 'anthropic'
+      ? callAnthropicWithTools(providerId, model, systemPrompt, messages, ctx)
+      : callOpenAiWithTools(providerId, model, systemPrompt, messages, ctx, opts);
+  // Final safety net: no reply, from any engine, ever reaches a person with raw
+  // <tool_call> / harmony tokens still in it.
+  return Promise.resolve(p).then((r) => (typeof r === 'string' ? (stripToolNoise(r) || r) : r));
 }
 
 // Gemini's native API reads images AND PDFs directly (including scanned PDFs,
@@ -6774,13 +6807,25 @@ async function runTelegramTurn(text) {
   if (!msg) return '';
   if (!anyConfigured()) return 'هنوز هیچ موتور هوش مصنوعی روی سرور تنظیم نشده — از مرکز کنترل یک کلید API اضافه کن.';
   const adminUser = Array.from(users.keys()).find((u) => isAdmin(u)) || Array.from(users.keys())[0];
+  // Classify so a news/"today" question goes to a tool-capable cloud engine
+  // (real web search, not a made-up URL) and plain chat to a general engine —
+  // never a code-completion model, which answered in the wrong language.
+  const cls = classifyQuestion(msg);
+  const tags = Array.isArray(cls) && cls.length ? cls : ['general'];
   let target;
-  try { target = resolveTarget(undefined, undefined, adminUser); }
+  try { target = resolveTarget(undefined, undefined, adminUser, { tags }); }
   catch (e) { return e.message || 'موتوری در دسترس نیست.'; }
-  const systemPrompt = promptFor(adminUser, 'chat', false, null, msg);
+  // Telegram had replied in Chinese/Thai and dumped raw <tool_call> JSON. Lock
+  // the output: Persian only, human sentences only, no tool/JSON/markup syntax.
+  const telegramRules = '\n\n=== قانون پاسخ در تلگرام ===\n'
+    + '۱) فقط و فقط فارسی بنویس. هرگز چینی، تایلندی یا زبان دیگری به کار نبر مگر کاربر صریحاً بخواهد.\n'
+    + '۲) هیچ‌وقت متنِ ابزار، JSON، یا برچسب‌هایی مثل <tool_call> ننویس. ابزارها را در پس‌زمینه استفاده کن و فقط جوابِ انسانیِ نهایی را بده.\n'
+    + '۳) کوتاه، مهربان و خانوادگی جواب بده. اگر منبعی نداری، حدس نزن و لینک جعلی نساز.';
+  const systemPrompt = promptFor(adminUser, 'chat', false, null, msg) + telegramRules;
   const toolCtx = { preferredId: target.id, basePrompt: systemPrompt, message: msg, sideEffects: {}, pinned: !!target.pinned, isAdmin: true, username: adminUser };
-  const reply = await callWithTools(target.id, target.model, systemPrompt, [{ role: 'user', content: msg }], toolCtx, {});
-  return reply || '(پاسخی نیامد)';
+  let reply = await callWithTools(target.id, target.model, systemPrompt, [{ role: 'user', content: msg }], toolCtx, {});
+  reply = stripToolNoise(reply || '');
+  return reply || '(پاسخی نیامد — دوباره بپرس.)';
 }
 
 app.get('/api/admin/telegram', requireAuth, requireAdmin, (req, res) => {
@@ -8534,11 +8579,12 @@ app.post('/api/admin/settings', requireAuth, requireAdmin, (req, res) => {
 });
 
 // Secure link (HTTPS) for the phone. The admin taps one button: we turn on
-// AUTO_TLS, generate a self-signed certificate on the spot (so the files exist
-// before the restart), and hand back the https:// addresses plus an honest
-// note about the one-time browser warning. GET reports current state; POST
-// toggles. This is what finally lets the phone's Web Bluetooth / Web Serial
-// work — those APIs need a "secure context" and refuse plain http on the LAN.
+// AUTO_TLS, generate a self-signed certificate on the spot, and START A SEPARATE
+// https listener on TLS_PORT — the main http address is never touched, so the
+// desktop keeps working while the phone gets its secure context (Web Bluetooth /
+// Web Serial need HTTPS and refuse plain http on the LAN). GET reports state;
+// POST toggles, live, with no restart.
+function secureUrls() { return localLanIps().map((ip) => `https://${ip}:${TLS_PORT}`); }
 app.get('/api/admin/secure-link', requireAuth, requireAdmin, (req, res) => {
   let expires = null, self = false;
   try {
@@ -8549,13 +8595,15 @@ app.get('/api/admin/secure-link', requireAuth, requireAdmin, (req, res) => {
   } catch (_) {}
   res.json({
     on: autoTlsEnabled(),
-    running: !!TLS,
+    running: !!httpsServer,
     selfSigned: TLS ? !!TLS.selfSigned : self,
     certExists: (() => { try { return fs.existsSync(TLS_CERT_PATH); } catch (_) { return false; } })(),
     certExpires: expires,
     port: PORT,
-    urls: localLanIps().map((ip) => `${TLS ? 'https' : 'http'}://${ip}:${PORT}`),
-    note: 'گواهی خودساخته است؛ مرورگر بار اول هشدار می‌دهد — «Advanced → Proceed» را بزن. برای حذف کامل هشدار، Tailscale یا mkcert.',
+    tlsPort: TLS_PORT,
+    httpUrls: localLanIps().map((ip) => `http://${ip}:${PORT}`),
+    urls: secureUrls(),
+    note: 'گواهی خودساخته است؛ مرورگر بار اول هشدار می‌دهد — «Advanced → Proceed» را بزن. آدرس دسکتاپ روی http همیشه کار می‌کند. برای حذف کامل هشدار، Tailscale یا mkcert.',
   });
 });
 app.post('/api/admin/secure-link', requireAuth, requireAdmin, async (req, res) => {
@@ -8566,10 +8614,10 @@ app.post('/api/admin/secure-link', requireAuth, requireAdmin, async (req, res) =
     // defaults the secure link ON, could never be turned off.
     writeConfigFile({ AUTO_TLS: want ? '1' : '0' });
     cfg.AUTO_TLS = want ? '1' : '0';
+    AUTO_TLS_ON = autoTlsEnabled();
     let made = null;
     if (want) {
-      // Generate the cert now so files exist before we rebind the listener.
-      // Never clobber a real (non-self-signed) cert the owner installed.
+      // Generate the cert now (never clobber a real cert the owner installed).
       let clobberReal = false;
       try {
         if (fs.existsSync(TLS_CERT_PATH)) {
@@ -8581,21 +8629,26 @@ app.post('/api/admin/secure-link', requireAuth, requireAdmin, async (req, res) =
         made = selfsign.ensure({ certPath: TLS_CERT_PATH, keyPath: TLS_KEY_PATH, ips: localLanIps() });
       }
     }
-    // Send the reply FIRST (it travels over the current connection), then swap
-    // the listener a moment later so this response isn't cut off mid-flight.
+    // Start / stop the SEPARATE https listener live. The main http listener is
+    // untouched, so there is nothing to cut off mid-response.
+    const r = want ? await startHttps() : await stopHttps();
     res.json({
-      ok: true,
+      ok: want ? !!(r && r.ok) : true,
       on: want,
       generated: !!made,
       live: true,
-      urls: localLanIps().map((ip) => `${want ? 'https' : 'http'}://${ip}:${PORT}`),
+      running: !!httpsServer,
+      tlsPort: TLS_PORT,
+      urls: secureUrls(),
       note: want
-        ? 'اتصال امن روشن شد — همین الان فعال است، بدون ری‌استارت. آدرس https بالا را در گوشی باز کن و بار اول هشدار گواهی را بپذیر (Advanced → Proceed). بعد بلوتوث و کابلِ گوشی کار می‌کند. اگر همین صفحه قطع شد، آدرس https را دوباره باز کن.'
-        : 'اتصال امن خاموش شد — همین الان روی http برگشت، بدون ری‌استارت.',
+        ? ((r && r.ok)
+            ? `اتصال امن روشن شد — همین الان فعال است، بدون ری‌استارت. آدرس دسکتاپت (http://localhost:${PORT}) هم مثل قبل کار می‌کند. روی گوشی این آدرس را باز کن و بار اول هشدار گواهی را بپذیر (Advanced → Proceed): ${secureUrls().join('  ')}`
+            : (r && r.error === 'port-in-use'
+                ? `پورت ${TLS_PORT} گرفته است — احتمالاً یک نسخه‌ی قدیمی هنوز باز است. آن پنجره را ببند و دوباره امتحان کن.`
+                : 'گواهی ساخته شد ولی شنونده‌ی امن بالا نیامد. دوباره امتحان کن.'))
+        : 'اتصال امن خاموش شد — همین الان، بدون ری‌استارت. دسکتاپ روی http مثل قبل کار می‌کند.',
       needsRestart: false,
     });
-    // Give the response ~300ms to flush before we tear down / rebind the socket.
-    setTimeout(() => { applyTlsLive(want).catch(() => {}); }, 300);
   } catch (e) {
     if (!res.headersSent) res.status(500).json({ error: 'نشد: ' + e.message });
   }
@@ -9200,7 +9253,11 @@ function localLanIps() {
   return out.sort((a, b) => rank(a) - rank(b));
 }
 
-let server = (TLS ? https.createServer({ cert: TLS.cert, key: TLS.key }, app) : http.createServer(app))
+// The MAIN listener is ALWAYS plain http on PORT — this is what the desktop /
+// Start-Setayesh.bat open (http://localhost:PORT), so it must never turn into a
+// TLS socket (that is exactly what caused ERR_EMPTY_RESPONSE). HTTPS, when on,
+// is a SEPARATE listener on TLS_PORT started just below.
+let server = http.createServer(app)
   .listen(PORT, HOST, () => {
   ensureGeminiModel();   // pick a Gemini model this key can actually use
   // Build Setayesh's internal search index (her memory/repos), then keep it
@@ -9215,14 +9272,26 @@ let server = (TLS ? https.createServer({ cert: TLS.cert, key: TLS.key }, app) : 
   autoSyncLocalModels().catch(() => {});
   setInterval(() => { autoSyncLocalModels().catch(() => {}); }, 4 * 60 * 1000).unref();
   const configured = Object.keys(PROVIDERS).filter(isConfigured);
-  const scheme = TLS ? 'https' : 'http';
   console.log('');
   console.log('   ╔══════════════════════════════════════════╗');
   console.log('   ║   S E T A Y E S H   A I                  ║');
   console.log('   ╚══════════════════════════════════════════╝');
   console.log('');
-  console.log(`   Local:      ${scheme}://localhost:${PORT}`);
-  for (const ip of localLanIps()) console.log(`   Network:    ${scheme}://${ip}:${PORT}`);
+  // The main address is ALWAYS plain http — this is the one the desktop opens.
+  console.log(`   Local:      http://localhost:${PORT}`);
+  for (const ip of localLanIps()) console.log(`   Network:    http://${ip}:${PORT}`);
+  // Bring up the HTTPS companion (own port) if the secure link is enabled, then
+  // print its phone address. This never affects the http addresses above.
+  if (AUTO_TLS_ON) {
+    startHttps().then((r) => {
+      if (r && r.ok) {
+        console.log('');
+        console.log('   Secure link (for the phone — Bluetooth/USB):');
+        for (const ip of localLanIps()) console.log(`   Phone:      https://${ip}:${TLS_PORT}`);
+        console.log('   (first visit on each device shows a one-time certificate warning → Advanced → Proceed)');
+      }
+    }).catch(() => {});
+  }
   console.log('');
   console.log(`   AI engines: ${configured.length ? configured.join(', ') : 'NONE — no API key configured'}`);
   console.log(`   Accounts:   ${Array.from(users.keys()).join(', ')}`);
@@ -9260,15 +9329,10 @@ let server = (TLS ? https.createServer({ cert: TLS.cert, key: TLS.key }, app) : 
     warnings.push('  → For local-only use, start with SETAYESH_HOST=127.0.0.1');
   }
   if (INSECURE_TLS) warnings.push('TLS certificate verification is DISABLED (SETAYESH_INSECURE_TLS=1).');
-  if (!TLS && HOST === '0.0.0.0') {
-    warnings.push('Traffic is over plain HTTP — the phone cannot use Bluetooth/Serial (they need a secure link).');
+  if (!AUTO_TLS_ON && HOST === '0.0.0.0') {
+    warnings.push('The phone secure link (HTTPS) is off — Bluetooth/Serial on the phone need it.');
     warnings.push('  → Turn on "اتصال امن HTTPS" in settings (self-signed, one-time tap), or set SETAYESH_AUTO_TLS=1.');
-    warnings.push('  → Warning-free: a real cert as tls-cert.pem + tls-key.pem (Tailscale `tailscale cert`, or mkcert).');
-  }
-  if (TLS && TLS.selfSigned) {
-    console.log('   ✓  HTTPS on with a self-signed certificate — encrypted; accept the one-time browser warning on each device.\n');
-  } else if (TLS) {
-    console.log('   ✓  HTTPS on — LAN/Tailscale traffic is encrypted.\n');
+    warnings.push('  → The desktop http://localhost address keeps working either way.');
   }
   if (!privacy.enabled) warnings.push('Outbound family-privacy filter is switched OFF.');
 
@@ -9353,61 +9417,49 @@ let server = (TLS ? https.createServer({ cert: TLS.cert, key: TLS.key }, app) : 
   try { telegram.start(runTelegramTurn); if (telegram.configured()) console.log('   Telegram: bot polling started ✓'); } catch (e) {}
 });
 
-// Switch the live listener between plain http and self-signed https on the SAME
-// port, WITHOUT a manual restart — this is what makes the secure-link toggle
-// "one tap": the moment جاوید turns it on, https is serving and he just opens
-// the https:// address on the phone. Turning the cert on generates the files
-// first (in the POST handler), so here we only (re)read them and rebind.
-function applyTlsLive(want) {
+// The HTTPS companion listener (on TLS_PORT). The main http listener is never
+// touched, so the desktop's http://localhost:PORT keeps working no matter what.
+// Turning the secure link on starts this listener live; turning it off stops it.
+// No restart, and never an ERR_EMPTY_RESPONSE on the main port.
+let httpsServer = null;
+function startHttps() {
   return new Promise((resolve) => {
-    // Localhost is already a secure context, so the toggle there is advisory and
-    // we never tear down the listener — this also keeps a 127.0.0.1 bind (the
-    // test harness, a local-only run) steadily on http.
-    if (HOST === '127.0.0.1' || HOST === 'localhost' || HOST === '::1') {
-      return resolve({ ok: true, https: !!TLS, skipped: 'localhost' });
-    }
-    let reloaded = null;
-    try { reloaded = want ? loadTls() : null; } catch (e) { reloaded = null; }
-    // Asked for https but no usable cert on disk → stay as we are, report honestly.
-    if (want && !reloaded) return resolve({ ok: false, https: !!TLS, error: 'no-cert' });
-    const next = reloaded
-      ? https.createServer({ cert: reloaded.cert, key: reloaded.key }, app)
-      : http.createServer(app);
+    if (httpsServer) return resolve({ ok: true, https: true, already: true });
+    let cert = null;
+    try { cert = loadTls(); } catch (e) { cert = null; }
+    if (!cert) return resolve({ ok: false, https: false, error: 'no-cert' });
     let settled = false;
     const done = (r) => { if (!settled) { settled = true; resolve(r); } };
-    let tries = 0;
-    const startListen = () => {
-      tries++;
-      next.listen(PORT, HOST, () => {
-        const prev = server;
-        server = next;
-        TLS = reloaded;
-        AUTO_TLS_ON = autoTlsEnabled();
-        // Re-attach the keep-alive error guard to the new listener.
-        next.on('error', (err) => {
-          console.error('   ⚠ Server error (kept running):', err && err.message);
-          try { recordIncident('serverError', err); } catch (e) {}
-        });
-        try { if (prev && typeof prev.closeAllConnections === 'function') prev.closeAllConnections(); } catch (e) {}
-        try { if (prev) prev.close(() => {}); } catch (e) {}
-        console.log(`   ↻  Secure link ${reloaded ? 'ON — now serving https' : 'OFF — back on http'} on port ${PORT} (no restart needed).`);
-        done({ ok: true, https: !!reloaded });
-      });
-    };
-    next.once('error', function onErr(err) {
-      // The old listener hasn't released the port yet — back off and retry a few
-      // times before giving up (and leaving the old server in place).
-      if (err && err.code === 'EADDRINUSE' && tries < 8) {
-        setTimeout(() => { next.removeListener('error', onErr); next.once('error', onErr); startListen(); }, 250);
-      } else {
-        console.error('   ⚠ Could not switch the secure link:', err && err.message);
-        done({ ok: false, https: !!TLS, error: err && err.message });
-      }
+    let srv;
+    try { srv = https.createServer({ cert: cert.cert, key: cert.key }, app); }
+    catch (e) { return done({ ok: false, https: false, error: e.message }); }
+    srv.once('error', (err) => {
+      // A stale instance may still hold TLS_PORT — report honestly, don't crash.
+      console.error('   ⚠ Could not start the secure (https) listener on port ' + TLS_PORT + ':', err && err.message);
+      httpsServer = null;
+      done({ ok: false, https: false, error: err && err.code === 'EADDRINUSE' ? 'port-in-use' : (err && err.message) });
     });
-    // Stop the old listener from accepting new sockets, then bind the new one.
-    try { if (server && typeof server.closeAllConnections === 'function') server.closeAllConnections(); } catch (e) {}
-    try { if (server) server.close(() => {}); } catch (e) {}
-    setTimeout(startListen, 150);
+    srv.listen(TLS_PORT, HOST, () => {
+      httpsServer = srv;
+      TLS = cert;
+      srv.on('error', (err) => {
+        console.error('   ⚠ Secure listener error (kept running):', err && err.message);
+        try { recordIncident('serverError', err); } catch (e) {}
+      });
+      console.log(`   ✓  Secure link ON — https live on port ${TLS_PORT} (main http on ${PORT} untouched).`);
+      done({ ok: true, https: true });
+    });
+  });
+}
+function stopHttps() {
+  return new Promise((resolve) => {
+    const srv = httpsServer;
+    httpsServer = null;
+    if (!srv) return resolve({ ok: true, https: false });
+    try { if (typeof srv.closeAllConnections === 'function') srv.closeAllConnections(); } catch (e) {}
+    try { srv.close(() => {}); } catch (e) {}
+    console.log(`   ↻  Secure link OFF — https listener on port ${TLS_PORT} stopped (main http on ${PORT} untouched).`);
+    resolve({ ok: true, https: false });
   });
 }
 

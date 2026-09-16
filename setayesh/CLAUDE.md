@@ -263,21 +263,33 @@ via the app's own self-editing feature.
   the owner installed (it only refreshes one whose subject==issuer, CN=Setayesh).
   The cost of self-signed is a one-time per-device browser warning; that is
   stated plainly in the UI, and a real cert (Tailscale/mkcert) removes it. The
-  loader order in index.js is: real cert > AUTO_TLS self-signed > plain HTTP.
-  **HTTPS policy (v9.9.107):** `autoTlsEnabled()` is the single source of truth.
-  An explicit `AUTO_TLS` (config `SETAYESH_AUTO_TLS`) always wins; when UNSET it
-  DEFAULTS ON for a network bind (the phone/LAN case, which needs a secure
-  context) and OFF for a pure localhost bind (`127.0.0.1`/`localhost`/`::1`,
-  already a secure context — and this keeps the 127.0.0.1 test harness on plain
-  http). Because the config writer drops empty values, the secure-link "off"
-  choice is persisted as an explicit `'0'`, not `''` — otherwise a LAN host
-  could never be turned off. **Live switch:** `POST /api/admin/secure-link`
-  generates the cert, replies, then `applyTlsLive()` rebinds the listener
-  between http/https on the SAME port with no restart (replies first, swaps
-  ~300ms later; EADDRINUSE-retries while the old socket releases; `TLS`/`server`
-  are `let`s it reassigns). `applyTlsLive` no-ops on a localhost bind, so the
-  tab/tests there stay put. Switching scheme on one port drops the current
-  http tab — the UI tells the user to reopen the https address.
+  **HTTPS policy (v9.9.108) — TWO listeners, never one that flips scheme:** the
+  MAIN listener is ALWAYS plain http on `PORT` (`let server = http.createServer`)
+  — this is what the desktop / Start-Setayesh.bat open, so it must never become
+  a TLS socket (doing that on the same port is exactly what caused the
+  `ERR_EMPTY_RESPONSE` a browser shows when it speaks http to a TLS port).
+  HTTPS is a SEPARATE listener on `TLS_PORT` (`SETAYESH_TLS_PORT`, default
+  `PORT+443` → 3000→3443), started/stopped live by `startHttps()`/`stopHttps()`.
+  `autoTlsEnabled()` is the single source of truth for whether the companion is
+  on: explicit `AUTO_TLS` (config `SETAYESH_AUTO_TLS`) always wins; UNSET it
+  DEFAULTS ON for a network bind (phone/LAN) and OFF for a pure localhost bind
+  (`127.0.0.1`/`localhost`/`::1`, already a secure context, and keeps the
+  127.0.0.1 test harness on http). The secure-link "off" choice is persisted as
+  an explicit `'0'` (the config writer drops `''`), else a LAN host could never
+  be turned off. `POST /api/admin/secure-link` generates the cert then calls
+  startHttps/stopHttps — no restart, and the desktop http address is untouched
+  throughout; `startHttps` tolerates EADDRINUSE (reports `port-in-use`) so a
+  stale instance can't crash it. The phone opens `https://<lan-ip>:TLS_PORT`.
+- **`toolnoise.js`** — `parseTextToolCalls`/`stripToolNoise`. gpt-oss "harmony"
+  models sometimes emit a tool call as PLAIN TEXT
+  (`<tool_call>{…}</tool_call>` or a bare `{"name","arguments"}` object) instead
+  of the structured `tool_calls` field; on Telegram that leaked as gibberish.
+  `callOpenAiWithTools` now recovers those and RUNS them (feeding the result
+  back as a user turn so the model can answer), and `callWithTools` scrubs every
+  engine's reply through `stripToolNoise` as a final net so raw JSON / harmony
+  tokens never reach a person. `runTelegramTurn` also locks output to Persian,
+  routes news/"today" questions to a tool-capable engine (not a code model),
+  and bans tool/JSON/markup syntax in the answer.
 - **Voice**: `voiceBlock()` in index.js builds the tone rules from each member's
   `tone` and `writeLang` prefs. Children never get the adult "خودمونی" register.
 
