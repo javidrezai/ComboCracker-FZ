@@ -101,6 +101,8 @@ const { versionGreater, localLanIps } = require('./netutil');
 const { readZip, crc32, buildZip } = require('./ziputil');
 const { isUpdatablePath, checkJsSyntax } = require('./srcguard');
 const { sanitizeHistory, maskSecret } = require('./textutil');
+const { ALLOWED_IMAGE_TYPES, MAX_FILE_BYTES, MAX_TEXT_CHARS, TEXT_EXTENSIONS, OFFICE_EXTENSIONS, classifyFile, clampText } = require('./filekind');
+const { guessDueDate, detectCommitment, extractFacts } = require('./factextract');
 const selfsign = require('./selfsign');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
@@ -192,7 +194,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.116';
+const APP_VERSION = '9.9.117';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -1239,19 +1241,7 @@ app.get('/api/config', requireAuth, (req, res) => {
 });
 
 // ---------------- File handling ----------------
-const ALLOWED_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);
-const MAX_FILE_BYTES = 250 * 1024 * 1024;
-const MAX_TEXT_CHARS = 120000;
-const TEXT_EXTENSIONS = new Set([
-  '.txt', '.md', '.markdown', '.csv', '.tsv', '.json', '.yaml', '.yml', '.xml', '.toml',
-  '.js', '.jsx', '.ts', '.tsx', '.mjs', '.cjs', '.vue', '.svelte',
-  '.py', '.rb', '.go', '.rs', '.java', '.kt', '.swift', '.dart', '.scala',
-  '.c', '.h', '.cpp', '.hpp', '.cc', '.cs', '.php', '.pl', '.lua', '.r',
-  '.sh', '.bash', '.zsh', '.bat', '.ps1', '.sql', '.graphql', '.proto',
-  '.html', '.htm', '.css', '.scss', '.sass', '.less',
-  '.ini', '.conf', '.cfg', '.env', '.log', '.lock', '.gradle', '.dockerfile',
-]);
-
+// File-type sets + classifyFile/clampText live in filekind.js (required at top).
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: MAX_FILE_BYTES, files: 8 },
@@ -1287,20 +1277,7 @@ app.post('/api/admin/face', requireAuth, requireAdmin, upload.single('file'), (r
   }
 });
 
-const OFFICE_EXTENSIONS = new Set([
-  '.docx', '.docm', '.xlsx', '.xlsm', '.pptx', '.pptm', '.odt', '.ods', '.odp',
-]);
-
-function classifyFile(file) {
-  if (ALLOWED_IMAGE_TYPES.has(file.mimetype)) return 'image';
-  if (file.mimetype === 'application/pdf' || /\.pdf$/i.test(file.originalname)) return 'pdf';
-  const ext = path.extname(file.originalname).toLowerCase();
-  if (OFFICE_EXTENSIONS.has(ext)) return 'office';
-  if (ext === '.zip' || file.mimetype === 'application/zip') return 'zip';
-  const noExtOk = /^(dockerfile|makefile|gemfile|rakefile|procfile)$/i.test(file.originalname);
-  if (TEXT_EXTENSIONS.has(ext) || noExtOk || file.mimetype.startsWith('text/')) return 'text';
-  return null;
-}
+// OFFICE_EXTENSIONS / classifyFile moved to filekind.js.
 
 
 /* ---------------------------------------------------------------------------
@@ -1477,13 +1454,6 @@ function zipToText(buf, filename) {
     bodies.push('\n--- ' + e.name + ' ---\n' + txt);
   }
   return lines.join('\n') + (bodies.length ? '\n' + bodies.join('\n') : '');
-}
-
-function clampText(text, label) {
-  let out = text;
-  let truncated = false;
-  if (out.length > MAX_TEXT_CHARS) { out = out.slice(0, MAX_TEXT_CHARS); truncated = true; }
-  return `--- file: ${label} ---\n${out}${truncated ? '\n... (truncated)' : ''}`;
 }
 
 // pdf-parse pulls in a large ESM dependency tree that may not survive bundling
@@ -8171,59 +8141,8 @@ function saveMemory() { return _mem.saveMemory(); }
 // Deliberately SUGGESTS rather than saves: guessing wrong and silently
 // filling someone's memory with junk is worse than missing one. The user
 // taps once to keep it.
-const TASK_PATTERNS = [
-  /باید\s+(.{4,80}?)(?:\.|،|$)/,
-  /یادم\s+باشه\s+(.{4,80}?)(?:\.|،|$)/,
-  /فراموش\s+نکنم\s+(.{4,80}?)(?:\.|،|$)/,
-  /قراره\s+(.{4,80}?)(?:\.|،|$)/,
-  /\bI (?:have to|need to|must|should)\s+(.{4,80}?)(?:\.|,|$)/i,
-  /\bremind me to\s+(.{4,80}?)(?:\.|,|$)/i,
-  /\bdon'?t (?:let me )?forget to\s+(.{4,80}?)(?:\.|,|$)/i,
-];
-
-// Dates people actually write, mapped to a real day.
-function guessDueDate(text) {
-  const t = String(text);
-  const now = new Date();
-  const plus = (n) => new Date(now.getTime() + n * 86400000).toISOString().slice(0, 10);
-
-  if (/پس\s*فردا/.test(t)) return plus(2);            // must be checked before "فردا"
-  if (/فردا/.test(t) || /\btomorrow\b/i.test(t)) return plus(1);
-  if (/امروز/.test(t) || /\btoday\b/i.test(t)) return plus(0);
-  if (/هفته\s*(?:ی\s*)?(?:آینده|بعد)|next week/i.test(t)) return plus(7);
-
-  // Explicit dates: 2026-09-15, 15.09.2026, 15/09/2026
-  let m = t.match(/\b(20\d{2})[-/.](\d{1,2})[-/.](\d{1,2})\b/);
-  if (m) return `${m[1]}-${String(m[2]).padStart(2,'0')}-${String(m[3]).padStart(2,'0')}`;
-  m = t.match(/\b(\d{1,2})[./](\d{1,2})[./](20\d{2})\b/);
-  if (m) return `${m[3]}-${String(m[2]).padStart(2,'0')}-${String(m[1]).padStart(2,'0')}`;
-
-  // Weekday names -> the next one of those.
-  const days = { 'شنبه':6,'یکشنبه':0,'دوشنبه':1,'سه‌شنبه':2,'سه شنبه':2,'چهارشنبه':3,'پنجشنبه':4,'پنج‌شنبه':4,'جمعه':5,
-                 'monday':1,'tuesday':2,'wednesday':3,'thursday':4,'friday':5,'saturday':6,'sunday':0 };
-  for (const [name, dow] of Object.entries(days)) {
-    if (new RegExp(name, 'i').test(t)) {
-      let delta = (dow - now.getDay() + 7) % 7;
-      if (delta === 0) delta = 7;
-      return plus(delta);
-    }
-  }
-  return null;
-}
-
-function detectCommitment(message) {
-  const text = String(message || '');
-  if (text.length > 400) return null;      // long pastes are not commitments
-  for (const re of TASK_PATTERNS) {
-    const m = text.match(re);
-    if (m && m[1]) {
-      const task = m[1].trim().replace(/\s+/g, ' ');
-      if (task.length < 4) continue;
-      return { text: task, due: guessDueDate(text) };
-    }
-  }
-  return null;
-}
+// TASK_PATTERNS / guessDueDate / detectCommitment / LEARN_PATTERNS / extractFacts
+// now live in factextract.js (required at the top). autoLearn (below) uses them.
 
 // ---------------- Automatic self-learning (growth) ----------------
 // Setayesh grows on her own. After each message she quietly distils DURABLE
@@ -8234,35 +8153,6 @@ function detectCommitment(message) {
 // call, no cost, fully automatic. Deliberately selective — it only captures
 // clearly-marked facts, because junk memory would make her worse, not better;
 // the owner can delete anything wrong from the memory panel.
-const LEARN_PATTERNS = [
-  // explicit "remember" — highest confidence
-  { kind: 'fact', re: /(?:یادت\s*باشه|به\s*خاطر\s*بسپار|یادداشت\s*کن|حفظ\s*کن)\s*(?:که\s*)?(.{3,160}?)(?:[.،]|$)/ },
-  { kind: 'fact', re: /\bremember(?:\s+that)?\s+(.{3,160}?)(?:[.,]|$)/i },
-  // identity / stable self-facts
-  { kind: 'fact', re: /اسم(?:م| من| منه)?\s*(?:هست\s*)?([آ-ی][آ-ی‌ ]{1,38}?)(?:\s*(?:است|هست|ه)|[.،]|$)/ },
-  { kind: 'fact', re: /\bmy name is\s+([A-Za-z][A-Za-z ]{1,38})/i },
-  { kind: 'fact', re: /(?:من\s+)?(?:در|تو)\s+([^.،\n]{2,50}?)\s+(?:کار\s*می[‌ ]?کنم|زندگی\s*می[‌ ]?کنم)/ },
-  { kind: 'fact', re: /\bI (?:live|work)\b[^.,\n]{0,4}\b(?:in|at|as)\s+([^.,\n]{2,50}?)(?:[.,]|$)/i },
-  // preferences
-  { kind: 'preference', re: /([^.،\n]{2,60}?)\s*(?:رو|را)\s*(?:خیلی\s*)?(?:دوست\s*دارم|دوست\s*ندارم|ترجیح\s*می[‌ ]?دهم)/ },
-  { kind: 'preference', re: /\bI (?:like|love|hate|prefer)\s+([^.,\n]{2,60}?)(?:[.,]|$)/i },
-];
-function extractFacts(message) {
-  const text = String(message || '').trim();
-  if (!text || text.length > 500) return [];   // long pastes aren't personal facts
-  const out = [];
-  for (const p of LEARN_PATTERNS) {
-    const m = text.match(p.re);
-    if (m && m[1]) {
-      const v = m[1].trim().replace(/\s+/g, ' ');
-      if (v.length < 2 || v.length > 170) continue;
-      out.push({ text: v, kind: p.kind });
-    }
-  }
-  const commit = detectCommitment(text);
-  if (commit) out.push({ text: commit.text, kind: 'deadline', due: commit.due });
-  return out;
-}
 function autoLearn(username, message) {
   if (!username) return;
   try {

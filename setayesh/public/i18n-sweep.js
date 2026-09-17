@@ -145,7 +145,64 @@ window.__FA2EN = {
   'خواندن پاسخ با صدا':'Read replies aloud','صحبت کن':'Speak','ضبط صدا':'Record audio','بلوتوث در دسترس نیست.':'Bluetooth is not available.',
   'بخش گوشی بارگذاری نشد.':'The phone section did not load.','چند دقیقه؟ (حداکثر ۴۰)':'How many minutes? (max 40)','برای چند ساعت؟':'For how many hours?',
   'در حال ساخت…':'Generating…','ساخت تصویر':'Generate image','تبدیل فرمت':'Convert format','یک عکس انتخاب کن':'Pick an image','تبدیل به':'Convert to',
-  'اندازه':'Size','بساز نسخه‌ی نصبی از خودم':'Build an installable copy of myself','نصب‌شده‌ها':'Installed','رد شده':'Rejected','نسخه‌ی فعلی':'Current version'
+  'اندازه':'Size','بساز نسخه‌ی نصبی از خودم':'Build an installable copy of myself','نصب‌شده‌ها':'Installed','رد شده':'Rejected','نسخه‌ی فعلی':'Current version',
+  // — second sweep pass (found by walking every panel in the browser) —
+  'این دستگاه را بشناس و دفعه‌ی بعد خودکار وارد شو':'Remember this device and sign in automatically next time',
+  '⚠️ شبکه امن نیست — این شبکه جلوی اینترنت یک صفحه‌ی ورود گذاشته است.':'⚠️ Network is not secure — this network put a login page in front of the internet.',
+  '🏠 تابلوی خانواده':'🏠 Family board','سنجاق کن (بالای تابلو بماند)':'Pin (keep at the top of the board)',
+  'پاک کردن خوانده‌شده‌ها':'Clear read ones','پاک کردن همه (به‌جز سنجاق‌شده)':'Clear all (except pinned)','پاک کردن همه (با سنجاق‌شده‌ها)':'Clear all (including pinned)',
+  'هر سرویس سازگار با OpenAI (مثل یک سرور محلی یا ابری). آدرس پایه و نام مدل‌ها را بده.':'Any OpenAI-compatible service (a local or cloud server). Give the base URL and model names.',
+  'سن و علایق هر نفر — رفتار ستایش با آن‌ها متناسب می‌شود.':'Each person’s age and interests — Setayesh adapts to them.',
+  'نام فامیل، نام مدرسه و هرچه نباید بیرون برود. نام حساب‌ها خودکار محافظت می‌شوند.':'Surname, school name and anything that must not leak. Account names are protected automatically.',
+  '🤖 حالت خودمختار — خودش تغییر را انجام دهد':'🤖 Autonomous mode — let it make the change itself','وقتی روشن باشد، هر تغییری که':'When on, any change that',
+  'خودت در همین برنامه':'yourself, inside this app','محافظت:':'Protection:',
+  'دستورهایی که از تلگرام، ایمیل، اینباکس یا کارهای پس‌زمینه می‌آیند':'Commands coming from Telegram, email, inbox or background jobs',
+  'کد روی این کامپیوتر اجرا می‌شود. فقط اگر پایتون نصب است.':'Code runs on this computer. Only if Python is installed.',
+  'برای وقتی که می‌خواهی هیچ‌چیز از این کامپیوتر خارج نشود.':'For when you want nothing to leave this computer.',
+  '🎛️ مدل‌های لوکال (Ollama) — کم و زیاد کن':'🎛️ Local models (Ollama) — add or remove','🔎 شناسایی از Ollama':'🔎 Detect from Ollama',
+  '🔎 موتورهای جستجو — کم و زیاد کن':'🔎 Search engines — add or remove','ذخیره موتورهای جستجو':'Save search engines',
+  '🧠 مغز پایتون + کتابخانه‌ها':'🧠 Python brain + libraries','📥 دانلود کتابخانه‌های مهم پایتون':'📥 Download key Python libraries',
+  'دستگاه‌هایی که به ستایش وصل شده‌اند. اگر چیز ناآشنایی دیدی، حذفش کن و رمزها را عوض کن.':'Devices connected to Setayesh. If you see anything unfamiliar, remove it and change your passwords.',
+  'چند کامپیوتر خانه اطلاعاتشان را یکی می‌کنند. رمزگذاری‌شده، فقط بین کامپیوترهای خودت.':'Several home computers merge their data. Encrypted, only between your own computers.',
+  'مرکز (مینی‌پی‌سی)':'Hub (mini-PC)','فرعی (لپ‌تاپ)':'Secondary (laptop)','کلید مشترک (روی همه‌ی کامپیوترها یکی)':'Shared key (same on all computers)',
+  'آدرس این مرکز (به کامپیوترهای دیگر بده)':'This hub’s address (give it to the other computers)','چه چیزی یکی شود':'What to merge',
+  'حافظه و مهلت‌ها':'Memory & deadlines','همین حالا هماهنگ کن':'Sync now',
+  'برای دریافت ایمیل، آدرس ایمیلت را در بخش موتورها/تنظیمات بگذار (NOTIFY_EMAIL).':'To receive email, set your email address in Engines/Settings (NOTIFY_EMAIL).',
+  '📥 پوشه‌ی ورودی — همه‌چیز یک‌جا':'📥 Inbox folder — everything in one place','هر فایلی در این پوشه بگذاری، خودش می‌فهمد چیست:':'Drop any file in this folder and it figures out what it is:',
+  'فایل':'File','→ کتابخانه‌ی اسکریپت ·':'→ Script library ·','به‌روزرسانی → نصب · بقیه → نگه داشته می‌شود':'Update → install · the rest → kept',
+  'فایل‌های پایتون خودت. آپلود کن، اجرا کن، حذف کن.':'Your own Python files. Upload, run, delete.','📲 آپلود از گوشی':'📲 Upload from phone',
+  'حالت تعمیر: نصب مجدد همان نسخه (برای کامل‌کردن نصب ناقص)':'Repair mode: reinstall the same version (to finish a partial install)',
+  'یا یک فایل ZIP در پوشه‌ی':'or a ZIP file in the folder','بگذار — خودش نصب می‌کند و ری‌استارت می‌شود.':'drop it — it installs itself and restarts.',
+  '📦 بساز و دانلود کن (نسخه‌ی فعلی)':'📦 Build & download (current version)','بدون دست‌زدن به کد. تغییر بده، ذخیره کن، صفحه را رفرش کن.':'No touching the code. Change it, save, refresh the page.',
+  'چهرهٔ ستایش':'Setayesh’s face','بارگذاری نشد':'Failed to load','کروم نقره‌ای':'Silver chrome','کریستال':'Crystal','طلایی':'Gold','نئون':'Neon',
+  'چینی سفید':'White porcelain','هولوگرام':'Hologram','ذخیرهٔ چهره':'Save face','🎲 نمونه‌های تازه':'🎲 Fresh samples','⬆️ آپلود عکس خودم':'⬆️ Upload my own photo',
+  'پیش‌فرض':'Default','اسم برنامه':'App name','پس‌زمینه':'Background','گردی گوشه‌ها':'Corner roundness','افکت‌های پس‌زمینه (روی کامپیوتر)':'Background effects (on desktop)',
+  'یک انتخاب، همه‌ی تنظیمات را با هم عوض می‌کند.':'One choice changes all the settings together.','پرشتاب':'Fast',
+  'صفحات واقعی را می‌خواند و لینکشان را کنار هر مطلب می‌گذارد تا خودت بررسی کنی.':'It reads real pages and puts their link next to each item so you can check.',
+  'خالی = کل اینترنت. یک دامنه در هر خط، مثلاً developer.mozilla.org':'Empty = the whole internet. One domain per line, e.g. developer.mozilla.org',
+  'تأیید خودکار (بدون بررسی من) — پیشنهاد نمی‌شود':'Auto-approve (without my review) — not recommended','در انتظار تأیید شما':'Awaiting your approval',
+  'تأییدشده (در حال استفاده)':'Approved (in use)','📱 باز کردن روی گوشی':'📱 Open on phone','مغز محلی ستایش (پایتون)':'Setayesh local brain (Python)','📦 بساز نسخه':'📦 Build a version',
+  'بچرخان · با دو انگشت یا اسکرول زوم کن · روی هر بخش بزن':'Rotate · pinch or scroll to zoom · tap any part','آنچه ستایش درباره‌ی تو به‌خاطر سپرده':'What Setayesh has remembered about you',
+  '💡 دانسته':'💡 Known','⭐ ترجیح':'⭐ Preference','📦 پروژه':'📦 Project','📄 سند':'📄 Document','⏰ مهلت':'⏰ Deadline',
+  'مهلت‌ها و موارد اخیر':'Deadlines & recent items','دانسته‌ها، ترجیح‌ها و پروژه‌ها':'Facts, preferences & projects','اتصال ستایش به سرویس‌های بیرونی':'Connect Setayesh to external services',
+  '🔍 پیدا کن':'🔍 Find','Google · Gmail و تقویم':'Google · Gmail & Calendar','🔐 بکاپ رمزنگاری‌شده → درایو':'🔐 Encrypted backup → Drive','رمزنگاری و آپلود به Google Drive':'Encrypt & upload to Google Drive',
+  'تلگرام':'Telegram','یک ربات از':'a bot from','بساز و توکنش را بگذار. Chat ID خودت را از':'create one and paste its token. Get your Chat ID from','بگیر.':'get it.',
+  'مغز':'Brain','جستجوی زنده':'Live search','منو':'Menu',
+  'هنوز کاری انجام نشده. یادگیری را روشن کن یا «همین حالا یک تحقیق» را بزن.':'Nothing done yet. Turn on learning or press “Run a research cycle now”.',
+  'صف خالی است — خودش موضوع انتخاب می‌کند.':'The queue is empty — it picks topics itself.','چیزی در انتظار تأیید نیست.':'Nothing awaiting approval.',
+  // engine picker composite labels
+  'Google · Gemini · رایگان':'Google · Gemini · free','Groq · ultra-fast · رایگان':'Groq · ultra-fast · free','OpenRouter · many models · رایگان':'OpenRouter · many models · free',
+  'Cerebras · fast · رایگان':'Cerebras · fast · free','Mistral · رایگان':'Mistral · free','مغز محلی ستایش (پایتون) · رایگان':'Setayesh local brain (Python) · free',
+  'Bad Engine · دلخواه':'Bad Engine · custom','Good Engine · دلخواه':'Good Engine · custom','Stub · دلخواه':'Stub · custom','مغز محلی ستایش (پایتون) (پیش‌فرض)':'Setayesh local brain (Python) (default)',
+  // placeholders
+  'نام مدل‌ها با کاما، مثل gpt-4o,gpt-4o-mini':'Model names, comma-separated, e.g. gpt-4o,gpt-4o-mini','یک رمز که فقط تو می‌دانی — حداقل ۸ حرف':'A password only you know — at least 8 characters',
+  'مثلاً: سلام، چه کمکی می‌خوای؟':'e.g. Hi, how can I help?','موضوعی که می‌خواهید یاد بگیرد...':'A topic you want it to learn...','چیزی که می‌خواهی به‌خاطر بسپارد...':'Something you want it to remember...',
+  'یا مسیر والت را دستی بنویس…':'Or type the vault path manually…','ghp_… (خالی = قطع اتصال)':'ghp_… (empty = disconnect)',
+  'رمز پشتیبان (حداقل ۸ حرف — همین را برای بازیابی لازم داری)':'Backup password (at least 8 chars — you’ll need it to restore)','Chat ID (مثلاً 123456789)':'Chat ID (e.g. 123456789)',
+  // — third sweep pass (final stragglers) —
+  'مغز ستایش ۰.۶':'Setayesh brain 0.6','✕ بستن':'✕ Close','در حال انتخاب موضوع برای تحقیق…':'Choosing a research topic…',
+  'هنوز چیزی تأیید نشده.':'Nothing approved yet.','دستگاه‌ها:':'Devices:','والتی پیدا نشد — مسیر را دستی بنویس.':'No vault found — type the path manually.',
+  'تنظیم نشده':'Not set'
 };
 
 (function(){
@@ -159,7 +216,9 @@ window.__FA2EN = {
 
   var ORIG = new WeakMap();                       // text node -> original Persian
   // Text-node skip: never translate the user's OWN content areas or code.
-  var SKIP = '#thread, #msgBox, textarea, input, select, [contenteditable], code, pre, .msg, .bubble, #boardList, #boardBody, #memList, #memBody, [data-noi18n]';
+  // Note: <select> is intentionally NOT skipped — <option> labels are UI chrome
+  // (engine/model names), not user-typed values, so they should localize too.
+  var SKIP = '#thread, #msgBox, textarea, input, [contenteditable], code, pre, .msg, .bubble, #boardList, #boardBody, #memList, #memBody, [data-noi18n]';
   // Attribute skip is narrower: a placeholder/title on an input IS UI chrome and
   // must be translated — we only ever touch those attributes, never a value.
   var ATTR_SKIP = '#thread, #boardList, #boardBody, #memList, #memBody, [data-noi18n]';

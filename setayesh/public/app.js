@@ -1,4 +1,4 @@
-/* SETAYESH_BUILD 9.9.116 */
+/* SETAYESH_BUILD 9.9.117 */
 (function(){
 'use strict';
 
@@ -2506,12 +2506,13 @@ function loadEngineHealth(){
   adminFetch('/api/admin/engine-health').then(function(d){
     box.innerHTML='';
     (d.engines||[]).forEach(function(e){
-      var state=e.quarantined?'از دور خارج':(e.cooling?('استراحت · '+Math.ceil(e.coolingFor/60)+' دقیقه'):'سالم');
+      var _en=lang==='en';
+      var state=e.quarantined?(_en?'quarantined':'از دور خارج'):(e.cooling?((_en?'resting · ':'استراحت · ')+Math.ceil(e.coolingFor/60)+(_en?' min':' دقیقه')):(_en?'healthy':'سالم'));
       var col=e.quarantined?'#fb7185':(e.cooling?'#fbbf24':'#34d399');
       var row=el('div','tk-card');
       row.setAttribute('style','padding:9px 11px;margin-bottom:6px;display:flex;gap:10px;align-items:center;flex-wrap:wrap');
       var dot=el('span');dot.setAttribute('style','width:9px;height:9px;border-radius:50%;background:'+col+';flex:none');
-      var name=el('span');name.textContent=e.label+(e.isDefault?' (پیش‌فرض)':'');
+      var name=el('span');name.textContent=e.label+(e.isDefault?(_en?' (default)':' (پیش‌فرض)'):'');
       name.setAttribute('style','font-size:12.5px;flex:1;min-width:120px');
       var stat=el('span');
       stat.textContent=state+' · ✓'+e.ok+' ✕'+e.fail+(e.avgMs?(' · '+(e.avgMs/1000).toFixed(1)+'s'):'');
@@ -2866,10 +2867,11 @@ function pollActivity(){
       now.textContent=d.enabled?'بی‌کار — منتظر زمان تحقیق بعدی':'یادگیری خاموش است';
       pulse.style.background=d.enabled?'#38bdf8':'#5d6478'; pulse.style.animation='';
     }
+    var _en=lang==='en';
     var bits=[];
-    bits.push('امروز: '+d.runsToday+' از '+d.maxPerDay+' تحقیق');
-    if(d.pending)bits.push(d.pending+' مورد منتظر تأیید');
-    if(d.nextRun&&d.enabled)bits.push('تحقیق بعدی حدود '+new Date(d.nextRun).toLocaleTimeString());
+    bits.push(_en?('today: '+d.runsToday+' of '+d.maxPerDay+' research'):('امروز: '+d.runsToday+' از '+d.maxPerDay+' تحقیق'));
+    if(d.pending)bits.push(d.pending+(_en?' awaiting approval':' مورد منتظر تأیید'));
+    if(d.nextRun&&d.enabled)bits.push((_en?'next research ~':'تحقیق بعدی حدود ')+new Date(d.nextRun).toLocaleTimeString());
     next.textContent=bits.join(' · ');
     var lg=$('learnActLog'); if(lg){ lg.innerHTML='';
       (d.log||[]).forEach(function(l){

@@ -309,8 +309,20 @@ via the app's own self-editing feature.
   self-update guards (which files a package may write; does each JS file parse).
 - **`textutil.js`** (v9.9.116) — `sanitizeHistory` + `maskSecret`, pure text
   helpers. All three have unit tests in smoke.test.js (100 tests total).
-  index.js is now ~9,400 lines (down from ~9,560); the split continues module
+  index.js is now ~9,290 lines (down from ~9,560); the split continues module
   by module, tests staying green at each step.
+- **`filekind.js`** (v9.9.117) — `classifyFile` / `clampText` + the file-type
+  Sets (image/text/office extensions, size/char caps). **`factextract.js`**
+  (v9.9.117) — `guessDueDate` / `detectCommitment` / `extractFacts` + the
+  LEARN/TASK regex patterns (rule-based self-learning, no model call). Both
+  pure, both unit-tested.
+- **Full-UI localization (v9.9.117):** the `i18n-sweep.js` dictionary was
+  completed by WALKING every panel in a headless browser in English and
+  collecting each remaining Persian phrase (126 → 13 → ~a handful of
+  deliberately-kept dynamic/user strings). `<select>` is no longer skipped
+  (option labels are UI). Two live status lines with numbers (engine health,
+  the research daily counter) are localized in app.js code, not the dictionary.
+  To grow coverage, re-run the browser scan and add any phrase it lists.
 - **`toolnoise.js`** — `parseTextToolCalls`/`stripToolNoise`. gpt-oss "harmony"
   models sometimes emit a tool call as PLAIN TEXT
   (`<tool_call>{…}</tool_call>` or a bare `{"name","arguments"}` object) instead
