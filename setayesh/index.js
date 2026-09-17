@@ -98,6 +98,9 @@ const http = require('http');
 const https = require('https');
 const net = require('net');
 const { versionGreater, localLanIps } = require('./netutil');
+const { readZip, crc32, buildZip } = require('./ziputil');
+const { isUpdatablePath, checkJsSyntax } = require('./srcguard');
+const { sanitizeHistory, maskSecret } = require('./textutil');
 const selfsign = require('./selfsign');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
@@ -189,7 +192,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.115';
+const APP_VERSION = '9.9.116';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -2840,46 +2843,9 @@ function newJobDir() {
   return dir;
 }
 
-// Minimal ZIP writer (stored, no compression) so there is no new dependency.
-function buildZip(entries) {
-  const chunks = [], central = [];
-  let offset = 0;
-  const dosTime = () => { const d = new Date(); return [
-    ((d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() / 2)) & 0xffff,
-    (((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate()) & 0xffff ]; };
-  const [time, date] = dosTime();
-  const crcTable = (() => { const t = []; for (let n = 0; n < 256; n++) { let c = n;
-    for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
-  const crc32 = (buf) => { let c = 0xFFFFFFFF;
-    for (let i = 0; i < buf.length; i++) c = crcTable[(c ^ buf[i]) & 0xFF] ^ (c >>> 8);
-    return (c ^ 0xFFFFFFFF) >>> 0; };
-
-  for (const e of entries) {
-    const nameBuf = Buffer.from(e.name, 'utf8');
-    const data = Buffer.isBuffer(e.data) ? e.data : Buffer.from(e.data, 'utf8');
-    const crc = crc32(data);
-    const local = Buffer.alloc(30);
-    local.writeUInt32LE(0x04034b50, 0); local.writeUInt16LE(20, 4); local.writeUInt16LE(0x0800, 6);
-    local.writeUInt16LE(0, 8); local.writeUInt16LE(time, 10); local.writeUInt16LE(date, 12);
-    local.writeUInt32LE(crc, 14); local.writeUInt32LE(data.length, 18); local.writeUInt32LE(data.length, 22);
-    local.writeUInt16LE(nameBuf.length, 26); local.writeUInt16LE(0, 28);
-    chunks.push(local, nameBuf, data);
-
-    const cen = Buffer.alloc(46);
-    cen.writeUInt32LE(0x02014b50, 0); cen.writeUInt16LE(20, 4); cen.writeUInt16LE(20, 6);
-    cen.writeUInt16LE(0x0800, 8); cen.writeUInt16LE(0, 10); cen.writeUInt16LE(time, 12); cen.writeUInt16LE(date, 14);
-    cen.writeUInt32LE(crc, 16); cen.writeUInt32LE(data.length, 20); cen.writeUInt32LE(data.length, 24);
-    cen.writeUInt16LE(nameBuf.length, 28); cen.writeUInt32LE(0, 30); cen.writeUInt32LE(0, 34);
-    cen.writeUInt16LE(0, 32); cen.writeUInt32LE(offset, 42);
-    central.push(cen, nameBuf);
-    offset += local.length + nameBuf.length + data.length;
-  }
-  const centralBuf = Buffer.concat(central);
-  const end = Buffer.alloc(22);
-  end.writeUInt32LE(0x06054b50, 0); end.writeUInt16LE(entries.length, 8); end.writeUInt16LE(entries.length, 10);
-  end.writeUInt32LE(centralBuf.length, 12); end.writeUInt32LE(offset, 16);
-  return Buffer.concat([...chunks, centralBuf, end]);
-}
+// (A second, "stored/no-compression" buildZip used to live here. It was dead
+// code — the deflate buildZip declared later always won via hoisting — so it
+// was removed when the ZIP helpers moved to ziputil.js.)
 
 // Markdown/text -> a self-contained printable HTML file. Opening it and
 // pressing Ctrl+P gives a PDF, with no PDF library to install.
@@ -3975,17 +3941,6 @@ function resolveTarget(providerId, model, username, opts) {
   return { id, model: chosen, pinned: !!pin };
 }
 
-function sanitizeHistory(raw) {
-  let history = [];
-  if (typeof raw === 'string') { try { history = JSON.parse(raw); } catch (e) { history = []; } }
-  else if (Array.isArray(raw)) history = raw;
-  return Array.isArray(history)
-    ? history
-        .filter(m => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string')
-        .slice(-24)
-        .map(m => ({ role: m.role, content: m.content }))
-    : [];
-}
 
 // Per-student tutor profiles — appended for specific accounts so the assistant
 // also acts as a personal school tutor at the right level.
@@ -7523,86 +7478,8 @@ const UPDATES_DIR = process.env.SETAYESH_UPDATES_DIR || path.join(DATA_DIR, 'upd
 
 // versionGreater / localLanIps now live in netutil.js (required at the top).
 
-// Minimal zip reader — enough to list and extract a stored/deflated archive
-// without adding a dependency.
-function readZip(buf) {
-  const files = {};
-  const eocd = (() => {
-    for (let i = buf.length - 22; i >= 0 && i > buf.length - 66000; i--) {
-      if (buf.readUInt32LE(i) === 0x06054b50) return i;
-    }
-    return -1;
-  })();
-  if (eocd === -1) throw new Error('فایل ZIP معتبر نیست.');
-  const count = buf.readUInt16LE(eocd + 10);
-  let p = buf.readUInt32LE(eocd + 16);
-  for (let i = 0; i < count; i++) {
-    if (buf.readUInt32LE(p) !== 0x02014b50) break;
-    const method = buf.readUInt16LE(p + 10);
-    const nameLen = buf.readUInt16LE(p + 28);
-    const extraLen = buf.readUInt16LE(p + 30);
-    const commentLen = buf.readUInt16LE(p + 32);
-    const localOff = buf.readUInt32LE(p + 42);
-    const name = buf.slice(p + 46, p + 46 + nameLen).toString('utf8');
-    // local header -> data
-    const lNameLen = buf.readUInt16LE(localOff + 26);
-    const lExtraLen = buf.readUInt16LE(localOff + 28);
-    const compSize = buf.readUInt32LE(p + 20);
-    const dataStart = localOff + 30 + lNameLen + lExtraLen;
-    const raw = buf.slice(dataStart, dataStart + compSize);
-    if (!name.endsWith('/')) {
-      try {
-        files[name] = method === 0 ? raw : zlib.inflateRawSync(raw);
-      } catch (e) { /* skip an entry we cannot read */ }
-    }
-    p += 46 + nameLen + extraLen + commentLen;
-  }
-  return files;
-}
-
-// ---- Build my own update package ----
-// Setayesh can package its current source into a standard ZIP the app can
-// install again — a real "make an update/backup of myself". No dependency: a
-// tiny writer paired with the readZip() above (deflate + CRC32).
-const _CRC_TABLE = (() => {
-  const t = new Int32Array(256);
-  for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1); t[n] = c; }
-  return t;
-})();
-function crc32(buf) {
-  let c = 0 ^ (-1);
-  for (let i = 0; i < buf.length; i++) c = (c >>> 8) ^ _CRC_TABLE[(c ^ buf[i]) & 0xFF];
-  return (c ^ (-1)) >>> 0;
-}
-function buildZip(entries) {
-  const chunks = [], central = [];
-  let offset = 0;
-  for (const e of entries) {
-    const nameBuf = Buffer.from(e.name, 'utf8');
-    const crc = crc32(e.data);
-    const comp = zlib.deflateRawSync(e.data);
-    const local = Buffer.alloc(30);
-    local.writeUInt32LE(0x04034b50, 0); local.writeUInt16LE(20, 4); local.writeUInt16LE(0, 6);
-    local.writeUInt16LE(8, 8); local.writeUInt16LE(0, 10); local.writeUInt16LE(0x21, 12);
-    local.writeUInt32LE(crc, 14); local.writeUInt32LE(comp.length, 18); local.writeUInt32LE(e.data.length, 22);
-    local.writeUInt16LE(nameBuf.length, 26); local.writeUInt16LE(0, 28);
-    chunks.push(local, nameBuf, comp);
-    const cd = Buffer.alloc(46);
-    cd.writeUInt32LE(0x02014b50, 0); cd.writeUInt16LE(20, 4); cd.writeUInt16LE(20, 6); cd.writeUInt16LE(0, 8);
-    cd.writeUInt16LE(8, 10); cd.writeUInt16LE(0, 12); cd.writeUInt16LE(0x21, 14);
-    cd.writeUInt32LE(crc, 16); cd.writeUInt32LE(comp.length, 20); cd.writeUInt32LE(e.data.length, 24);
-    cd.writeUInt16LE(nameBuf.length, 28); cd.writeUInt16LE(0, 30); cd.writeUInt16LE(0, 32);
-    cd.writeUInt16LE(0, 34); cd.writeUInt16LE(0, 36); cd.writeUInt32LE(0, 38); cd.writeUInt32LE(offset, 42);
-    central.push(cd, nameBuf);
-    offset += local.length + nameBuf.length + comp.length;
-  }
-  const cdBuf = Buffer.concat(central);
-  const eocd = Buffer.alloc(22);
-  eocd.writeUInt32LE(0x06054b50, 0); eocd.writeUInt16LE(0, 4); eocd.writeUInt16LE(0, 6);
-  eocd.writeUInt16LE(entries.length, 8); eocd.writeUInt16LE(entries.length, 10);
-  eocd.writeUInt32LE(cdBuf.length, 12); eocd.writeUInt32LE(offset, 16); eocd.writeUInt16LE(0, 20);
-  return Buffer.concat([...chunks, cdBuf, eocd]);
-}
+// The ZIP reader/writer (readZip / crc32 / buildZip) now lives in ziputil.js,
+// required at the top. Used by the self-update packager and installer.
 // Walk the app folder, skipping runtime state, node_modules and the like —
 // the same shape as a release zip (source at the root).
 function collectAppFiles() {
@@ -7826,35 +7703,7 @@ app.get('/api/admin/brain/signals', requireAuth, requireAdmin, (req, res) => {
 // (downloaded Python libs, vault logs, the private memory mirror). Every .js in
 // the package is still syntax-checked before anything is written, and the write
 // step also confirms the resolved path stays inside the app folder.
-function isUpdatablePath(rel) {
-  if (!rel) return false;
-  const parts = rel.split('/');
-  if (parts.some((p) => p === '..' || p === '')) return false;
-  if (/^([a-zA-Z]:|\/|\\)/.test(rel)) return false;
-  if (parts[0] === 'node_modules' || parts.includes('node_modules')) return false;
-  if (parts[0] === '.git' || parts.includes('.git')) return false;
-  const base = parts[parts.length - 1];
-  if (base.startsWith('.setayesh')) return false;
-  if (rel.startsWith('pybrain/libs/') && base !== '.gitkeep' && base.toUpperCase() !== 'README.MD') return false;
-  if (rel.startsWith('pybrain/vault/logs/') && base.toUpperCase() !== 'README.MD') return false;
-  if (rel.startsWith('public/faces/')) return false;   // the owner's chosen face is theirs, not ours
-  if (rel === 'pybrain/vault/knowledge/app-memory.md') return false;
-  return true;
-}
-
-function checkJsSyntax(code, label) {
-  return new Promise((resolve) => {
-    const tmp = path.join(os.tmpdir(), 'sy-' + crypto.randomBytes(4).toString('hex') + '.js');
-    try { fs.writeFileSync(tmp, code); } catch (e) { return resolve('نوشتن فایل موقت ناموفق'); }
-    const c = spawn(process.execPath, ['--check', tmp], { shell: false, windowsHide: true });
-    let err = '';
-    c.stderr.on('data', (d) => { err += d.toString(); });
-    c.on('close', (code2) => {
-      try { fs.unlinkSync(tmp); } catch (e) {}
-      resolve(code2 === 0 ? null : `${label}: ${err.split('\n')[0] || 'خطای نحوی'}`);
-    });
-  });
-}
+// isUpdatablePath / checkJsSyntax now live in srcguard.js (required at the top).
 
 async function inspectUpdateZip(zipPath, opts) {
   opts = opts || {};
@@ -8556,12 +8405,6 @@ const EDITABLE_KEYS = {
   HOME_LAT:          { secret: false, label: 'عرض جغرافیایی خانه (برای محافظ ایرفرایر)' },
   HOME_LON:          { secret: false, label: 'طول جغرافیایی خانه (برای محافظ ایرفرایر)' },
 };
-
-function maskSecret(v) {
-  const s = String(v || '');
-  if (!s) return '';
-  return s.length <= 8 ? '••••' : s.slice(0, 4) + '••••••' + s.slice(-4);
-}
 
 function writeConfigFile(updates) {
   const current = readConfigFile();

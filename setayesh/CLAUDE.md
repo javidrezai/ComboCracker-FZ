@@ -301,6 +301,16 @@ via the app's own self-editing feature.
 - **`netutil.js`** (v9.9.111) — `versionGreater` + `localLanIps`, pure helpers
   split out of index.js as another step of the incremental modularization
   (alongside `toolnoise.js`, `app-i18n.js`, `selfsign.js`, `insight.js`, …).
+- **`ziputil.js`** (v9.9.116) — `readZip` / `crc32` / `buildZip`, the
+  dependency-free ZIP reader+writer for the self-update packager/installer.
+  Extracting it also removed a dead duplicate `buildZip` (a "stored" writer that
+  was always overridden by the deflate one via hoisting).
+- **`srcguard.js`** (v9.9.116) — `isUpdatablePath` + `checkJsSyntax`, the
+  self-update guards (which files a package may write; does each JS file parse).
+- **`textutil.js`** (v9.9.116) — `sanitizeHistory` + `maskSecret`, pure text
+  helpers. All three have unit tests in smoke.test.js (100 tests total).
+  index.js is now ~9,400 lines (down from ~9,560); the split continues module
+  by module, tests staying green at each step.
 - **`toolnoise.js`** — `parseTextToolCalls`/`stripToolNoise`. gpt-oss "harmony"
   models sometimes emit a tool call as PLAIN TEXT
   (`<tool_call>{…}</tool_call>` or a bare `{"name","arguments"}` object) instead

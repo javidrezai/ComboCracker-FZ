@@ -1505,6 +1505,43 @@ test('netutil.versionGreater and localLanIps behave', () => {
   assert.ok(ips.every((ip) => /^\d+\.\d+\.\d+\.\d+$/.test(ip)), 'entries are IPv4 strings');
 });
 
+// ---- Modularization round 2: ziputil / srcguard / textutil (v9.9.116) ----
+test('ziputil round-trips a zip and rejects garbage', () => {
+  const zu = require(path.join(ROOT, 'ziputil.js'));
+  const zip = zu.buildZip([
+    { name: 'a.txt', data: Buffer.from('hello جهان') },
+    { name: 'dir/b.js', data: Buffer.from('const x = 1;\n') },
+  ]);
+  assert.ok(Buffer.isBuffer(zip) && zip.length > 0);
+  const back = zu.readZip(zip);
+  assert.equal(back['a.txt'].toString('utf8'), 'hello جهان');
+  assert.equal(back['dir/b.js'].toString('utf8'), 'const x = 1;\n');
+  assert.equal(typeof zu.crc32(Buffer.from('abc')), 'number');
+  assert.throws(() => zu.readZip(Buffer.from('not a zip')), /ZIP/);
+});
+
+test('srcguard blocks unsafe update paths and catches bad JS', async () => {
+  const sg = require(path.join(ROOT, 'srcguard.js'));
+  assert.equal(sg.isUpdatablePath('index.js'), true);
+  assert.equal(sg.isUpdatablePath('public/app.js'), true);
+  assert.equal(sg.isUpdatablePath('../etc/passwd'), false, 'traversal blocked');
+  assert.equal(sg.isUpdatablePath('/abs/path'), false, 'absolute blocked');
+  assert.equal(sg.isUpdatablePath('node_modules/x/index.js'), false, 'node_modules blocked');
+  assert.equal(sg.isUpdatablePath('.setayesh-config'), false, 'runtime state blocked');
+  assert.equal(await sg.checkJsSyntax('const a = 1;', 'ok.js'), null, 'valid JS passes');
+  assert.match(await sg.checkJsSyntax('const = ;', 'bad.js'), /bad\.js/, 'broken JS is reported');
+});
+
+test('textutil sanitizeHistory and maskSecret behave', () => {
+  const tu = require(path.join(ROOT, 'textutil.js'));
+  const h = tu.sanitizeHistory('[{"role":"user","content":"hi"},{"role":"system","content":"x"},{"role":"assistant","content":"yo"}]');
+  assert.deepEqual(h, [{ role: 'user', content: 'hi' }, { role: 'assistant', content: 'yo' }], 'only user/assistant string turns kept');
+  assert.equal(tu.sanitizeHistory('not json').length, 0);
+  assert.equal(tu.maskSecret('sk-1234567890abcd'), 'sk-1••••••abcd');
+  assert.equal(tu.maskSecret('short'), '••••');
+  assert.equal(tu.maskSecret(''), '');
+});
+
 // ---- UI language purity: fa and en dictionaries stay in sync (v9.9.111) ----
 // جاوید: «انگلیسی فقط انگلیسی، فارسی فقط فارسی». The sidebar buttons leaked a
 // mix (an English label over a Persian sub-label) because they were hard-coded
