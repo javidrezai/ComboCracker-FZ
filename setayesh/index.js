@@ -103,6 +103,7 @@ const { isUpdatablePath, checkJsSyntax } = require('./srcguard');
 const { sanitizeHistory, maskSecret } = require('./textutil');
 const { ALLOWED_IMAGE_TYPES, MAX_FILE_BYTES, MAX_TEXT_CHARS, TEXT_EXTENSIONS, OFFICE_EXTENSIONS, classifyFile, clampText } = require('./filekind');
 const { guessDueDate, detectCommitment, extractFacts } = require('./factextract');
+const { xmlToText, htmlToText } = require('./htmltext');
 const selfsign = require('./selfsign');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
@@ -194,7 +195,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.118';
+const APP_VERSION = '9.9.119';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -1336,23 +1337,7 @@ function zipEntries(buf) {
 
 // XML -> readable text. Keeps paragraph and cell breaks so the result reads
 // like a document rather than one long run-on line.
-function xmlToText(xml) {
-  return String(xml)
-    .replace(/<w:br[^>]*\/?>/g, '\n')
-    .replace(/<\/w:p>/g, '\n')
-    .replace(/<\/a:p>/g, '\n')
-    .replace(/<\/text:p>/g, '\n')
-    .replace(/<\/row>/gi, '\n')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&#x([0-9a-fA-F]+);/g, (m, h) => String.fromCodePoint(parseInt(h, 16)))
-    .replace(/&#(\d+);/g, (m, d) => String.fromCodePoint(parseInt(d, 10)))
-    .replace(/&lt;/g, '<').replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"').replace(/&apos;/g, "'")
-    .replace(/&amp;/g, '&')
-    .replace(/[ \t\u00a0]+/g, ' ')
-    .replace(/\n\s*\n\s*\n+/g, '\n\n')
-    .trim();
-}
+// xmlToText / htmlToText now live in htmltext.js (required at the top).
 
 function officeToText(buf, filename) {
   const entries = zipEntries(buf);
@@ -2539,21 +2524,6 @@ async function assertPublicUrl(rawUrl) {
 
 // Very small HTML -> text extractor. Good enough to read docs and articles
 // without pulling in a parser dependency.
-function htmlToText(html) {
-  return String(html)
-    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-    .replace(/<noscript[\s\S]*?<\/noscript>/gi, ' ')
-    .replace(/<!--[\s\S]*?-->/g, ' ')
-    .replace(/<\/(p|div|h[1-6]|li|tr|section|article|br)>/gi, '\n')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'")
-    .replace(/[ \t]+/g, ' ')
-    .replace(/\n\s*\n\s*\n+/g, '\n\n')
-    .trim();
-}
-
 async function webFetch(rawUrl, maxChars) {
   let url = await assertPublicUrl(rawUrl);
   let res, hops = 0;
