@@ -36,6 +36,11 @@
 (function () {
   'use strict';
 
+  // Language: mirror the app's current choice (index.html's lang attribute is
+  // the one global both app.js and the sweep keep in sync). L(fa,en) picks the
+  // string; the panel is rebuilt on open, so it always reflects the live choice.
+  function L(fa, en) { return (document.documentElement.lang === 'en') ? en : fa; }
+
   function el(tag, cls, html) {
     var e = document.createElement(tag);
     if (cls) e.className = cls;
@@ -56,17 +61,19 @@
   }
 
   // Common GATT service/characteristic names, so a value list reads as words.
-  var GATT_NAMES = {
-    '0x1800': 'دسترسی عمومی', '0x1801': 'تغییرات سرویس',
-    '0x180a': 'اطلاعات دستگاه', '0x180f': 'باتری', '0x180d': 'ضربان قلب',
-    '0x1812': 'کیبورد/موس (HID)', '0x1804': 'توان فرستنده',
-    '0x2a00': 'نام دستگاه', '0x2a19': 'درصد باتری', '0x2a24': 'شماره مدل',
-    '0x2a25': 'شماره سریال', '0x2a26': 'نسخه فریم‌ور', '0x2a27': 'نسخه سخت‌افزار',
-    '0x2a29': 'سازنده', '0x2a37': 'ضربان قلب',
-    '6e400001-b5a3-f393-e0a9-e50e24dcca9e': 'Nordic UART (کنسول سریال BLE)',
-    '6e400002-b5a3-f393-e0a9-e50e24dcca9e': 'UART ورودی (بنویس)',
-    '6e400003-b5a3-f393-e0a9-e50e24dcca9e': 'UART خروجی (بخوان)',
-  };
+  // Built per call (not once at load) so the labels follow a mid-session
+  // language switch — L() reads the live document language each time.
+  function GATT_NAMES_MAP() { return {
+    '0x1800': L('دسترسی عمومی', 'Generic access'), '0x1801': L('تغییرات سرویس', 'Service changed'),
+    '0x180a': L('اطلاعات دستگاه', 'Device information'), '0x180f': L('باتری', 'Battery'), '0x180d': L('ضربان قلب', 'Heart rate'),
+    '0x1812': L('کیبورد/موس (HID)', 'Keyboard/mouse (HID)'), '0x1804': L('توان فرستنده', 'Tx power'),
+    '0x2a00': L('نام دستگاه', 'Device name'), '0x2a19': L('درصد باتری', 'Battery level'), '0x2a24': L('شماره مدل', 'Model number'),
+    '0x2a25': L('شماره سریال', 'Serial number'), '0x2a26': L('نسخه فریم‌ور', 'Firmware version'), '0x2a27': L('نسخه سخت‌افزار', 'Hardware version'),
+    '0x2a29': L('سازنده', 'Manufacturer'), '0x2a37': L('ضربان قلب', 'Heart rate'),
+    '6e400001-b5a3-f393-e0a9-e50e24dcca9e': L('Nordic UART (کنسول سریال BLE)', 'Nordic UART (BLE serial console)'),
+    '6e400002-b5a3-f393-e0a9-e50e24dcca9e': L('UART ورودی (بنویس)', 'UART in (write)'),
+    '6e400003-b5a3-f393-e0a9-e50e24dcca9e': L('UART خروجی (بخوان)', 'UART out (read)'),
+  }; }
   // Services safe to ask for. HID (0x1812) and the two generic ones are on the
   // Web Bluetooth blocklist — requesting them throws — so they are left out.
   var OPTIONAL_SERVICES = [
@@ -78,7 +85,8 @@
   function gattName(uuid) {
     var u = String(uuid).toLowerCase();
     var short = u.replace(/^0000([0-9a-f]{4})-0000-1000-8000-00805f9b34fb$/, '0x$1');
-    return GATT_NAMES[short] || GATT_NAMES[u] || '';
+    var m = GATT_NAMES_MAP();
+    return m[short] || m[u] || '';
   }
   function bytesToText(dv) {
     try {
@@ -120,29 +128,46 @@
     box.style.cssText = 'padding:11px 13px;border-radius:12px;margin-bottom:12px;font-size:12.5px;line-height:1.9';
     if (cap.bluetooth || cap.serial) {
       box.style.cssText += ';background:rgba(52,211,153,.10);border:1px solid rgba(52,211,153,.30);color:#6ee7b7';
-      box.innerHTML = 'گوشی‌ات خودش می‌تواند وصل شود — این کارها روی همین گوشی انجام می‌شوند، نه روی کامپیوتر.' +
+      box.innerHTML = L('گوشی‌ات خودش می‌تواند وصل شود — این کارها روی همین گوشی انجام می‌شوند، نه روی کامپیوتر.',
+        'Your phone can connect on its own — these actions run on this very phone, not the computer.') +
         '<div style="color:#8ea0c8;margin-top:5px">' +
-        (cap.bluetooth ? 'بلوتوث ✓ ' : 'بلوتوث ✕ ') +
-        (cap.serial ? '· کابل/سریال ✓' : '· کابل/سریال ✕') + '</div>';
+        (cap.bluetooth ? L('بلوتوث ✓ ', 'Bluetooth ✓ ') : L('بلوتوث ✕ ', 'Bluetooth ✕ ')) +
+        (cap.serial ? L('· کابل/سریال ✓', '· cable/serial ✓') : L('· کابل/سریال ✕', '· cable/serial ✕')) + '</div>';
       return box;
     }
     box.style.cssText += ';background:rgba(251,191,36,.10);border:1px solid rgba(251,191,36,.35);color:#fbbf24';
     if (cap.ios) {
-      box.innerHTML = '<b>روی آیفون/آیپد این کار از داخل مرورگر ممکن نیست.</b><br>' +
+      box.innerHTML = L(
+        '<b>روی آیفون/آیپد این کار از داخل مرورگر ممکن نیست.</b><br>' +
         'اپل هیچ مرورگری روی iOS را به بلوتوث/سریال وصل نمی‌کند (نه سافاری، نه کروم). ' +
         'دو راه داری:<br>' +
         '۱) از یک گوشی/تبلت <b>اندروید</b> با مرورگر Chrome باز کن.<br>' +
-        '۲) همین حالا از تبِ «بلوتوث» و «کابل و سریال» استفاده کن — آن‌ها روی خودِ کامپیوتر کار می‌کنند و همین‌جا هم جواب می‌دهند.';
+        '۲) همین حالا از تبِ «بلوتوث» و «کابل و سریال» استفاده کن — آن‌ها روی خودِ کامپیوتر کار می‌کنند و همین‌جا هم جواب می‌دهند.',
+        '<b>On iPhone/iPad this cannot be done from inside a browser.</b><br>' +
+        'Apple connects no browser on iOS to Bluetooth/serial (neither Safari nor Chrome). ' +
+        'You have two options:<br>' +
+        '1) Open it on an <b>Android</b> phone/tablet with Chrome.<br>' +
+        '2) Use the “Bluetooth” and “Cable & serial” tabs right now — they run on the computer itself and work here.');
     } else if (!cap.secure) {
-      box.innerHTML = '<b>این صفحه روی «http» باز شده، برای همین مرورگر بلوتوث/سریال را قفل کرده.</b><br>' +
+      box.innerHTML = L(
+        '<b>این صفحه روی «http» باز شده، برای همین مرورگر بلوتوث/سریال را قفل کرده.</b><br>' +
         'این APIها فقط روی <b>https</b> (یا localhost) روشن می‌شوند — یک قانون امنیتی خود مرورگر است.<br>' +
         'راه‌حل: کنار برنامه فایل‌های <code>tls-cert.pem</code> و <code>tls-key.pem</code> را بگذار ' +
         '(با mkcert یا <code>tailscale cert</code>)، برنامه را دوباره باز کن و این‌بار با <b>https://</b> وارد شو. ' +
-        'آن‌وقت این بخش خودش روشن می‌شود.';
+        'آن‌وقت این بخش خودش روشن می‌شود.',
+        '<b>This page was opened over “http”, so the browser has locked Bluetooth/serial.</b><br>' +
+        'These APIs turn on only over <b>https</b> (or localhost) — a security rule of the browser itself.<br>' +
+        'Fix: put <code>tls-cert.pem</code> and <code>tls-key.pem</code> next to the app ' +
+        '(with mkcert or <code>tailscale cert</code>), reopen the app and this time enter with <b>https://</b>. ' +
+        'Then this section turns on by itself.');
     } else {
-      box.innerHTML = '<b>این مرورگر Web Bluetooth/Serial ندارد.</b><br>' +
+      box.innerHTML = L(
+        '<b>این مرورگر Web Bluetooth/Serial ندارد.</b><br>' +
         'روی گوشی/تبلت اندروید یا کامپیوتر با <b>Chrome</b> یا <b>Edge</b> باز کن. ' +
-        'در ضمن، تبِ «بلوتوث» و «کابل و سریال» روی خودِ کامپیوتر همیشه کار می‌کنند.';
+        'در ضمن، تبِ «بلوتوث» و «کابل و سریال» روی خودِ کامپیوتر همیشه کار می‌کنند.',
+        '<b>This browser has no Web Bluetooth/Serial.</b><br>' +
+        'Open it on an Android phone/tablet or a computer with <b>Chrome</b> or <b>Edge</b>. ' +
+        'Also, the “Bluetooth” and “Cable & serial” tabs always work on the computer itself.');
     }
     return box;
   }
@@ -151,20 +176,28 @@
   function keyboardNote() {
     var d = el('details');
     d.style.cssText = 'margin-top:12px;font-size:12px;color:#8ea0c8;border-top:1px solid rgba(255,255,255,.08);padding-top:10px';
-    d.innerHTML = '<summary style="cursor:pointer;color:#aeb7cf">«گوشی خودش را کیبرد معرفی کند» — چرا از مرورگر نمی‌شود</summary>' +
+    d.innerHTML = L(
+      '<summary style="cursor:pointer;color:#aeb7cf">«گوشی خودش را کیبرد معرفی کند» — چرا از مرورگر نمی‌شود</summary>' +
       '<div style="margin-top:7px;line-height:1.9">' +
       'برای اینکه گوشی برای یک دستگاهِ دیگر نقش <b>کیبرد</b> بازی کند، باید نقشِ «دستگاهِ ورودی» (HID peripheral) را بگیرد. ' +
       'هیچ صفحه‌ی وبی روی هیچ گوشی‌ای این اجازه را ندارد — مرورگر فقط اجازه‌ی نقشِ «وصل‌شونده» را می‌دهد. ' +
       'روی آیفون حتی یک اپ نصبی هم عملاً نمی‌تواند. ' +
       'کارِ نزدیک و شدنی این است که گوشی به دستگاه وصل شود و <b>روی آن بنویسد/فرمان بفرستد</b> — همان کاری که همین‌جا با GATT و سریال انجام می‌شود.' +
-      '</div>';
+      '</div>',
+      '<summary style="cursor:pointer;color:#aeb7cf">“Make the phone present itself as a keyboard” — why the browser can’t</summary>' +
+      '<div style="margin-top:7px;line-height:1.9">' +
+      'For the phone to act as a <b>keyboard</b> to another device, it must take the “input device” (HID peripheral) role. ' +
+      'No web page on any phone is allowed that — the browser only grants the “the-one-that-connects” role. ' +
+      'On iPhone even an installed app essentially cannot. ' +
+      'The close, doable thing is for the phone to connect to a device and <b>write to it / send it commands</b> — exactly what happens here over GATT and serial.' +
+      '</div>');
     return d;
   }
 
   // ---- Web Bluetooth ------------------------------------------------------
   function btSection(host, level) {
-    var s = card('بلوتوثِ گوشی');
-    var btn = el('button', 'btn', 'وصل شدن به یک دستگاه');
+    var s = card(L('بلوتوثِ گوشی', 'Phone Bluetooth'));
+    var btn = el('button', 'btn', L('وصل شدن به یک دستگاه', 'Connect to a device'));
     btn.style.fontSize = '13px';
     s.body.appendChild(btn);
     var note = el('div');
@@ -175,21 +208,21 @@
     function say(t, ok) { note.style.color = ok ? '#34d399' : '#fb7185'; note.textContent = t; }
 
     btn.addEventListener('click', function () {
-      say('یک پنجره‌ی انتخاب دستگاه باز می‌شود — دستگاه خودت را انتخاب کن…', true);
+      say(L('یک پنجره‌ی انتخاب دستگاه باز می‌شود — دستگاه خودت را انتخاب کن…', 'A device chooser opens — pick your device…'), true);
       navigator.bluetooth.requestDevice({ acceptAllDevices: true, optionalServices: OPTIONAL_SERVICES })
         .then(function (device) {
           out.innerHTML = '';
-          say('در حال اتصال به «' + (device.name || device.id) + '»…', true);
-          device.addEventListener('gattserverdisconnected', function () { say('ارتباط قطع شد.', false); });
+          say(L('در حال اتصال به «', 'Connecting to “') + (device.name || device.id) + L('»…', '”…'), true);
+          device.addEventListener('gattserverdisconnected', function () { say(L('ارتباط قطع شد.', 'Disconnected.'), false); });
           return device.gatt.connect().then(function (server) { return { device: device, server: server }; });
         })
         .then(function (ctx) {
-          say('وصل شد ✓ — ' + (ctx.device.name || ctx.device.id), true);
+          say(L('وصل شد ✓ — ', 'Connected ✓ — ') + (ctx.device.name || ctx.device.id), true);
           renderDevice(ctx.device, ctx.server, out, level);
         })
         .catch(function (e) {
-          if (e && e.name === 'NotFoundError') say('چیزی انتخاب نشد.', false);
-          else say('اتصال ممکن نشد: ' + (e && e.message || e), false);
+          if (e && e.name === 'NotFoundError') say(L('چیزی انتخاب نشد.', 'Nothing was selected.'), false);
+          else say(L('اتصال ممکن نشد: ', 'Could not connect: ') + (e && e.message || e), false);
         });
     });
     host.appendChild(s.card);
@@ -199,23 +232,23 @@
     host.innerHTML = '';
     var head = el('div');
     head.style.cssText = 'font-size:13px;margin-bottom:8px';
-    head.innerHTML = '<b>' + esc(device.name || 'دستگاه بلوتوث') + '</b>' +
+    head.innerHTML = '<b>' + esc(device.name || L('دستگاه بلوتوث', 'Bluetooth device')) + '</b>' +
       '<span style="color:#8ea0c8;font-size:11px;direction:ltr"> · ' + esc(device.id || '') + '</span>';
     host.appendChild(head);
     var wrap = el('div');
-    wrap.innerHTML = '<div class="tk-hint"><span class="spin"></span> خواندن سرویس‌ها…</div>';
+    wrap.innerHTML = '<div class="tk-hint"><span class="spin"></span> ' + L('خواندن سرویس‌ها…', 'Reading services…') + '</div>';
     host.appendChild(wrap);
 
     server.getPrimaryServices().then(function (services) {
       wrap.innerHTML = '';
-      if (!services.length) { wrap.innerHTML = '<div class="tk-hint">این دستگاه سرویسی که مرورگر اجازه بدهد نشان نداد.</div>'; return; }
+      if (!services.length) { wrap.innerHTML = '<div class="tk-hint">' + L('این دستگاه سرویسی که مرورگر اجازه بدهد نشان نداد.', 'This device exposed no service the browser is allowed to show.') + '</div>'; return; }
       var chain = Promise.resolve();
       services.forEach(function (svc) {
         chain = chain.then(function () {
           var svcName = gattName(svc.uuid);
           var sb = el('div');
           sb.style.cssText = 'margin:6px 0;padding:7px 9px;border-radius:9px;background:rgba(255,255,255,.03)';
-          sb.innerHTML = '<div style="font-size:11.5px;color:#8ea0c8">سرویس: ' +
+          sb.innerHTML = '<div style="font-size:11.5px;color:#8ea0c8">' + L('سرویس: ', 'Service: ') +
             esc(svcName || svc.uuid) + '</div>';
           wrap.appendChild(sb);
           return svc.getCharacteristics().then(function (chars) {
@@ -224,7 +257,7 @@
         });
       });
     }).catch(function (e) {
-      wrap.innerHTML = '<div class="tk-hint" style="color:#fbbf24">سرویس‌ها خوانده نشد: ' + esc(e && e.message || e) + '</div>';
+      wrap.innerHTML = '<div class="tk-hint" style="color:#fbbf24">' + L('سرویس‌ها خوانده نشد: ', 'Could not read services: ') + esc(e && e.message || e) + '</div>';
     });
   }
 
@@ -245,23 +278,23 @@
     row.appendChild(val);
 
     if (ch.properties.read) {
-      var rd = el('button', 'btn ghost', 'بخوان');
+      var rd = el('button', 'btn ghost', L('بخوان', 'Read'));
       rd.style.cssText = 'font-size:10.5px;padding:3px 8px';
       rd.addEventListener('click', function () {
         rd.disabled = true;
         ch.readValue().then(function (dv) {
           rd.disabled = false;
-          val.textContent = bytesToText(dv) || ('0x' + bytesToHex(dv)) || '(خالی)';
+          val.textContent = bytesToText(dv) || ('0x' + bytesToHex(dv)) || L('(خالی)', '(empty)');
         }).catch(function (e) { rd.disabled = false; val.textContent = '— ' + (e && e.message || e); });
       });
       row.appendChild(rd);
     }
     if (ch.properties.notify) {
-      var nt = el('button', 'btn ghost', 'گوش بده');
+      var nt = el('button', 'btn ghost', L('گوش بده', 'Listen'));
       nt.style.cssText = 'font-size:10.5px;padding:3px 8px';
       nt.addEventListener('click', function () {
         ch.startNotifications().then(function () {
-          nt.textContent = 'در حال گوش دادن';
+          nt.textContent = L('در حال گوش دادن', 'Listening');
           ch.addEventListener('characteristicvaluechanged', function (ev) {
             var dv = ev.target.value;
             val.textContent = bytesToText(dv) || ('0x' + bytesToHex(dv));
@@ -274,17 +307,17 @@
     // tabs follow.
     if ((ch.properties.write || ch.properties.writeWithoutResponse) && level >= 2) {
       var inp = el('input', 'input');
-      inp.placeholder = 'متن یا 0x هگز';
+      inp.placeholder = L('متن یا 0x هگز', 'text or 0x hex');
       inp.style.cssText = 'font-size:10.5px;width:96px;padding:3px 6px;direction:ltr';
-      var wr = el('button', 'btn ghost', 'بنویس');
+      var wr = el('button', 'btn ghost', L('بنویس', 'Write'));
       wr.style.cssText = 'font-size:10.5px;padding:3px 8px';
       wr.addEventListener('click', function () {
         if (!inp.value.trim()) return;
-        if (!confirm('روی این مشخصه نوشته شود؟ نوشتن اشتباه می‌تواند دستگاه را خراب کند.')) return;
+        if (!confirm(L('روی این مشخصه نوشته شود؟ نوشتن اشتباه می‌تواند دستگاه را خراب کند.', 'Write to this characteristic? A wrong write can damage the device.'))) return;
         var data = /^0x/i.test(inp.value) ? hexToBuf(inp.value) : new TextEncoder().encode(inp.value);
         wr.disabled = true;
         var p = ch.properties.write ? ch.writeValueWithResponse(data) : ch.writeValueWithoutResponse(data);
-        p.then(function () { wr.disabled = false; val.textContent = 'نوشته شد ✓'; })
+        p.then(function () { wr.disabled = false; val.textContent = L('نوشته شد ✓', 'Written ✓'); })
           .catch(function (e) { wr.disabled = false; val.textContent = '— ' + (e && e.message || e); });
       });
       row.appendChild(inp);
@@ -295,13 +328,13 @@
 
   // ---- Web Serial ---------------------------------------------------------
   function serialSection(host, level) {
-    var s = card('کابل / سریالِ گوشی');
+    var s = card(L('کابل / سریالِ گوشی', 'Phone cable / serial'));
     if (level < 2) {
-      s.body.appendChild(el('div', 'tk-hint', 'حساب تو درجه‌ی ۱ است — گفتگوی سریال (نوشتن روی دستگاه) درجه‌ی ۲ لازم دارد.'));
+      s.body.appendChild(el('div', 'tk-hint', L('حساب تو درجه‌ی ۱ است — گفتگوی سریال (نوشتن روی دستگاه) درجه‌ی ۲ لازم دارد.', 'Your account is level 1 — the serial link (writing to a device) needs level 2.')));
       host.appendChild(s.card);
       return;
     }
-    var btn = el('button', 'btn', 'انتخاب پورت و اتصال');
+    var btn = el('button', 'btn', L('انتخاب پورت و اتصال', 'Choose port and connect'));
     btn.style.fontSize = '13px';
     var baud = el('select', 'input');
     baud.style.cssText = 'font-size:11.5px;width:auto;padding:5px 8px;margin-inline-start:8px';
@@ -319,7 +352,7 @@
         return port.open({ baudRate: Number(baud.value) }).then(function () { return port; });
       }).then(function (port) {
         s.body.appendChild(log);
-        push('— وصل شد (' + baud.value + ' baud) —');
+        push(L('— وصل شد (', '— connected (') + baud.value + ' baud) —');
         var dec = new TextDecoder();
         (function readLoop() {
           var reader = port.readable && port.readable.getReader();
@@ -334,9 +367,9 @@
         var line = el('div');
         line.style.cssText = 'display:flex;gap:6px;margin-top:8px';
         var cmd = el('input', 'input');
-        cmd.placeholder = 'دستور، مثل AT';
+        cmd.placeholder = L('دستور، مثل AT', 'command, e.g. AT');
         cmd.style.cssText = 'flex:1;font-size:12px;direction:ltr;text-align:left;padding:5px 9px';
-        var send = el('button', 'btn', 'بفرست');
+        var send = el('button', 'btn', L('بفرست', 'Send'));
         send.style.cssText = 'font-size:12px';
         send.addEventListener('click', function () {
           if (!port.writable) return;
@@ -350,7 +383,7 @@
         s.body.appendChild(line);
       }).catch(function (e) {
         if (e && e.name === 'NotFoundError') return;
-        s.body.appendChild(el('div', 'tk-hint', 'پورت باز نشد: ' + esc(e && e.message || e)));
+        s.body.appendChild(el('div', 'tk-hint', L('پورت باز نشد: ', 'Could not open the port: ') + esc(e && e.message || e)));
       });
     });
     host.appendChild(s.card);
@@ -360,9 +393,11 @@
   window.renderPhoneHwPanel = function (host, level) {
     level = Number(level) || 0;
     host.innerHTML = '';
-    var intro = el('div', 'tk-warn',
+    var intro = el('div', 'tk-warn', L(
       'این بخش روی خودِ گوشیِ تو کار می‌کند — گوشی مستقیم به دستگاه وصل می‌شود، مستقل از کامپیوتر. ' +
-      'هر اتصال یک پنجره‌ی انتخاب باز می‌کند و تا خودت دستگاه را انتخاب نکنی به چیزی وصل نمی‌شود.');
+      'هر اتصال یک پنجره‌ی انتخاب باز می‌کند و تا خودت دستگاه را انتخاب نکنی به چیزی وصل نمی‌شود.',
+      'This section runs on your phone itself — the phone connects directly to the device, independent of the computer. ' +
+      'Every connection opens a chooser, and nothing is connected until you pick the device yourself.'));
     host.appendChild(intro);
 
     var cap = capabilities();
@@ -389,13 +424,13 @@
     var wrap = el('div');
     wrap.style.cssText = 'margin:4px 0 12px;padding:12px 13px;border-radius:12px;background:rgba(34,211,238,.08);border:1px solid rgba(34,211,238,.28)';
     var btn = el('button');
-    btn.textContent = 'روشن کردن اتصال امن (HTTPS) برای گوشی';
+    btn.textContent = L('روشن کردن اتصال امن (HTTPS) برای گوشی', 'Turn on the secure link (HTTPS) for the phone');
     btn.style.cssText = 'width:100%;padding:11px;border:0;border-radius:10px;background:#22d3ee;color:#06252b;font-weight:700;font-size:13px;cursor:pointer';
     var msg = el('div');
     msg.style.cssText = 'font-size:12px;line-height:1.9;color:#8ea0c8;margin-top:9px';
-    msg.textContent = 'یک گواهی امن برای خانه می‌سازد تا بلوتوث و کابلِ گوشی روشن شود. فقط بابا این دکمه را می‌بیند.';
+    msg.textContent = L('یک گواهی امن برای خانه می‌سازد تا بلوتوث و کابلِ گوشی روشن شود. فقط بابا این دکمه را می‌بیند.', 'Builds a secure certificate for the home so the phone’s Bluetooth and cable turn on. Only the admin sees this button.');
     btn.onclick = function () {
-      btn.disabled = true; btn.textContent = 'در حال ساخت گواهی…';
+      btn.disabled = true; btn.textContent = L('در حال ساخت گواهی…', 'Building the certificate…');
       fetch('/api/admin/secure-link', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ on: true }),
@@ -403,17 +438,23 @@
         if (d && d.ok) {
           btn.style.display = 'none';
           var links = (d.urls || []).map(function (u) { return '<div style="font-family:var(--mono);color:#6ee7b7">' + u + '</div>'; }).join('');
-          msg.innerHTML = '<b style="color:#6ee7b7">آماده شد — همین الان فعال شد، بدون ری‌استارت.</b><br>' +
-            'روی گوشی این آدرس را باز کن:' + links +
-            '<div style="margin-top:7px">بار اول مرورگر هشدار می‌دهد؛ «Advanced» بعد «Proceed / ادامه» را بزن. ' +
-            'آن وقت همین بخش خودش روشن می‌شود. برای حذف کامل هشدار: Tailscale یا mkcert.</div>';
+          msg.innerHTML = L(
+            '<b style="color:#6ee7b7">آماده شد — همین الان فعال شد، بدون ری‌استارت.</b><br>' +
+            'روی گوشی این آدرس را باز کن:',
+            '<b style="color:#6ee7b7">Ready — enabled right now, no restart.</b><br>' +
+            'Open this address on the phone:') + links +
+            '<div style="margin-top:7px">' + L(
+            'بار اول مرورگر هشدار می‌دهد؛ «Advanced» بعد «Proceed / ادامه» را بزن. ' +
+            'آن وقت همین بخش خودش روشن می‌شود. برای حذف کامل هشدار: Tailscale یا mkcert.',
+            'The first time the browser warns; tap “Advanced” then “Proceed”. ' +
+            'Then this section turns on by itself. To remove the warning entirely: Tailscale or mkcert.') + '</div>';
         } else {
-          btn.disabled = false; btn.textContent = 'روشن کردن اتصال امن (HTTPS) برای گوشی';
-          msg.textContent = (d && d.error) ? d.error : 'نشد. دوباره امتحان کن.';
+          btn.disabled = false; btn.textContent = L('روشن کردن اتصال امن (HTTPS) برای گوشی', 'Turn on the secure link (HTTPS) for the phone');
+          msg.textContent = (d && d.error) ? d.error : L('نشد. دوباره امتحان کن.', 'Didn’t work. Try again.');
         }
       }).catch(function () {
-        btn.disabled = false; btn.textContent = 'روشن کردن اتصال امن (HTTPS) برای گوشی';
-        msg.textContent = 'خطای شبکه. دوباره امتحان کن.';
+        btn.disabled = false; btn.textContent = L('روشن کردن اتصال امن (HTTPS) برای گوشی', 'Turn on the secure link (HTTPS) for the phone');
+        msg.textContent = L('خطای شبکه. دوباره امتحان کن.', 'Network error. Try again.');
       });
     };
     wrap.appendChild(btn); wrap.appendChild(msg);

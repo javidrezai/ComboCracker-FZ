@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- SETAYESH_BUILD 9.9.119 -->
+<!-- SETAYESH_BUILD 9.9.120 -->
 <html lang="fa" dir="rtl">
 <head>
 <meta charset="UTF-8">
@@ -443,7 +443,7 @@
       <div class="cc-group-label">روزمره</div>
       <div class="cc-group">
         <button class="btn ghost cctab" data-cc="engines">موتورها و کلیدها</button>
-        <button class="btn ghost cctab" data-cc="actions">تأییدها <span id="ccActBadge" class="cc-badge" style="display:none"></span></button>
+        <button class="btn ghost cctab" data-cc="actions"><span>تأییدها</span> <span id="ccActBadge" class="cc-badge" style="display:none"></span></button>
         <button class="btn ghost cctab" data-cc="users">کاربران</button>
       </div>
       <div class="cc-group-label">ابزار و کد</div>
@@ -510,7 +510,7 @@
         <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;cursor:pointer">
           <input type="checkbox" id="ccAutonomy"> <span>🤖 حالت خودمختار — خودش تغییر را انجام دهد</span>
         </label>
-        <div class="tk-hint" style="margin-top:8px;line-height:1.9">
+        <div class="tk-hint" style="margin-top:8px;line-height:1.9" data-i18n="cc_autonomy_hint">
           وقتی روشن باشد، هر تغییری که <b>خودت در همین برنامه</b> از او بخواهی («فلان گزینه را عوض کن»، «این کلید را ببر آنجا») را
           خودش انجام می‌دهد و اعمال می‌کند — بدون اینکه هر بار منتظر تأیید تو بماند.
           <br><b style="color:#fbbf24">محافظت:</b> دستورهایی که از تلگرام، ایمیل، اینباکس یا کارهای پس‌زمینه می‌آیند
@@ -583,10 +583,10 @@
       </div>
       <div class="side-label" style="padding:0;margin-bottom:6px">چه چیزی یکی شود</div>
       <div style="margin-bottom:12px">
-        <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;margin-bottom:6px;cursor:pointer"><input type="checkbox" id="syBoard" checked> تابلوی خانواده</label>
-        <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;margin-bottom:6px;cursor:pointer"><input type="checkbox" id="syMemory" checked> حافظه و مهلت‌ها</label>
-        <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;margin-bottom:6px;cursor:pointer"><input type="checkbox" id="syDevices" checked> دستگاه‌ها</label>
-        <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;cursor:pointer"><input type="checkbox" id="syKnowledge" checked> دانش آموخته‌شده</label>
+        <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;margin-bottom:6px;cursor:pointer"><input type="checkbox" id="syBoard" checked> <span>تابلوی خانواده</span></label>
+        <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;margin-bottom:6px;cursor:pointer"><input type="checkbox" id="syMemory" checked> <span>حافظه و مهلت‌ها</span></label>
+        <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;margin-bottom:6px;cursor:pointer"><input type="checkbox" id="syDevices" checked> <span>دستگاه‌ها</span></label>
+        <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;cursor:pointer"><input type="checkbox" id="syKnowledge" checked> <span>دانش آموخته‌شده</span></label>
       </div>
       <div class="tk-row" style="gap:6px;margin-bottom:10px">
         <button class="btn" id="sySave" style="flex:1">ذخیره</button>
@@ -607,7 +607,7 @@
     <div id="ccScripts" class="ccpane" style="display:none">
       <div class="tk-card" style="padding:11px 13px;margin-bottom:12px;background:rgba(56,189,248,.07);border-color:rgba(56,189,248,.28)">
         <div style="font-size:12.5px;font-weight:600;margin-bottom:5px">📥 پوشه‌ی ورودی — همه‌چیز یک‌جا</div>
-        <div style="font-size:11.5px;color:var(--muted);line-height:1.8;margin-bottom:6px">
+        <div style="font-size:11.5px;color:var(--muted);line-height:1.8;margin-bottom:6px" data-i18n="cc_inbox_hint">
           هر فایلی در این پوشه بگذاری، خودش می‌فهمد چیست:<br>
           فایل <b>.py</b> → کتابخانه‌ی اسکریپت &nbsp;·&nbsp; <b>ZIP</b> به‌روزرسانی → نصب &nbsp;·&nbsp; بقیه → نگه داشته می‌شود
         </div>
@@ -657,7 +657,7 @@
         <div id="ccUpdNote" style="font-size:12px;margin-top:6px;line-height:1.7;color:var(--cyan)"></div>
       </div>
 
-      <div class="tk-hint" style="margin-bottom:12px">یا یک فایل ZIP در پوشه‌ی <code>updates</code> بگذار — خودش نصب می‌کند و ری‌استارت می‌شود.</div>
+      <div class="tk-hint" style="margin-bottom:12px"><span>یا یک فایل ZIP در پوشه‌ی</span> <code>updates</code> <span>بگذار — خودش نصب می‌کند و ری‌استارت می‌شود.</span></div>
       <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:10px;cursor:pointer">
         <input type="checkbox" id="auEnabled"> <span>نصب خودکار از پوشه‌ی updates</span>
       </label>
@@ -810,7 +810,7 @@
     <div id="learnTopicList" style="margin-bottom:6px"></div>
 
     <div class="side-label" style="padding:0;margin:16px 0 8px">
-      در انتظار تأیید شما <span id="learnPendingCount" style="color:var(--cyan)"></span>
+      <span>در انتظار تأیید شما</span> <span id="learnPendingCount" style="color:var(--cyan)"></span>
     </div>
     <div id="learnPending" style="max-height:260px;overflow-y:auto"></div>
 
@@ -1145,7 +1145,7 @@
         <div style="font-size:11.5px;color:var(--muted,#8ea0c8)">با ستایش از بیرون خانه حرف بزن</div></div>
       <span id="cxTgDot" style="width:10px;height:10px;border-radius:50%;background:#6b7280"></span>
     </div>
-    <div style="font-size:11.5px;color:var(--muted,#8ea0c8);line-height:1.7;margin-bottom:8px">یک ربات از <b>@BotFather</b> بساز و توکنش را بگذار. Chat ID خودت را از <b>@userinfobot</b> بگیر.</div>
+    <div style="font-size:11.5px;color:var(--muted,#8ea0c8);line-height:1.7;margin-bottom:8px" data-i18n="comms_bot_hint">یک ربات از <b>@BotFather</b> بساز و توکنش را بگذار. Chat ID خودت را از <b>@userinfobot</b> بگیر.</div>
     <input id="cxTgToken" class="input" type="password" placeholder="توکن ربات (123456:ABC...)" style="margin-bottom:6px;font-size:12px;direction:ltr;text-align:left">
     <input id="cxTgChat" class="input" placeholder="Chat ID (مثلاً 123456789)" style="margin-bottom:8px;font-size:12px;direction:ltr;text-align:left">
     <button id="cxTgSave" style="width:100%;padding:9px;border-radius:11px;border:0;cursor:pointer;font-weight:800;background:linear-gradient(135deg,#38bdf8,#0ea5e9);color:#04121e">ذخیره و تست تلگرام</button>

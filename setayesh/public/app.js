@@ -1,4 +1,4 @@
-/* SETAYESH_BUILD 9.9.119 */
+/* SETAYESH_BUILD 9.9.120 */
 (function(){
 'use strict';
 
@@ -1227,14 +1227,24 @@ async function saveNewPassword(){
 }
 
 /* ================= language ================= */
+// Apply every data-i18n* attribute under `root` (default: whole document).
+// Split out so the sweep can re-run it on panels built AFTER a language switch
+// — an overlay cloned into a sheet on open carries data-i18n attributes but was
+// never seen by the switch-time applyLang(), so its keys would stay Persian
+// unless we translate the freshly-inserted nodes too.
+function applyDataI18n(root){
+  var r=root||document;
+  r.querySelectorAll('[data-i18n]').forEach(function(e){e.textContent=t(e.getAttribute('data-i18n'));});
+  r.querySelectorAll('[data-i18n-placeholder]').forEach(function(e){e.placeholder=t(e.getAttribute('data-i18n-placeholder'));});
+  r.querySelectorAll('[data-i18n-arialabel]').forEach(function(e){e.setAttribute('aria-label',t(e.getAttribute('data-i18n-arialabel')));});
+}
+window.__applyDataI18n=applyDataI18n;   // the sweep calls this so cloned/late panels translate too
 function applyLang(){
   document.documentElement.lang=lang;
   document.documentElement.dir=LANG[lang].dir;
   var label=lang==='fa'?'EN':'FA';
   $('langBtn').textContent=label;$('langBtnLogin').textContent=label;
-  document.querySelectorAll('[data-i18n]').forEach(function(e){e.textContent=t(e.getAttribute('data-i18n'));});
-  document.querySelectorAll('[data-i18n-placeholder]').forEach(function(e){e.placeholder=t(e.getAttribute('data-i18n-placeholder'));});
-  document.querySelectorAll('[data-i18n-arialabel]').forEach(function(e){e.setAttribute('aria-label',t(e.getAttribute('data-i18n-arialabel')));});
+  applyDataI18n(document);
   $('hintLine').textContent=t('hint');
   if(CFG){buildModes();setMode(mode);buildModelPicker();buildCompareChips();renderChatList();renderThread();}
   // Whole-UI sweep: flips every remaining Persian UI phrase to English (and back)
@@ -1291,15 +1301,16 @@ function loadAdminUsers(){
          of handing it out. */
       var lvlWrap=el('label');
       lvlWrap.style.cssText='display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--muted)';
-      lvlWrap.appendChild(el('span','','دستگاه‌ها:'));
+      var _lvlEn=lang==='en';
+      lvlWrap.appendChild(el('span','',_lvlEn?'Devices:':'دستگاه‌ها:'));
       var lvlSel=el('select','input');
       lvlSel.style.cssText='font-size:11px;width:auto;padding:4px 8px';
-      [[0,'بسته'],[1,'درجه ۱ — دیدن'],[2,'درجه ۲ — کنترل']].forEach(function(o){
+      (_lvlEn?[[0,'Closed'],[1,'Level 1 — view'],[2,'Level 2 — control']]:[[0,'بسته'],[1,'درجه ۱ — دیدن'],[2,'درجه ۲ — کنترل']]).forEach(function(o){
         var x=el('option');x.value=o[0];x.textContent=o[1];
         if(Number(u.deviceLevel||0)===o[0])x.selected=true;
         lvlSel.appendChild(x);
       });
-      if(u.deviceLevelLocked){ lvlSel.disabled=true; lvlSel.title='حساب بابا همیشه درجه‌ی ۲ است.'; }
+      if(u.deviceLevelLocked){ lvlSel.disabled=true; lvlSel.title=_lvlEn?'The admin account is always level 2.':'حساب بابا همیشه درجه‌ی ۲ است.'; }
       lvlSel.addEventListener('change',function(){
         var prev=u.deviceLevel;
         adminFetch('/api/admin/device-level',{method:'POST',headers:{'Content-Type':'application/json'},
@@ -2346,17 +2357,22 @@ function loadCCDevices(){
   var box=$('ccDevList'); box.innerHTML='<div class="tk-hint"><span class="spin"></span></div>';
   adminFetch('/api/admin/devices').then(function(d){
     box.innerHTML='';
-    if(!(d.devices||[]).length){box.innerHTML='<div class="tk-hint">هنوز دستگاهی ثبت نشده.</div>';return;}
+    var _en=lang==='en';
+    if(!(d.devices||[]).length){box.innerHTML='<div class="tk-hint">'+(_en?'No device registered yet.':'هنوز دستگاهی ثبت نشده.')+'</div>';return;}
     var icon={phone:'📱',tablet:'📋','touch-desktop':'💻',desktop:'🖥️'};
+    // Server sends the device type in Persian; translate the known words for EN.
+    var TYPE_EN={'لپ‌تاپ لمسی':'Touch laptop','موبایل':'Mobile','تبلت':'Tablet','دسکتاپ':'Desktop','کامپیوتر':'Computer'};
+    var enLabel=function(s){ var out=String(s); if(_en){ for(var k in TYPE_EN) out=out.split(k).join(TYPE_EN[k]); } return out; };
     d.devices.forEach(function(v){
       var card=el('div','tk-card'); card.style.cssText='margin-bottom:8px;padding:10px 12px';
       var h=el('div'); h.style.cssText='font-weight:600;font-size:13px;margin-bottom:4px';
-      h.textContent=(icon[v.kind]||'•')+' '+v.label+'  ('+v.user+')';
+      h.textContent=(icon[v.kind]||'•')+' '+enLabel(v.label)+'  ('+v.user+')';
       var m=el('div'); m.style.cssText='font-size:11.5px;color:var(--muted);line-height:1.7';
       m.textContent=v.browser+' · '+v.screen+' · '+(v.tz||'')+'\n'+
-        'آخرین بار: '+new Date(v.lastSeen).toLocaleString()+' · '+v.visits+' بار';
+        (_en?('Last seen: '+new Date(v.lastSeen).toLocaleString()+' · '+v.visits+' visits')
+            :('آخرین بار: '+new Date(v.lastSeen).toLocaleString()+' · '+v.visits+' بار'));
       m.style.whiteSpace='pre-line';
-      var x=el('button','btn ghost'); x.textContent='حذف'; x.style.cssText='padding:5px 12px;margin-top:8px';
+      var x=el('button','btn ghost'); x.textContent=_en?'Delete':'حذف'; x.style.cssText='padding:5px 12px;margin-top:8px';
       x.addEventListener('click',function(){
         adminFetch('/api/admin/devices/'+encodeURIComponent(v.id),{method:'DELETE'})
           .then(loadCCDevices).catch(function(e){ccNote(e.message,true);});
@@ -2763,7 +2779,7 @@ function loadCCUsers(){
     (d.users||[]).forEach(function(u){
       var card=el('div','tk-card'); card.style.cssText='margin-bottom:8px;padding:10px 12px';
       var h=el('div'); h.style.cssText='font-weight:600;font-size:13px;margin-bottom:8px';
-      h.textContent=u.username+(u.admin?' (مدیر)':'')+(u.safe?' · حالت کودک':'');
+      h.textContent=u.username+(u.admin?(lang==='en'?' (admin)':' (مدیر)'):'')+(u.safe?(lang==='en'?' · kid mode':' · حالت کودک'):'');
       card.appendChild(h);
       var r=el('div'); r.style.cssText='display:flex;gap:8px;flex-wrap:wrap';
       var age=el('input','input'); age.type='number'; age.placeholder='سن'; age.value=u.age||'';
@@ -2836,19 +2852,27 @@ function loadSuggestions(){
   adminFetch('/api/admin/suggestions').then(function(d){
     var box=$('learnSuggest'); if(!box)return; box.innerHTML='';
     if(!d.items.length)return;
+    var _en=lang==='en', _tr=function(x){
+      if(!_en) return x;
+      // Count-bearing suggestion bodies can't match a whole-string dictionary key,
+      // so translate them by pattern first, then fall back to the sweep lookup.
+      var m=/^(\d+) پیام در تابلو جمع شده\./.exec(String(x||''));
+      if(m) return m[1]+' messages have piled up on the board. You can clear the read ones to tidy it up.';
+      return window.i18nLookup?window.i18nLookup(x):x;
+    };
     var head=el('div'); head.style.cssText='font-size:12px;font-weight:700;color:#a78bfa;margin-bottom:8px';
-    head.textContent='💡 ستایش این‌ها را پیشنهاد می‌دهد:';
+    head.textContent=_en?'💡 Setayesh suggests these:':'💡 ستایش این‌ها را پیشنهاد می‌دهد:';
     box.appendChild(head);
     d.items.forEach(function(s){
       var card=el('div','tk-card'); card.style.cssText='padding:12px 14px;margin-bottom:8px;border-color:rgba(167,139,250,.35);background:rgba(167,139,250,.07)';
-      var t=el('div'); t.style.cssText='font-weight:600;font-size:13px;margin-bottom:4px'; t.textContent=s.title;
-      var b=el('div'); b.style.cssText='font-size:12px;color:var(--muted);line-height:1.8;margin-bottom:4px'; b.textContent=s.body;
+      var t=el('div'); t.style.cssText='font-weight:600;font-size:13px;margin-bottom:4px'; t.textContent=_tr(s.title);
+      var b=el('div'); b.style.cssText='font-size:12px;color:var(--muted);line-height:1.8;margin-bottom:4px'; b.textContent=_tr(s.body);
       card.appendChild(t); card.appendChild(b);
-      if(s.action&&s.action.text){ var a=el('div'); a.style.cssText='font-size:11px;color:var(--cyan);margin-bottom:8px'; a.textContent='→ '+s.action.text; card.appendChild(a); }
+      if(s.action&&s.action.text){ var a=el('div'); a.style.cssText='font-size:11px;color:var(--cyan);margin-bottom:8px'; a.textContent='→ '+_tr(s.action.text); card.appendChild(a); }
       var row=el('div'); row.style.cssText='display:flex;gap:6px';
-      var yes=el('button','btn'); yes.textContent='خوب است'; yes.style.cssText='flex:1;padding:5px;font-size:12px';
+      var yes=el('button','btn'); yes.textContent=_en?'Good idea':'خوب است'; yes.style.cssText='flex:1;padding:5px;font-size:12px';
       yes.addEventListener('click',function(){ adminFetch('/api/admin/suggestions/'+s.id+'/accept',{method:'POST'}).then(function(){ loadSuggestions(); }); });
-      var no=el('button','btn ghost'); no.textContent='نه ممنون'; no.style.cssText='flex:1;padding:5px;font-size:12px';
+      var no=el('button','btn ghost'); no.textContent=_en?'No thanks':'نه ممنون'; no.style.cssText='flex:1;padding:5px;font-size:12px';
       no.addEventListener('click',function(){ adminFetch('/api/admin/suggestions/'+s.id+'/dismiss',{method:'POST'}).then(function(){ loadSuggestions(); }); });
       row.appendChild(yes); row.appendChild(no); card.appendChild(row);
       box.appendChild(card);
@@ -2861,7 +2885,7 @@ function pollActivity(){
     renderLearnEngineBanner(d);
     var now=$('learnNow'), pulse=$('learnPulse'), next=$('learnNext');
     if(d.current){
-      now.textContent=d.current;
+      now.textContent=(lang==='en'&&window.i18nLookup)?window.i18nLookup(d.current):d.current;
       pulse.style.background='#34d399'; pulse.style.animation='pulse 1.5s infinite';
     } else {
       now.textContent=d.enabled?'بی‌کار — منتظر زمان تحقیق بعدی':'یادگیری خاموش است';
@@ -2876,10 +2900,11 @@ function pollActivity(){
     var lg=$('learnActLog'); if(lg){ lg.innerHTML='';
       (d.log||[]).forEach(function(l){
         var r=el('div'); r.style.cssText='padding:4px 0;border-bottom:1px solid rgba(255,255,255,.05);color:var(--muted)';
-        r.textContent=new Date(l.at).toLocaleTimeString()+' — '+l.text;
+        var _txt=l.text; if(_en&&window.i18nLookup)_txt=window.i18nLookup(_txt);
+        r.textContent=new Date(l.at).toLocaleTimeString()+' — '+_txt;
         lg.appendChild(r);
       });
-      if(!(d.log||[]).length)lg.innerHTML='<div class="tk-hint">هنوز کاری انجام نشده. یادگیری را روشن کن یا «همین حالا یک تحقیق» را بزن.</div>';
+      if(!(d.log||[]).length)lg.innerHTML=_en?'<div class="tk-hint">Nothing done yet. Turn on learning or hit “Research now”.</div>':'<div class="tk-hint">هنوز کاری انجام نشده. یادگیری را روشن کن یا «همین حالا یک تحقیق» را بزن.</div>';
     }
   }).catch(function(){});
 }
@@ -5378,7 +5403,7 @@ function tkDevlibsPanel(){
     'فقط از مدیرهای بسته‌ای که روی این کامپیوتر نصب‌اند دانلود می‌شود، و دانلود هیچ اسکریپت نصبی اجرا نمی‌کند.';
   p.appendChild(w);
   var note=el('div');note.style.cssText='font-size:12px;min-height:16px;margin:8px 0';p.appendChild(note);
-  var out=el('div');out.innerHTML='<div class="tk-hint"><span class="spin"></span> خواندن قفسه…</div>';p.appendChild(out);
+  var out=el('div');out.innerHTML='<div class="tk-hint"><span class="spin"></span> '+(lang==='en'?'Reading the shelf…':'خواندن قفسه…')+'</div>';p.appendChild(out);
 
   var logTimers={};
   function watch(lang,logBox){
@@ -5557,7 +5582,9 @@ function tkCablePanel(){
   function render(d){
     out.innerHTML='';
     var sum=el('div','tk-hint');
-    sum.textContent='USB: '+d.counts.usb+' · پورت سریال: '+d.counts.serial+' · بلوتوث: '+d.counts.bluetooth;
+    sum.textContent=(lang==='en')
+      ?('USB: '+d.counts.usb+' · serial port: '+d.counts.serial+' · Bluetooth: '+d.counts.bluetooth)
+      :('USB: '+d.counts.usb+' · پورت سریال: '+d.counts.serial+' · بلوتوث: '+d.counts.bluetooth);
     out.appendChild(sum);
 
     if(d.serial&&d.serial.length){
@@ -5719,8 +5746,11 @@ function tkDevicesPanel(){
   function render(d){
     out.innerHTML='';
     var sum=el('div','tk-hint');
-    sum.textContent='USB: '+d.counts.usb+' · بلوتوث: '+d.counts.bluetooth+' · درایو: '+d.counts.drive+
-      ' · شبکه: '+d.counts.network+'  ('+Math.round(d.tookMs/100)/10+' ثانیه)';
+    sum.textContent=(lang==='en')
+      ?('USB: '+d.counts.usb+' · Bluetooth: '+d.counts.bluetooth+' · drives: '+d.counts.drive+
+        ' · network: '+d.counts.network+'  ('+Math.round(d.tookMs/100)/10+' s)')
+      :('USB: '+d.counts.usb+' · بلوتوث: '+d.counts.bluetooth+' · درایو: '+d.counts.drive+
+        ' · شبکه: '+d.counts.network+'  ('+Math.round(d.tookMs/100)/10+' ثانیه)');
     out.appendChild(sum);
     (d.notes||[]).forEach(function(n){var x=el('div','tk-hint');x.style.color='#fbbf24';x.textContent=n;out.appendChild(x);});
 
@@ -5834,8 +5864,9 @@ function tkHwPanel(){
    builds its own fields, saves via /api/admin/settings, and verifies with the
    existing test endpoints so one button both stores and proves the setting. */
 function tkCommsPanel(){
+  var _en=lang==='en';
   var p=el('div','tk-panel');
-  p.appendChild(hintNode('ایمیل و تلگرام ستایش را اینجا تنظیم و تست کن. هر دکمه هم ذخیره می‌کند هم وصل‌بودن را امتحان می‌کند.'));
+  p.appendChild(hintNode(_en?'Set up and test Setayesh’s email and Telegram here. Each button both saves the setting and checks the connection.':'ایمیل و تلگرام ستایش را اینجا تنظیم و تست کن. هر دکمه هم ذخیره می‌کند هم وصل‌بودن را امتحان می‌کند.'));
   var dirty={};
   function field(label,key,opts){
     opts=opts||{};
@@ -5849,31 +5880,31 @@ function tkCommsPanel(){
     wrap.appendChild(lb);wrap.appendChild(inp);
     return {wrap:wrap,input:inp};
   }
-  var emailHead=el('div');emailHead.style.cssText='font-weight:700;font-size:13px;margin:6px 0 8px;color:#7dd3fc';emailHead.textContent='📧 ایمیل';
+  var emailHead=el('div');emailHead.style.cssText='font-weight:700;font-size:13px;margin:6px 0 8px;color:#7dd3fc';emailHead.textContent=_en?'📧 Email':'📧 ایمیل';
   p.appendChild(emailHead);
-  p.appendChild(hintNode('برای Gmail از App Password استفاده کن (حساب گوگل → امنیت → App Passwords).'));
-  var fNotify=field('ایمیل تو برای دریافت اعلان','NOTIFY_EMAIL',{ltr:true,placeholder:'you@example.com'});
-  var fMailUser=field('آدرس ایمیل فرستنده','MAIL_USER',{ltr:true,placeholder:'you@gmail.com'});
-  var fMailPass=field('App Password','MAIL_PASS',{secret:true,placeholder:'۱۶ حرفی'});
+  p.appendChild(hintNode(_en?'For Gmail, use an App Password (Google account → Security → App Passwords).':'برای Gmail از App Password استفاده کن (حساب گوگل → امنیت → App Passwords).'));
+  var fNotify=field(_en?'Your email for notifications':'ایمیل تو برای دریافت اعلان','NOTIFY_EMAIL',{ltr:true,placeholder:'you@example.com'});
+  var fMailUser=field(_en?'Sender email address':'آدرس ایمیل فرستنده','MAIL_USER',{ltr:true,placeholder:'you@gmail.com'});
+  var fMailPass=field('App Password','MAIL_PASS',{secret:true,placeholder:_en?'16 characters':'۱۶ حرفی'});
   p.appendChild(fNotify.wrap);p.appendChild(fMailUser.wrap);p.appendChild(fMailPass.wrap);
-  var mailBtn=el('button','tk-btn','ذخیره و تست ایمیل');mailBtn.style.cssText='width:100%;margin-top:4px';
+  var mailBtn=el('button','tk-btn',_en?'Save & test email':'ذخیره و تست ایمیل');mailBtn.style.cssText='width:100%;margin-top:4px';
   var mailStat=el('div');mailStat.style.cssText='font-size:12px;margin:6px 0 16px;line-height:1.7';
   p.appendChild(mailBtn);p.appendChild(mailStat);
-  var tgHead=el('div');tgHead.style.cssText='font-weight:700;font-size:13px;margin:6px 0 8px;color:#c4b5fd';tgHead.textContent='💬 تلگرام';
+  var tgHead=el('div');tgHead.style.cssText='font-weight:700;font-size:13px;margin:6px 0 8px;color:#c4b5fd';tgHead.textContent=_en?'💬 Telegram':'💬 تلگرام';
   p.appendChild(tgHead);
-  p.appendChild(hintNode('یک ربات از @BotFather بساز؛ توکنش را بگذار. Chat ID را از @userinfobot بگیر.'));
-  var fTgTok=field('توکن ربات تلگرام','TELEGRAM_BOT_TOKEN',{secret:true,ltr:true,placeholder:'123456:ABC...'});
-  var fTgChat=field('Chat ID مجاز','TELEGRAM_CHAT_ID',{ltr:true,placeholder:'مثلاً 123456789'});
+  p.appendChild(hintNode(_en?'Create a bot from @BotFather and paste its token. Get your Chat ID from @userinfobot.':'یک ربات از @BotFather بساز؛ توکنش را بگذار. Chat ID را از @userinfobot بگیر.'));
+  var fTgTok=field(_en?'Telegram bot token':'توکن ربات تلگرام','TELEGRAM_BOT_TOKEN',{secret:true,ltr:true,placeholder:'123456:ABC...'});
+  var fTgChat=field(_en?'Allowed Chat ID':'Chat ID مجاز','TELEGRAM_CHAT_ID',{ltr:true,placeholder:_en?'e.g. 123456789':'مثلاً 123456789'});
   p.appendChild(fTgTok.wrap);p.appendChild(fTgChat.wrap);
-  var tgBtn=el('button','tk-btn','ذخیره و تست تلگرام');tgBtn.style.cssText='width:100%;margin-top:4px';
+  var tgBtn=el('button','tk-btn',_en?'Save & test Telegram':'ذخیره و تست تلگرام');tgBtn.style.cssText='width:100%;margin-top:4px';
   var tgStat=el('div');tgStat.style.cssText='font-size:12px;margin-top:6px;line-height:1.7';
   p.appendChild(tgBtn);p.appendChild(tgStat);
   function refreshStatus(){
     tkFetch('/api/admin/notify-status').then(function(d){
-      mailStat.innerHTML=d.emailConfigured?('<span style="color:#34d399">● آماده</span> · '+esc(d.address||'')):'<span style="color:var(--muted)">○ هنوز تنظیم نشده</span>';
+      mailStat.innerHTML=d.emailConfigured?('<span style="color:#34d399">● '+(_en?'Ready':'آماده')+'</span> · '+esc(d.address||'')):('<span style="color:var(--muted)">○ '+(_en?'Not set up yet':'هنوز تنظیم نشده')+'</span>');
     }).catch(function(){});
     tkFetch('/api/admin/telegram').then(function(d){
-      tgStat.innerHTML=(d&&d.configured)?('<span style="color:#34d399">● توکن ثبت شده</span>'+(d.chatSet?' · Chat ID دارد':' — هنوز Chat ID نداری')):'<span style="color:var(--muted)">○ هنوز تنظیم نشده</span>';
+      tgStat.innerHTML=(d&&d.configured)?('<span style="color:#34d399">● '+(_en?'Token saved':'توکن ثبت شده')+'</span>'+(d.chatSet?(_en?' · has Chat ID':' · Chat ID دارد'):(_en?' — no Chat ID yet':' — هنوز Chat ID نداری'))):('<span style="color:var(--muted)">○ '+(_en?'Not set up yet':'هنوز تنظیم نشده')+'</span>');
     }).catch(function(){});
   }
   tkFetch('/api/admin/settings').then(function(d){
@@ -5883,15 +5914,15 @@ function tkCommsPanel(){
     });
   }).catch(function(){});
   function saveThenTest(statNode,testUrl){
-    statNode.innerHTML='<span class="spin"></span> در حال ذخیره و تست...';
+    statNode.innerHTML='<span class="spin"></span> '+(_en?'Saving and testing…':'در حال ذخیره و تست...');
     tkFetch('/api/admin/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({updates:dirty})})
       .then(function(){dirty={};return tkFetch(testUrl,{method:'POST'});})
       .then(function(d){
-        if(d&&d.ok&&d.emailed!==undefined)statNode.innerHTML=d.emailed?'<span style="color:#34d399">✓ ایمیل آزمایشی فرستاده شد — صندوق ورودی را ببین.</span>':('<span style="color:#fbbf24">در برنامه ثبت شد ولی ایمیل نرفت'+(d.emailError?': '+esc(d.emailError):'')+'</span>');
-        else if(d&&d.ok)statNode.innerHTML='<span style="color:#34d399">✓ پیام آزمایشی در تلگرام فرستاده شد.</span>';
+        if(d&&d.ok&&d.emailed!==undefined)statNode.innerHTML=d.emailed?('<span style="color:#34d399">✓ '+(_en?'Test email sent — check your inbox.':'ایمیل آزمایشی فرستاده شد — صندوق ورودی را ببین.')+'</span>'):('<span style="color:#fbbf24">'+(_en?'Saved in the app but the email didn’t send':'در برنامه ثبت شد ولی ایمیل نرفت')+(d.emailError?': '+esc(d.emailError):'')+'</span>');
+        else if(d&&d.ok)statNode.innerHTML='<span style="color:#34d399">✓ '+(_en?'Test message sent on Telegram.':'پیام آزمایشی در تلگرام فرستاده شد.')+'</span>';
         setTimeout(refreshStatus,400);
       })
-      .catch(function(e){statNode.innerHTML='<span style="color:#fb7185">'+esc(e.message||'خطا')+'</span>';});
+      .catch(function(e){statNode.innerHTML='<span style="color:#fb7185">'+esc(e.message||(_en?'Error':'خطا'))+'</span>';});
   }
   mailBtn.addEventListener('click',function(){saveThenTest(mailStat,'/api/admin/notify-test');});
   tgBtn.addEventListener('click',function(){saveThenTest(tgStat,'/api/admin/telegram/test');});

@@ -201,9 +201,40 @@ window.__FA2EN = {
   'رمز پشتیبان (حداقل ۸ حرف — همین را برای بازیابی لازم داری)':'Backup password (at least 8 chars — you’ll need it to restore)','Chat ID (مثلاً 123456789)':'Chat ID (e.g. 123456789)',
   // — third sweep pass (final stragglers) —
   'مغز ستایش ۰.۶':'Setayesh brain 0.6','✕ بستن':'✕ Close','در حال انتخاب موضوع برای تحقیق…':'Choosing a research topic…',
-  'هنوز چیزی تأیید نشده.':'Nothing approved yet.','دستگاه‌ها:':'Devices:','والتی پیدا نشد — مسیر را دستی بنویس.':'No vault found — type the path manually.',
+  'در حال جمع‌بندی آموخته‌ها با مدل‌ها…':'Summarizing what it learned with the models…',
+  'هنوز چیزی تأیید نشده.':'Nothing approved yet.','دستگاه‌ها:':'Devices:','دستگاه‌ها':'Devices','والتی پیدا نشد — مسیر را دستی بنویس.':'No vault found — type the path manually.',
   'تنظیم نشده':'Not set','بسته':'Closed','مغز محلی ستایش (پایتون) (default)':'Setayesh local brain (Python) (default)',
-  'تعمیر (نصب مجدد)':'Repair (reinstall)','بعداً':'Later'
+  'تعمیر (نصب مجدد)':'Repair (reinstall)','بعداً':'Later',
+  // — self-improvement suggestions (server-sent; matched via window.i18nLookup) —
+  'تابلوی خانواده شلوغ شده':'The family board is crowded',
+  'تابلو ← پاک کردن خوانده‌شده‌ها.':'Board → clear the read messages.',
+  'یادگیری خودکار را روشن کنم؟':'Turn on auto-learning?',
+  'مغز ستایش ← یادگیری، یا مرکز کنترل ← یادگیری.':'Setayesh’s brain → Learning, or Control centre → Learning.',
+  'زیاد سؤال می‌پرسید. اگر یادگیری را روشن کنی، در پس‌زمینه درباره‌ی موضوعاتی که برایتان مهم است تحقیق می‌کنم و آماده نگه می‌دارم — البته هر چیزی اول به تأیید تو می‌رسد.':'You ask a lot of questions. If you turn learning on, I research the topics that matter to you in the background and keep the answers ready — everything still comes to you for approval first.',
+  // — fourth pass (users / face / devices panels) —
+  'بدون اینترنت':'Offline','سن':'Age','علایق...':'Interests...','علایق':'Interests','موبایل':'Mobile','لپ‌تاپ لمسی':'Touch laptop',
+  'یکی از چهره‌های لوکس زیر را انتخاب کن، یا عکس دلخواه خودت را آپلود کن. چهرهٔ انتخابی هم روی صفحهٔ مغز و هم روی آیکون ستایش می‌نشیند.':'Pick one of the premium faces below, or upload your own photo. The chosen face appears on both the brain screen and the Setayesh icon.',
+  // — fifth pass (toolkit panels: hardware / devices / grammar / bluetooth / cable / phone / dev-libraries) —
+  'اتصال سریال در این نسخه شبیه‌سازی است — برای سخت‌افزار واقعی ماژول serialport اضافه شود.':'The serial link is simulated in this build — add the serialport module for real hardware.',
+  'ستایش دستگاه‌های اطراف را پیدا می‌کند: USB، بلوتوث جفت‌شده، درایوها و هر چیزی روی وای‌فای خانه. پیدا کردن کاری با دستگاه ندارد — کنترل فقط برای دستگاهی که تو اجازه بدهی.':'Setayesh finds the devices around you: USB, paired Bluetooth, drives and anything on the home Wi-Fi. Finding does nothing to a device — control is only for a device you allow.',
+  'متن فارسی، انگلیسی یا آلمانی را بگذار — خودش زبان را می‌فهمد و غلط‌ها را نشان می‌دهد. نیم‌فاصله و حرف عربی در فارسی، das/dass و بزرگ‌نویسی در آلمانی، املا و هم‌آواها در انگلیسی.':'Paste Persian, English or German text — it detects the language and shows the mistakes: half-spaces and Arabic letters in Persian, das/dass and capitalization in German, spelling and homophones in English.',
+  'فارسی':'Persian','مطمئن + محتمل':'Sure + likely','همه‌ی پیشنهادها':'All suggestions',
+  'نامه و ایمیل را به چه زبانی بنویسد؟':'What language should it write letters and email in?',
+  'این فقط برای نوشتن است — گفتگوی معمولی به زبان خودت می‌ماند.':'This is only for writing — normal conversation stays in your own language.',
+  'هر بار بپرسد':'Ask each time','لحنش با تو چطور باشد؟':'What tone should it take with you?',
+  'خودمونی یعنی محاوره‌ای و بی‌تعارف، مثل حرف زدن با یکی که می‌شناسیش.':'Casual means colloquial and informal, like talking to someone you know.',
+  'پیش‌فرض (خودمونی)':'Default (casual)','خیلی خودمونی':'Very casual','رسمی':'Formal',
+  'دستگاه‌های جفت‌شده و آن‌هایی که همین الان دور و برند. می‌توانی وصل شوی، اطلاعات بگیری و روی دستگاه‌های BLE مقدار بنویسی. جفت‌شدن را خودِ دستگاه تأیید می‌کند — ستایش هیچ رمزی حدس نمی‌زند.':'Paired devices and the ones nearby right now. You can connect, read info, and write values to BLE devices. Pairing is confirmed by the device itself — Setayesh never guesses a password.',
+  'جفت‌شده‌ها':'Paired','بلوتوث نیاز به bluez دارد (sudo apt install bluez).':'Bluetooth needs bluez (sudo apt install bluez).',
+  'هر چیزی که با کابل وصل شده، با تمام مشخصاتش — سازنده، مدل، شماره سریال، درایور. و اگر پورت سریال باشد، می‌توانی مستقیم با دستگاه حرف بزنی.':'Everything connected by cable, with full details — maker, model, serial number, driver. And if it is a serial port, you can talk to the device directly.',
+  'پورت‌های سریال / کابل داده':'Serial ports / data cable',
+  'قفسه‌ی کتابخانه‌های برنامه‌نویسی: بهترین و پرکاربردترین‌ها برای هر زبان. فقط از مدیرهای بسته‌ای که روی این کامپیوتر نصب‌اند دانلود می‌شود، و دانلود هیچ اسکریپت نصبی اجرا نمی‌کند.':'The programming-library shelf: the best and most-used ones for each language. Downloads come only from the package managers installed on this computer, and a download never runs an install script.',
+  'خواندن قفسه…':'Reading the shelf…',
+  'این بخش روی خودِ گوشیِ تو کار می‌کند — گوشی مستقیم به دستگاه وصل می‌شود، مستقل از کامپیوتر. هر اتصال یک پنجره‌ی انتخاب باز می‌کند و تا خودت دستگاه را انتخاب نکنی به چیزی وصل نمی‌شود.':'This section runs on your phone itself — the phone connects directly to the device, independent of the computer. Every connection opens a chooser, and nothing is connected until you pick the device yourself.',
+  'گوشی‌ات خودش می‌تواند وصل شود — این کارها روی همین گوشی انجام می‌شوند، نه روی کامپیوتر.':'Your phone can connect on its own — these actions run on this very phone, not the computer.',
+  'کابل / سریالِ گوشی':'Phone cable / serial','انتخاب پورت و اتصال':'Choose port and connect',
+  '«گوشی خودش را کیبرد معرفی کند» — چرا از مرورگر نمی‌شود':'“Make the phone present itself as a keyboard” — why the browser can’t',
+  'بخش گوشی بارگذاری نشد.':'The phone section did not load.'
 };
 
 (function(){
@@ -230,6 +261,10 @@ window.__FA2EN = {
   var observer = null, curLang = 'fa';
 
   function apply(lang){
+    // First, let app.js re-translate any data-i18n* attributes — this catches
+    // panels inserted AFTER the language switch (e.g. an overlay cloned into a
+    // sheet on open), whose keys the switch-time applyLang() never saw.
+    try { if (window.__applyDataI18n) window.__applyDataI18n(document); } catch(e){}
     // text nodes
     var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null);
     var nodes = [], n;
@@ -238,6 +273,14 @@ window.__FA2EN = {
       var tn = nodes[i], p = tn.parentNode;
       if (!p || inSkip(p)) continue;
       if (lang === 'en'){
+        // Anti-interleaving: if this text node sits next to element siblings
+        // (bold, links, spans), it is only a FRAGMENT of a sentence that markup
+        // chopped up. Translating fragments produced the half-English/half-
+        // Persian mush. So only translate a node that is the sole content of its
+        // element — never a fragment. (The whole block stays Persian instead.)
+        var mixed = false;
+        for (var c = p.firstChild; c; c = c.nextSibling) { if (c !== tn && c.nodeType === 1) { mixed = true; break; } }
+        if (mixed) continue;
         var key = (tn.nodeValue||'').trim();
         var en = key && lookup(key);
         if (en != null){
@@ -288,4 +331,9 @@ window.__FA2EN = {
   });
 
   window.i18nSweep = sweep;   // app.js calls this from applyLang()
+  // Exposed so app.js can localize SERVER-sent dynamic strings (e.g. the
+  // research activity log, whose lines carry a timestamp prefix and so never
+  // match a whole-node dictionary key). Returns the English translation of a
+  // Persian phrase, or the phrase unchanged when there is no entry.
+  window.i18nLookup = function(raw){ var e = lookup(raw); return e != null ? e : raw; };
 })();
