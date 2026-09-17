@@ -195,7 +195,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.121';
+const APP_VERSION = '9.9.122';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -6793,6 +6793,15 @@ async function runTelegramTurn(text, chatId) {
   // has context. The current message is added after a successful reply.
   const hist = telegramHistoryFor(chatId);
   const convo = hist.slice(-TELEGRAM_HISTORY_TURNS).concat([{ role: 'user', content: msg }]);
+  // The keyless Python brain (no Ollama) has a rule-based fallback that, instead
+  // of answering, DUMPS a vault note as «بر اساس دانش والت — …» or announces
+  // «اولاما در دسترس نیست». On Telegram that reached جاوید as a confident,
+  // off-topic reply (a note title where he asked for a link). Treat those brain
+  // dumps as a non-answer so we keep walking the list and, if nothing real is
+  // left, send the honest "engines are busy" message instead of noise.
+  const isBrainDump = (eid, r) => eid === 'brain' && (
+    /^\s*بر اساس دانش والت/.test(r) || /اولاما در دسترس نیست/.test(r)
+  );
   let lastErr = null;
   for (const eid of order) {
     const model = modelFor(eid);
@@ -6800,6 +6809,7 @@ async function runTelegramTurn(text, chatId) {
     try {
       const raw = await callWithTools(eid, model, systemPrompt, convo, toolCtx, {});
       const reply = stripToolNoise(raw || '');
+      if (reply && isBrainDump(eid, reply)) { continue; }   // note-dump, not an answer
       if (reply) {
         try { noteEngine(eid, true); } catch (e) {}
         // Remember this exchange (trimmed) for the next follow-up.

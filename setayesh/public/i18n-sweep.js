@@ -234,7 +234,25 @@ window.__FA2EN = {
   'گوشی‌ات خودش می‌تواند وصل شود — این کارها روی همین گوشی انجام می‌شوند، نه روی کامپیوتر.':'Your phone can connect on its own — these actions run on this very phone, not the computer.',
   'کابل / سریالِ گوشی':'Phone cable / serial','انتخاب پورت و اتصال':'Choose port and connect',
   '«گوشی خودش را کیبرد معرفی کند» — چرا از مرورگر نمی‌شود':'“Make the phone present itself as a keyboard” — why the browser can’t',
-  'بخش گوشی بارگذاری نشد.':'The phone section did not load.'
+  'بخش گوشی بارگذاری نشد.':'The phone section did not load.',
+  // — sixth pass (static description/hint paragraphs across the control centre,
+  //   board, engines, update and connector panels; found by a full phone-width walk) —
+  'همه می‌بینند و همه می‌نویسند. این پیام‌ها روی همین کامپیوتر می‌مانند و به هیچ هوش مصنوعی فرستاده نمی‌شوند.':'Everyone sees and everyone writes. These messages stay on this computer and are sent to no AI.',
+  'ستایش خودش می‌فهمد کدام موتور برای هر سؤال بهتر است، و موتوری را که جواب نمی‌دهد خودکار از دور خارج می‌کند. اینجا ببین کدام سالم است.':'Setayesh works out which engine is best for each question, and automatically drops one that stops answering. See which are healthy here.',
+  'هر مدلی که در Ollama داری اینجا اضافه کن تا در فهرست موتورها بیاید. «شناسایی» خودش مدل‌های نصب‌شده را پیدا می‌کند. بعد از تغییر، «ذخیره» را بزن.':'Add any model you have in Ollama here so it appears in the engine list. “Detect” finds the installed models for you. After a change, hit “Save”.',
+  'هر کدام را روشن/خاموش کن و اگر کلید دارند بگذار. ترتیب از بالا به پایین است؛ DuckDuckGo رایگان و همیشه پشتیبان است.':'Turn each on/off and set a key if it needs one. The order is top to bottom; DuckDuckGo is free and always the fallback.',
+  'کتابخانه‌های مهم پایتون را در مخزن داخلی ستایش دانلود می‌کند تا مغز از آن‌ها استفاده کند (نیاز به اینترنت فقط همین یک‌بار).':'Downloads the important Python libraries into Setayesh’s internal store so the brain can use them (internet needed just this once).',
+  'ستایش قبل از هر کاری که روی کامپیوتر اثر می‌گذارد، از تو اجازه می‌گیرد. اینجا تأیید یا رد کن.':'Setayesh asks your permission before anything that affects the computer. Approve or reject here.',
+  'اجرای پایتون خاموش است — می‌توانی فایل‌ها را نگه داری ولی اجرا نمی‌شوند. مرکز کنترل ← قابلیت‌ها روشنش کن.':'Running Python is off — you can keep files but they will not run. Turn it on in Control centre → Capabilities.',
+  'فایل به‌روزرسانی را همین‌جا از گوشی انتخاب کن — خودش بررسی، نصب و ری‌استارت می‌شود. نیازی به پوشه‌ی مشترک نیست.':'Pick the update file right here from the phone — it checks, installs and restarts itself. No shared folder needed.',
+  'ستایش کل کد فعلی خودش را در یک فایل نصبی می‌بندد — برای پشتیبان یا برای بردن روی دستگاه دیگر.':'Setayesh packs all its current code into an installer file — for a backup or to move it to another device.',
+  'ستایش در پس‌زمینه تحقیق می‌کند. هیچ‌چیز تا وقتی شما تأیید نکنید در گفتگوها استفاده نمی‌شود.':'Setayesh researches in the background. Nothing is used in conversations until you approve it.',
+  'روی گوشی «localhost» کار نمی‌کند (یعنی خودِ گوشی). یکی از این آدرس‌ها را در مرورگر گوشی بزن — کامپیوتر باید روشن و به Tailscale وصل باشد:':'On the phone “localhost” does not work (it means the phone itself). Open one of these addresses in the phone browser — the computer must be on and connected to Tailscale:',
+  'والت Obsidian تو فقط یک پوشه است — خودم در جاهای معمول دنبالش می‌گردم. بعد از وصل شدن، یادداشت‌هایت را می‌خوانم و جستجو می‌کنم (فقط خواندن؛ هرگز چیزی را عوض یا پاک نمی‌کنم).':'Your Obsidian vault is just a folder — I look for it in the usual places. Once connected, I read and search your notes (read-only; I never change or delete anything).',
+  'یک Personal Access Token بساز (فقط دسترسی repo) و اینجا بگذار تا مخزن‌های خصوصی‌ات را هم بتوانم بخوانم.':'Create a Personal Access Token (repo access only) and put it here so I can read your private repositories too.',
+  'ساختن توکن ↗':'Create a token ↗',
+  'در Google Cloud Console یک OAuth Client از نوع «Web application» بساز، و این آدرس بازگشت را در آن ثبت کن:':'In the Google Cloud Console create an OAuth Client of type “Web application”, and register this redirect address in it:',
+  'داده با AES-256-GCM روی همین دستگاه رمزنگاری می‌شود؛ درایو فقط نسخهٔ غیرقابل‌خواندن را نگه می‌دارد.':'Data is encrypted with AES-256-GCM on this device; the drive only keeps the unreadable copy.'
 };
 
 (function(){
