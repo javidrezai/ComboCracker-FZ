@@ -1,4 +1,4 @@
-/* SETAYESH_BUILD 9.9.122 */
+/* SETAYESH_BUILD 9.9.123 */
 (function(){
 'use strict';
 
@@ -17,7 +17,7 @@ Object.assign(LANG.fa,{
  autoGemini:'برای خواندن فایل، موتور Gemini انتخاب شد',
  liveSearch:'جستجوی زنده در وب',searchOnMsg:'جستجوی زنده روشن شد — با گوگل جواب می‌دهد',
  searchNeedsGemini:'جستجوی زنده به موتور Gemini نیاز دارد. اول کلید Gemini را در تنظیمات اضافه کن.',
- codeLib:'کتابخانه‌های کد',codeLibHint:'چند کتابخانه‌ی جدا بساز (پایتون، C++، CSS، …). هنگام کدنویسی بگو «از کتابخانه‌ی پایتون استفاده کن» یا «از کل کتابخانه استفاده کن».',codeLibSaved:'ذخیره شد ✓',newLib:'جدید +',uploadLib:'بارگذاری فایل',delete:'حذف'
+ codeLib:'کتابخانه‌های کد',codeLibHint:'چند کتابخانه‌ی جدا بساز (پایتون، C++، CSS، …). هنگام کدنویسی بگو «از کتابخانه‌ی پایتون استفاده کن» یا «از کل کتابخانه استفاده کن».',codeLibSaved:(lang==='en'?'Saved ✓':'ذخیره شد ✓'),newLib:'جدید +',uploadLib:'بارگذاری فایل',delete:(lang==='en'?'Delete':'حذف')
 });
 Object.assign(LANG.en,{
  guideTitle:'Guide & abilities',textSize:'Text size',tsSmall:'Small',tsMedium:'Medium',tsLarge:'Large',
@@ -694,12 +694,12 @@ function loadFace(){
   }).catch(function(){});
 }
 function saveFace(url){
-  var n=$('faceNote'); if(n){n.style.color='';n.textContent='در حال ذخیره…';}
+  var n=$('faceNote'); if(n){n.style.color='';n.textContent=(lang==='en'?'Saving…':'در حال ذخیره…');}
   var fd=new FormData(); fd.append('url',url||'');
   fetch('/api/admin/face',{method:'POST',headers:authHeaders(),body:fd})
     .then(function(r){return r.json().then(function(d){return {ok:r.ok,d:d};});})
     .then(function(x){
-      if(!x.ok||x.d.error){ if(n){n.style.color='#fb7185';n.textContent=x.d.error||'ذخیره نشد';} return; }
+      if(!x.ok||x.d.error){ if(n){n.style.color='#fb7185';n.textContent=x.d.error||(lang==='en'?'Not saved':'ذخیره نشد');} return; }
       faceApply(x.d.url); renderFacePreview(x.d.url||window.SETAYESH_FACE);
       if(n){n.style.color='#34d399';n.textContent=x.d.url?'چهره ذخیره شد ✓':'به پیش‌فرض برگشت ✓';}
     }).catch(function(e){ if(n){n.style.color='#fb7185';n.textContent='خطا: '+e.message;} });
@@ -714,14 +714,14 @@ function saveFace(url){
     uf.addEventListener('change',function(){
       if(!this.files||!this.files[0])return;
       var f=this.files[0]; this.value='';
-      var n=$('faceNote'); if(n){n.style.color='';n.textContent='در حال آپلود…';}
+      var n=$('faceNote'); if(n){n.style.color='';n.textContent=(lang==='en'?'Uploading…':'در حال آپلود…');}
       var fd=new FormData(); fd.append('file',f);
       fetch('/api/admin/face',{method:'POST',headers:authHeaders(),body:fd})
         .then(function(r){return r.json().then(function(d){return {ok:r.ok,d:d};});})
         .then(function(x){
           if(!x.ok||x.d.error){ if(n){n.style.color='#fb7185';n.textContent=x.d.error||'آپلود نشد';} return; }
           FACE_PICK=x.d.url; faceApply(x.d.url); renderFacePreview(x.d.url); renderFaceGrid();
-          if(n){n.style.color='#34d399';n.textContent='عکس خودت ذخیره شد ✓ (محلی — بدون اینترنت هم باز می‌شود)';}
+          if(n){n.style.color='#34d399';n.textContent=(lang==='en'?'Your photo is saved ✓ (local — opens even offline)':'عکس خودت ذخیره شد ✓ (محلی — بدون اینترنت هم باز می‌شود)');}
         }).catch(function(e){ if(n){n.style.color='#fb7185';n.textContent='خطا: '+e.message;} });
     });
   }
@@ -853,7 +853,7 @@ function messageNode(m){
     var im2=document.createElement('img');im2.src=m.image;im2.alt='';
     im2.style.cssText='max-width:100%;border-radius:14px;margin-top:10px;display:block';
     var dl2=document.createElement('a');dl2.href=m.image;dl2.download='setayesh-image.png';
-    dl2.className='btn ghost';dl2.textContent='دانلود تصویر';dl2.style.cssText='margin-top:8px;display:inline-block;text-decoration:none';
+    dl2.className='btn ghost';dl2.textContent=(lang==='en'?'Download image':'دانلود تصویر');dl2.style.cssText='margin-top:8px;display:inline-block;text-decoration:none';
     content.appendChild(im2);content.appendChild(dl2);
   }
   body.appendChild(content);
@@ -1040,7 +1040,7 @@ async function send(){
         var im=document.createElement('img');im.src=d2.image;im.alt='';
         im.style.cssText='max-width:100%;border-radius:14px;margin-top:10px;display:block';
         var dl=document.createElement('a');dl.href=d2.image;dl.download='setayesh-image.png';
-        dl.className='btn ghost';dl.textContent='دانلود تصویر';dl.style.cssText='margin-top:8px;display:inline-block;text-decoration:none';
+        dl.className='btn ghost';dl.textContent=(lang==='en'?'Download image':'دانلود تصویر');dl.style.cssText='margin-top:8px;display:inline-block;text-decoration:none';
         slot.appendChild(im);slot.appendChild(dl);
       }
       wireCopy(slot);
@@ -1496,8 +1496,8 @@ function renderPhoneAccess(){
     var tag=/\/\/100\./.test(u)?'<span style="font-family:var(--mono);font-size:9px;color:#7ee7c7;background:rgba(52,211,153,.12);border:1px solid rgba(52,211,153,.3);border-radius:99px;padding:2px 7px">Tailscale ⭐</span>':'';
     var code=document.createElement('code');
     code.textContent=u;code.style.cssText='flex:1;direction:ltr;text-align:left;font-size:12.5px;background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:7px 9px;overflow:auto';
-    var cp=document.createElement('button');cp.className='btn ghost';cp.textContent='کپی';cp.style.cssText='margin-top:0;padding:6px 12px;flex-shrink:0';
-    cp.addEventListener('click',function(){try{navigator.clipboard.writeText(u);cp.textContent='کپی شد ✓';setTimeout(function(){cp.textContent='کپی';},1400);}catch(e){}});
+    var cp=document.createElement('button');cp.className='btn ghost';cp.textContent=(lang==='en'?'Copy':'کپی');cp.style.cssText='margin-top:0;padding:6px 12px;flex-shrink:0';
+    cp.addEventListener('click',function(){try{navigator.clipboard.writeText(u);cp.textContent=(lang==='en'?'Copied ✓':'کپی شد ✓');setTimeout(function(){cp.textContent=(lang==='en'?'Copy':'کپی');},1400);}catch(e){}});
     row.innerHTML=tag;row.appendChild(code);row.appendChild(cp);
     wrap.appendChild(row);
   });
@@ -1576,14 +1576,14 @@ function taskChip(sug){
     'display:flex;align-items:center;gap:10px;flex-wrap:wrap';
   var t=el('span'); t.style.flex='1';
   t.textContent='📌 «'+sug.text+'»'+(sug.due?('  — '+sug.due):'');
-  var yes=el('button','btn ghost'); yes.textContent='یادت باشه'; yes.style.padding='5px 12px';
+  var yes=el('button','btn ghost'); yes.textContent=(lang==='en'?'Remember':'یادت باشه'); yes.style.padding='5px 12px';
   yes.addEventListener('click',function(){
     fetch('/api/memory',{method:'POST',headers:authHeaders({'Content-Type':'application/json'}),
       body:JSON.stringify({text:sug.text,kind:sug.due?'deadline':'fact',due:sug.due})})
-      .then(function(){ t.textContent='✓ ذخیره شد'; yes.remove(); no.remove(); })
-      .catch(function(){ t.textContent='ذخیره نشد'; });
+      .then(function(){ t.textContent=(lang==='en'?'✓ Saved':'✓ ذخیره شد'); yes.remove(); no.remove(); })
+      .catch(function(){ t.textContent=(lang==='en'?'Not saved':'ذخیره نشد'); });
   });
-  var no=el('button','btn ghost'); no.textContent='نه'; no.style.padding='5px 12px';
+  var no=el('button','btn ghost'); no.textContent=(lang==='en'?'No':'نه'); no.style.padding='5px 12px';
   no.addEventListener('click',function(){ wrap.remove(); });
   wrap.appendChild(t); wrap.appendChild(yes); wrap.appendChild(no);
   return wrap;
@@ -1637,6 +1637,7 @@ function openBoard(){
 function closeBoard(){ $('boardOverlay').classList.remove('on'); }
 
 function boardCard(m){
+  var _en=lang==='en';
   var mine=(m.by===currentUsername);
   var isSystem=!!m.system;
   var row=el('div');
@@ -1644,7 +1645,7 @@ function boardCard(m){
 
   var who=el('div');
   who.style.cssText='font-size:11px;color:var(--muted);margin-bottom:3px;padding:0 4px';
-  who.textContent=(m.pinned?'📌 ':'')+(isSystem?'ستایش (سیستم)':m.by)+' · '+new Date(m.at).toLocaleString();
+  who.textContent=(m.pinned?'📌 ':'')+(isSystem?(_en?'Setayesh (system)':'ستایش (سیستم)'):m.by)+' · '+new Date(m.at).toLocaleString();
 
   var bub=el('div');
   bub.style.cssText='max-width:82%;padding:9px 13px;border-radius:14px;font-size:13.5px;line-height:1.75;white-space:pre-wrap;word-break:break-word;'+
@@ -1687,7 +1688,7 @@ function boardCard(m){
   if(m.shared){
     var tag=el('div');
     tag.style.cssText='font-size:11px;color:var(--cyan);opacity:.85;margin-top:'+(m.text||(m.attachments||[]).length?'7px':'0');
-    tag.textContent='✨ از گفتگو با ستایش'+(m.shared!=='setayesh'?(' · '+m.shared):'');
+    tag.textContent=(_en?'✨ from a chat with Setayesh':'✨ از گفتگو با ستایش')+(m.shared!=='setayesh'?(' · '+m.shared):'');
     bub.appendChild(tag);
   }
 
@@ -1699,8 +1700,8 @@ function boardCard(m){
     a.style.cssText='display:flex;align-items:center;gap:9px;padding:9px 12px;border-radius:10px;'+
       'background:rgba(52,211,153,.12);border:1px solid rgba(52,211,153,.35);'+
       'color:#34d399;text-decoration:none;font-size:12.5px';
-    var acc=m.location.acc?(' · دقت حدود '+Math.round(m.location.acc)+' متر'):'';
-    a.textContent='📍 موقعیت روی نقشه'+acc;
+    var acc=m.location.acc?(_en?(' · about '+Math.round(m.location.acc)+' m accuracy'):(' · دقت حدود '+Math.round(m.location.acc)+' متر')):'';
+    a.textContent=(_en?'📍 Location on the map':'📍 موقعیت روی نقشه')+acc;
     loc.appendChild(a);
     var co=el('div');
     co.style.cssText='font-size:10.5px;color:var(--muted);margin-top:4px;font-family:var(--mono)';
@@ -1715,7 +1716,7 @@ function boardCard(m){
   if(canDelete||(CFG&&CFG.isAdmin)){
     var acts=el('div'); acts.style.cssText='display:flex;gap:10px;margin-top:4px;padding:0 4px';
     if(CFG&&CFG.isAdmin){
-      var pin=el('button'); pin.textContent=m.pinned?'برداشتن سنجاق':'سنجاق';
+      var pin=el('button'); pin.textContent=m.pinned?(_en?'Unpin':'برداشتن سنجاق'):(_en?'Pin':'سنجاق');
       pin.style.cssText='background:none;border:none;color:var(--muted);font-size:11px;cursor:pointer;font-family:inherit;padding:0';
       pin.addEventListener('click',function(){
         adminFetch('/api/board/'+m.id+'/pin',{method:'POST'}).then(function(){loadBoard();}).catch(function(e){boardNote(e.message,true);});
@@ -1723,7 +1724,7 @@ function boardCard(m){
       acts.appendChild(pin);
     }
     if(canDelete){
-      var del=el('button'); del.textContent='حذف';
+      var del=el('button'); del.textContent=_en?'Delete':(lang==='en'?'Delete':'حذف');
       del.style.cssText='background:none;border:none;color:var(--muted);font-size:11px;cursor:pointer;font-family:inherit;padding:0';
       del.addEventListener('click',function(){
         adminFetch('/api/board/'+m.id,{method:'DELETE'}).then(function(){loadBoard();}).catch(function(e){boardNote(e.message,true);});
@@ -1972,7 +1973,7 @@ function loadCCSync(){
     $('syHubUrl').value=d.hubUrl||'';
     $('syBoard').checked=d.what.board; $('syMemory').checked=d.what.memory;
     $('syDevices').checked=d.what.devices; $('syKnowledge').checked=d.what.knowledge;
-    if(d.keySet&&!$('syKey').value)$('syKey').placeholder='••• کلید تنظیم شده (برای عوض کردن بنویس)';
+    if(d.keySet&&!$('syKey').value)$('syKey').placeholder=(lang==='en'?'••• key is set (type to change)':'••• کلید تنظیم شده (برای عوض کردن بنویس)');
     sySetRole(d.role||'peer');
     $('syMyAddr').innerHTML=(d.myAddresses||[]).map(function(a){return 'http://'+a+':3000';}).join('<br>')||'—';
     var st=[];
@@ -2000,7 +2001,7 @@ $('sySave').addEventListener('click',function(){
   if($('syKey').value)body.sharedKey=$('syKey').value;
   adminFetch('/api/admin/sync/settings',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify(body)})
-    .then(function(d){ ccNote(d.keySet?'ذخیره شد.':'ذخیره شد — ولی کلید مشترک لازم است.'); $('syKey').value=''; loadCCSync(); })
+    .then(function(d){ ccNote(d.keySet?(lang==='en'?'Saved.':'ذخیره شد.'):'ذخیره شد — ولی کلید مشترک لازم است.'); $('syKey').value=''; loadCCSync(); })
     .catch(function(e){ ccNote(e.message,true); });
 });
 $('syNow').addEventListener('click',function(){
@@ -2021,59 +2022,62 @@ function loadCCActions(){
   adminFetch('/api/admin/actions').then(function(d){
     var box=$('actList'); box.innerHTML='';
     var pend=(d.actions||[]).filter(function(a){return a.status==='pending';});
-    if(!pend.length)box.innerHTML='<div class="tk-hint">چیزی منتظر تأیید نیست.</div>';
+    var _en=lang==='en';
+    if(!pend.length)box.innerHTML='<div class="tk-hint">'+(_en?'Nothing is waiting for approval.':'چیزی منتظر تأیید نیست.')+'</div>';
     pend.forEach(function(a){
       var card=el('div','tk-card'); card.style.cssText='margin-bottom:8px;padding:11px 13px;border-color:rgba(251,113,133,.3)';
       var t=el('div'); t.style.cssText='font-weight:600;font-size:13px;margin-bottom:4px';
-      t.textContent=a.kind==='run'?('اجرای «'+a.file+'» در پروژه‌ی «'+a.project+'»'):a.kind==='install'?'نصب':'درخواست';
+      t.textContent=a.kind==='run'?(_en?('run “'+a.file+'” in project “'+a.project+'”'):('اجرای «'+a.file+'» در پروژه‌ی «'+a.project+'»')):a.kind==='install'?(_en?'install':'نصب'):(_en?'request':'درخواست');
       card.appendChild(t);
       var b=el('div'); b.style.cssText='font-size:12px;color:var(--muted);line-height:1.7;margin-bottom:8px';
-      b.textContent=a.why||a.what||(a.command?('دستور: '+a.command):'');
+      b.textContent=a.why||a.what||(a.command?((_en?'command: ':'دستور: ')+a.command):'');
       card.appendChild(b);
       var row=el('div'); row.style.cssText='display:flex;gap:6px';
-      var yes=el('button','btn'); yes.textContent='تأیید'; yes.style.cssText='flex:1;padding:6px;font-size:12px';
+      var yes=el('button','btn'); yes.textContent=(lang==='en'?'Approve':'تأیید'); yes.style.cssText='flex:1;padding:6px;font-size:12px';
       yes.addEventListener('click',function(){
         adminFetch('/api/admin/actions/'+a.id+'/approve',{method:'POST'})
           .then(function(r){
-            if(r.result){ ccNote('اجرا شد.'); showActionResult(a,r.result); }
-            else if(r.command){ ccNote('تأیید شد — این دستور را خودت در ترمینال بزن: '+r.command); }
-            else ccNote('تأیید شد.');
+            if(r.result){ ccNote(_en?'Done.':'اجرا شد.'); showActionResult(a,r.result); }
+            else if(r.command){ ccNote((_en?'Approved — run this command yourself in the terminal: ':'تأیید شد — این دستور را خودت در ترمینال بزن: ')+r.command); }
+            else ccNote(_en?'Approved.':'تأیید شد.');
             loadCCActions();
           }).catch(function(e){ ccNote(e.message,true); });
       });
-      var no=el('button','btn ghost'); no.textContent='رد'; no.style.cssText='flex:1;padding:6px;font-size:12px';
+      var no=el('button','btn ghost'); no.textContent=(lang==='en'?'Reject':'رد'); no.style.cssText='flex:1;padding:6px;font-size:12px';
       no.addEventListener('click',function(){
-        adminFetch('/api/admin/actions/'+a.id+'/reject',{method:'POST'}).then(function(){ loadCCActions(); ccNote('رد شد.'); });
+        adminFetch('/api/admin/actions/'+a.id+'/reject',{method:'POST'}).then(function(){ loadCCActions(); ccNote(_en?'Rejected.':'رد شد.'); });
       });
       row.appendChild(yes); row.appendChild(no); card.appendChild(row);
       box.appendChild(card);
     });
   }).catch(function(e){ ccNote(e.message,true); });
   adminFetch('/api/admin/notify-status').then(function(d){
-    $('notifSetup').textContent=d.emailConfigured?('ایمیل تنظیم شده: '+d.address):'ایمیل هنوز تنظیم نشده.';
+    var _en=lang==='en';
+    $('notifSetup').textContent=d.emailConfigured?((_en?'Email set: ':'ایمیل تنظیم شده: ')+d.address):(_en?'Email not set up yet.':'ایمیل هنوز تنظیم نشده.');
   }).catch(function(){});
 }
 function showActionResult(a,r){
   var out=el('div'); out.style.cssText='margin-top:8px;padding:9px 11px;border-radius:9px;'+
     'font-family:var(--mono);font-size:11.5px;white-space:pre-wrap;direction:ltr;text-align:left;'+
     'background:rgba(52,211,153,.08);border:1px solid rgba(52,211,153,.28);max-height:180px;overflow:auto';
-  out.textContent=(r.stdout||'')+(r.stderr?'\n'+r.stderr:'')||'(بدون خروجی)';
+  out.textContent=(r.stdout||'')+(r.stderr?'\n'+r.stderr:'')||(lang==='en'?'(no output)':'(بدون خروجی)');
   $('actList').insertBefore(out,$('actList').firstChild);
 }
 $('notifTest').addEventListener('click',function(){
   adminFetch('/api/admin/notify-test',{method:'POST'})
-    .then(function(d){ ccNote(d.emailed?'اعلان و ایمیل فرستاده شد.':'اعلان در برنامه ثبت شد.'+(d.emailError?' ایمیل نشد: '+d.emailError:' (ایمیل تنظیم نشده)')); pollNotifications&&pollNotifications(); })
+    .then(function(d){ var _en=lang==='en'; ccNote(d.emailed?(_en?'Notification and email sent.':'اعلان و ایمیل فرستاده شد.'):((_en?'Notification logged in the app.':'اعلان در برنامه ثبت شد.')+(d.emailError?(_en?' email failed: ':' ایمیل نشد: ')+d.emailError:(_en?' (email not set up)':' (ایمیل تنظیم نشده)')))); pollNotifications&&pollNotifications(); })
     .catch(function(e){ ccNote(e.message,true); });
 });
 
 function loadCCInbox(){
   adminFetch('/api/admin/inbox').then(function(d){
     $('ibFolder').textContent=d.folder||'—';
+    var _en=lang==='en';
     var parts=[];
-    if(d.waiting&&d.waiting.length) parts.push('⏳ منتظر: '+d.waiting.join('، '));
-    if(d.files&&d.files.length) parts.push('📄 فایل‌های نگه‌داشته: '+d.files.slice(-3).join('، '));
-    if(d.rejected&&d.rejected.length) parts.push('✗ رد شده: '+d.rejected.slice(-2).join('، '));
-    $('ibStatus').innerHTML=parts.join('<br>')||'پوشه خالی است.';
+    if(d.waiting&&d.waiting.length) parts.push((_en?'⏳ waiting: ':'⏳ منتظر: ')+d.waiting.join('، '));
+    if(d.files&&d.files.length) parts.push((_en?'📄 kept files: ':'📄 فایل‌های نگه‌داشته: ')+d.files.slice(-3).join('، '));
+    if(d.rejected&&d.rejected.length) parts.push((_en?'✗ rejected: ':'✗ رد شده: ')+d.rejected.slice(-2).join('، '));
+    $('ibStatus').innerHTML=parts.join('<br>')||(_en?'The folder is empty.':'پوشه خالی است.');
   }).catch(function(){});
 }
 $('ibScan').addEventListener('click',function(){
@@ -2107,7 +2111,7 @@ function loadCCScripts(){
   adminFetch('/api/admin/scripts').then(function(d){
     $('scWarn').style.display=d.canRun?'none':'';
     var box=$('scList'); box.innerHTML='';
-    if(!d.scripts.length){ box.innerHTML='<div class="tk-hint">هنوز اسکریپتی نداری.</div>'; return; }
+    if(!d.scripts.length){ box.innerHTML='<div class="tk-hint">'+(lang==='en'?'You have no scripts yet.':'هنوز اسکریپتی نداری.')+'</div>'; return; }
     d.scripts.forEach(function(sc){
       var card=el('div','tk-card'); card.style.cssText='margin-bottom:8px;padding:10px 12px';
       var h=el('div'); h.style.cssText='font-weight:600;font-size:13px;font-family:var(--mono)';
@@ -2123,18 +2127,18 @@ function loadCCScripts(){
 
       var row=el('div'); row.style.cssText='display:flex;gap:6px;margin-top:8px;flex-wrap:wrap';
       if(d.canRun){
-        var run=el('button','btn'); run.textContent='▶ اجرا'; run.style.cssText='padding:5px 14px;font-size:12px';
+        var run=el('button','btn'); run.textContent=(lang==='en'?'▶ Run':'▶ اجرا'); run.style.cssText='padding:5px 14px;font-size:12px';
         run.addEventListener('click',function(){ runScript(sc.name,run); });
         row.appendChild(run);
       }
-      var ed=el('button','btn ghost'); ed.textContent='ویرایش'; ed.style.cssText='padding:5px 12px;font-size:12px';
+      var ed=el('button','btn ghost'); ed.textContent=(lang==='en'?'Edit':'ویرایش'); ed.style.cssText='padding:5px 12px;font-size:12px';
       ed.addEventListener('click',function(){
         adminFetch('/api/admin/scripts/'+encodeURIComponent(sc.name)).then(function(f){
           $('scName').value=f.name; $('scCode').value=f.content;
           $('scEditor').style.display=''; $('scCode').focus();
         }).catch(function(e){ ccNote(e.message,true); });
       });
-      var del=el('button','btn ghost'); del.textContent='حذف'; del.style.cssText='padding:5px 12px;font-size:12px';
+      var del=el('button','btn ghost'); del.textContent=(lang==='en'?'Delete':'حذف'); del.style.cssText='padding:5px 12px;font-size:12px';
       del.addEventListener('click',function(){
         if(!confirm('«'+sc.name+'» حذف شود؟'))return;
         adminFetch('/api/admin/scripts/'+encodeURIComponent(sc.name),{method:'DELETE'})
@@ -2186,7 +2190,7 @@ $('scSave').addEventListener('click',function(){
   if(!n){ ccNote('نام فایل لازم است.',true); return; }
   adminFetch('/api/admin/scripts',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({name:n,content:c})})
-    .then(function(){ $('scEditor').style.display='none'; ccNote('ذخیره شد.'); loadCCScripts(); })
+    .then(function(){ $('scEditor').style.display='none'; ccNote((lang==='en'?'Saved.':'ذخیره شد.')); loadCCScripts(); })
     .catch(function(e){ ccNote(e.message,true); });
 });
 
@@ -2194,12 +2198,13 @@ function loadCCUpdate(){
   adminFetch('/api/admin/auto-update').then(function(d){
     $('auEnabled').checked=!!d.enabled;
     $('auFolder').textContent=d.folder||'—';
+    var _en=lang==='en';
     var st=[];
-    st.push('نسخه‌ی فعلی: <b>'+d.currentVersion+'</b>');
-    if(d.pending&&d.pending.length) st.push('⏳ منتظر نصب: '+d.pending.join('، '));
-    if(d.installed&&d.installed.length) st.push('✓ نصب‌شده‌ها: '+d.installed.slice(-2).join('، '));
-    if(d.rejected&&d.rejected.length) st.push('<span style="color:#fb7185">✗ رد شده: '+d.rejected.slice(-2).join('، ')+'</span>');
-    if(!d.restartSupported) st.push('<span style="color:#fbbf24">⚠ برای ری‌استارت خودکار باید با Start-Setayesh.bat جدید اجرا شود.</span>');
+    st.push((_en?'Current version: ':'نسخه‌ی فعلی: ')+'<b>'+d.currentVersion+'</b>');
+    if(d.pending&&d.pending.length) st.push((_en?'⏳ awaiting install: ':'⏳ منتظر نصب: ')+d.pending.join('، '));
+    if(d.installed&&d.installed.length) st.push((_en?'✓ installed: ':'✓ نصب‌شده‌ها: ')+d.installed.slice(-2).join('، '));
+    if(d.rejected&&d.rejected.length) st.push('<span style="color:#fb7185">'+(_en?'✗ rejected: ':'✗ رد شده: ')+d.rejected.slice(-2).join('، ')+'</span>');
+    if(!d.restartSupported) st.push('<span style="color:#fbbf24">'+(_en?'⚠ For automatic restart it must be run with the new Start-Setayesh.bat.':'⚠ برای ری‌استارت خودکار باید با Start-Setayesh.bat جدید اجرا شود.')+'</span>');
     $('auStatus').innerHTML=st.join('<br>');
     var lg=$('auLog'); lg.innerHTML='';
     (d.log||[]).slice().reverse().forEach(function(l){
@@ -2272,7 +2277,7 @@ function downloadSelfPackage(report){
   // Same action, reachable from inside the 3D brain view.
   var bb=$('brainBuildPkg'), st=$('brainStatus');
   if(bb)bb.addEventListener('click',function(){
-    bb.disabled=true; var old=bb.textContent; bb.textContent='… در حال ساخت';
+    bb.disabled=true; var old=bb.textContent; bb.textContent=(lang==='en'?'… building':'… در حال ساخت');
     downloadSelfPackage(function(msg){ if(st)st.textContent=msg; })
       .then(function(){bb.disabled=false;bb.textContent=old;})
       .catch(function(){bb.disabled=false;bb.textContent=old;});
@@ -2322,7 +2327,7 @@ $('thSave').addEventListener('click',function(){
       fontScale:Number($('thFont').value), radius:Number($('thRadius').value),
       effects:$('thEffects').checked
     }})
-  }).then(function(d){ applyTheme(d.theme); ccNote(d.note||'ذخیره شد.'); })
+  }).then(function(d){ applyTheme(d.theme); ccNote(d.note||(lang==='en'?'Saved.':'ذخیره شد.')); })
     .catch(function(e){ ccNote(e.message,true); });
 });
 $('thReset').addEventListener('click',function(){
@@ -2372,7 +2377,7 @@ function loadCCDevices(){
         (_en?('Last seen: '+new Date(v.lastSeen).toLocaleString()+' · '+v.visits+' visits')
             :('آخرین بار: '+new Date(v.lastSeen).toLocaleString()+' · '+v.visits+' بار'));
       m.style.whiteSpace='pre-line';
-      var x=el('button','btn ghost'); x.textContent=_en?'Delete':'حذف'; x.style.cssText='padding:5px 12px;margin-top:8px';
+      var x=el('button','btn ghost'); x.textContent=_en?'Delete':(lang==='en'?'Delete':'حذف'); x.style.cssText='padding:5px 12px;margin-top:8px';
       x.addEventListener('click',function(){
         adminFetch('/api/admin/devices/'+encodeURIComponent(v.id),{method:'DELETE'})
           .then(loadCCDevices).catch(function(e){ccNote(e.message,true);});
@@ -2399,12 +2404,13 @@ function loadCC(){
       if(p.hidden)row.style.opacity='0.55';
       var top=el('div'); top.style.cssText='display:flex;align-items:center;gap:8px;margin-bottom:6px';
       var nm=el('span'); nm.style.cssText='flex:1;font-size:13px;font-weight:600';
-      nm.textContent=p.label+(p.free?' · رایگان':'')+(p.custom?' · دلخواه':'')+(p.hidden?' · پنهان':'');
+      var _plabel=(lang==='en'&&window.i18nLookup)?window.i18nLookup(p.label):p.label;
+      nm.textContent=_plabel+(p.free?(lang==='en'?' · free':' · رایگان'):'')+(p.custom?(lang==='en'?' · custom':' · دلخواه'):'')+(p.hidden?(lang==='en'?' · hidden':' · پنهان'):'');
       top.appendChild(nm);
       if(st){ var dot=el('span'); dot.textContent=st.set?'●':'○'; dot.style.color=st.set?'#34d399':'var(--muted)'; top.appendChild(dot); }
       // hide/show toggle for built-in engines; delete for custom ones
       if(p.custom){
-        var del=el('button','btn ghost'); del.textContent='حذف'; del.style.cssText='font-size:11px;padding:2px 8px';
+        var del=el('button','btn ghost'); del.textContent=(lang==='en'?'Delete':'حذف'); del.style.cssText='font-size:11px;padding:2px 8px';
         del.addEventListener('click',function(){ removeCustomEngine(p.id,p.label); });
         top.appendChild(del);
       } else if(p.lockable){
@@ -2415,7 +2421,7 @@ function loadCC(){
       // Clear this engine's API key — a delete button in front of every key
       // that actually has one set.
       if(st&&st.set){
-        var clr=el('button','btn ghost'); clr.textContent='🗑 پاک کردن کلید'; clr.style.cssText='font-size:11px;padding:2px 8px;color:#fb7185';
+        var clr=el('button','btn ghost'); clr.textContent=(lang==='en'?'🗑 Clear key':'🗑 پاک کردن کلید'); clr.style.cssText='font-size:11px;padding:2px 8px;color:#fb7185';
         clr.addEventListener('click',function(){ clearEngineKey(key,p.label); });
         top.appendChild(clr);
       }
@@ -2430,7 +2436,7 @@ function loadCC(){
       if(p.keyUrl){
         var a=el('a'); a.href=p.keyUrl; a.target='_blank'; a.rel='noopener';
         a.style.cssText='font-size:11px;color:var(--cyan);text-decoration:none;display:inline-block;margin-top:6px';
-        a.textContent='گرفتن کلید ↗'; row.appendChild(a);
+        a.textContent=(lang==='en'?'Get a key ↗':'گرفتن کلید ↗'); row.appendChild(a);
       }
       box.appendChild(row);
     });
@@ -2478,7 +2484,7 @@ function loadObsidian(){
   }).catch(function(e){ st.textContent=e.message; });
 }
 function saveObsidian(p){
-  var n=$('obsNote'); if(n){n.style.color='';n.textContent='در حال وصل…';}
+  var n=$('obsNote'); if(n){n.style.color='';n.textContent=(lang==='en'?'Connecting…':'در حال وصل…');}
   adminFetch('/api/admin/obsidian',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({vault:p})})
     .then(function(d){ if(n){n.style.color='#34d399';n.textContent=d.vault?('وصل شد ✓ · '+(d.notes||0)+' یادداشت'):'قطع شد';} loadObsidian(); })
     .catch(function(e){ if(n){n.style.color='#fb7185';n.textContent=e.message;} });
@@ -2496,7 +2502,7 @@ window.loadObsidian=loadObsidian; window.loadGithub=loadGithub;
   var os_=$('obsSave'); if(os_)os_.addEventListener('click',function(){ saveObsidian(($('obsPath').value||'').trim()); });
   var gs=$('ghSave'); if(gs)gs.addEventListener('click',function(){
     var n=$('ghNote'), t=($('ghToken').value||'').trim();
-    if(n){n.style.color='';n.textContent='در حال بررسی توکن…';}
+    if(n){n.style.color='';n.textContent=(lang==='en'?'Checking the token…':'در حال بررسی توکن…');}
     adminFetch('/api/admin/github',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:t})})
       .then(function(d){ $('ghToken').value=''; if(n){n.style.color='#34d399';n.textContent=d.connected?('وصل شد ✓ '+d.login):'قطع شد';} loadGithub(); })
       .catch(function(e){ if(n){n.style.color='#fb7185';n.textContent=e.message;} });
@@ -2509,7 +2515,7 @@ function loadAutonomy(){
   adminFetch('/api/admin/autonomy').then(function(d){ cb.checked=!!d.autoApply; }).catch(function(){});
   if(cb._wired)return; cb._wired=true;
   cb.addEventListener('change',function(){
-    var n=$('ccAutonomyNote'); if(n){n.style.color='';n.textContent='در حال ذخیره…';}
+    var n=$('ccAutonomyNote'); if(n){n.style.color='';n.textContent=(lang==='en'?'Saving…':'در حال ذخیره…');}
     adminFetch('/api/admin/autonomy',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({autoApply:cb.checked})})
       .then(function(d){ if(n){n.style.color='#34d399';n.textContent=d.autoApply?'روشن شد — تغییرهایی که خودت بخواهی، خودش انجام می‌دهد.':'خاموش شد — هر تغییر منتظر تأیید تو می‌ماند.';} })
       .catch(function(e){ cb.checked=!cb.checked; if(n){n.style.color='#fb7185';n.textContent=e.message;} });
@@ -2595,11 +2601,12 @@ function loadCCBrainLibs(){
   var st=$('ccBrainStatus'), list=$('ccLibsList');
   if(!st)return;
   adminFetch('/api/admin/pybrain/libs').then(function(d){
+    var _en=lang==='en';
     var bits=[];
-    bits.push(d.python?'پایتون: ✅ نصب است':'پایتون: 🔴 نصب نیست (اول Python را نصب کن)');
-    bits.push(d.brain?'مغز پایتون: ✅ آماده':'مغز پایتون: 🔴 پیدا نشد');
+    bits.push(d.python?(_en?'Python: ✅ installed':'پایتون: ✅ نصب است'):(_en?'Python: 🔴 not installed (install Python first)':'پایتون: 🔴 نصب نیست (اول Python را نصب کن)'));
+    bits.push(d.brain?(_en?'Python brain: ✅ ready':'مغز پایتون: ✅ آماده'):(_en?'Python brain: 🔴 not found':'مغز پایتون: 🔴 پیدا نشد'));
     st.innerHTML=bits.join(' · ');
-    if(list)list.textContent=(d.installed&&d.installed.length)?('نصب‌شده: '+d.installed.join('، ')):'هنوز کتابخانه‌ای نصب نشده.';
+    if(list)list.textContent=(d.installed&&d.installed.length)?((_en?'installed: ':'نصب‌شده: ')+d.installed.join(_en?', ':'، ')):(_en?'No library installed yet.':'هنوز کتابخانه‌ای نصب نشده.');
     var btn=$('ccInstallLibs'); if(btn)btn.disabled=!d.python||!!d.running;
     if(d.running)pollLibLog();
   }).catch(function(e){ st.textContent=e.message; });
@@ -2624,12 +2631,14 @@ function renderSearchEngines(){
     var lab=el('label'); lab.style.cssText='display:flex;align-items:center;gap:8px;flex:1;font-size:12.5px;font-weight:600;cursor:pointer';
     var cb=el('input'); cb.type='checkbox'; cb.checked=!!e.enabled;
     cb.addEventListener('change',function(){ _searchEngines[i].enabled=cb.checked; });
-    lab.appendChild(cb); lab.appendChild(document.createTextNode(e.label));
+    var _en=lang==='en';
+    var _label=_en?String(e.label||'').replace('(رایگان)','(free)'):e.label;
+    lab.appendChild(cb); lab.appendChild(document.createTextNode(_label));
     top.appendChild(lab);
     var dot=el('span'); dot.textContent=e.hasKey||e.keyless?'●':'○'; dot.style.color=(e.hasKey||e.keyless)?'#34d399':'var(--muted)';
     top.appendChild(dot); row.appendChild(top);
     if(!e.keyless){
-      var inp=el('input','input'); inp.type='password'; inp.placeholder=e.hasKey?'کلید ثبت شده — برای تغییر بنویس':'کلید API (اختیاری)';
+      var inp=el('input','input'); inp.type='password'; inp.placeholder=e.hasKey?(_en?'key is set — type to change':'کلید ثبت شده — برای تغییر بنویس'):(_en?'API key (optional)':'کلید API (اختیاری)');
       inp.style.cssText='font-size:12px;margin-top:6px;direction:ltr;text-align:left';
       inp.addEventListener('input',function(){ _searchEngines[i].key=inp.value.trim(); });
       row.appendChild(inp);
@@ -2644,10 +2653,10 @@ function loadCCSearchEngines(){
 (function(){
   var sv=$('ccSearchSave'); if(!sv)return;
   sv.addEventListener('click',function(){
-    var n=$('ccSearchNote'); n.style.color='var(--muted)'; n.textContent='در حال ذخیره...';
+    var n=$('ccSearchNote'); n.style.color='var(--muted)'; n.textContent=(lang==='en'?'Saving…':'در حال ذخیره...');
     var payload=_searchEngines.map(function(e){ var o={id:e.id,enabled:!!e.enabled}; if(e.key)o.key=e.key; return o; });
     adminFetch('/api/admin/search-engines',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({engines:payload})})
-      .then(function(d){ _searchEngines=(d.engines||[]).map(function(e){return Object.assign({},e);}); renderSearchEngines(); n.style.color='#34d399'; n.textContent='ذخیره شد.'; })
+      .then(function(d){ _searchEngines=(d.engines||[]).map(function(e){return Object.assign({},e);}); renderSearchEngines(); n.style.color='#34d399'; n.textContent=(lang==='en'?'Saved.':'ذخیره شد.'); })
       .catch(function(e){ n.style.color='#fb7185'; n.textContent=e.message; });
   });
 })();
@@ -2699,7 +2708,7 @@ function loadCCLocalModels(){
           a.addEventListener('click',function(){ if(_localModels.indexOf(m)<0){_localModels.push(m);renderLocalModelChips();} });
           det.appendChild(a);
         });
-      } else det.textContent='Ollama در دسترس نیست یا مدلی ندارد (می‌توانی دستی اضافه کنی).';
+      } else det.textContent=(lang==='en'?'Ollama is not available or has no models (you can add one manually).':'Ollama در دسترس نیست یا مدلی ندارد (می‌توانی دستی اضافه کنی).');
     }
   }).catch(function(e){ var n=$('ccLocalModelsNote'); if(n){n.style.color='#fb7185';n.textContent=e.message;} });
 }
@@ -2711,7 +2720,7 @@ function loadCCLocalModels(){
   var det=$('ccLocalDetect'); if(det)det.addEventListener('click',loadCCLocalModels);
   var sv=$('ccLocalModelsSave');
   if(sv)sv.addEventListener('click',function(){
-    var n=$('ccLocalModelsNote'); n.style.color='var(--muted)'; n.textContent='در حال ذخیره...';
+    var n=$('ccLocalModelsNote'); n.style.color='var(--muted)'; n.textContent=(lang==='en'?'Saving…':'در حال ذخیره...');
     adminFetch('/api/admin/local-models',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({models:_localModels})})
       .then(function(d){
         // refreshConfig re-fetches /api/config, so the now-enabled local engine
@@ -2721,7 +2730,7 @@ function loadCCLocalModels(){
         n.style.color='#34d399';
         n.textContent=(d.active&&d.active.length)
           ? ('آماده شد ✅ موتور محلی روشن و وصل شد: '+d.active.join('، ')+'. حالا از فهرست موتورها انتخابش کن.')
-          : 'ذخیره شد.';
+          : (lang==='en'?'Saved.':'ذخیره شد.');
       })
       .catch(function(e){ n.style.color='#fb7185'; n.textContent=e.message; });
   });
@@ -2730,14 +2739,14 @@ function loadCCLocalModels(){
   if(tgSave){
     var tgStatus=function(){ fetch('/api/admin/telegram',{headers:authHeaders()}).then(function(r){return r.json();}).then(function(d){ var dot=$('cxTgDot'); if(dot)dot.style.background=(d&&d.configured)?'#34d399':'#6b7280'; }).catch(function(){}); };
     tgSave.addEventListener('click',function(){
-      var note=$('cxTgNote'); note.style.color='var(--muted)'; note.textContent='در حال ذخیره و تست...';
+      var note=$('cxTgNote'); note.style.color='var(--muted)'; note.textContent=(lang==='en'?'Saving and testing…':'در حال ذخیره و تست...');
       var upd={}, tk=($('cxTgToken').value||'').trim(), ch=($('cxTgChat').value||'').trim();
       if(tk)upd.TELEGRAM_BOT_TOKEN=tk; if(ch)upd.TELEGRAM_CHAT_ID=ch;
       fetch('/api/admin/settings',{method:'POST',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify({updates:upd})})
         .then(function(r){return r.json();})
         .then(function(){ return fetch('/api/admin/telegram/test',{method:'POST',headers:authHeaders()}); })
         .then(function(r){return r.json();}).then(function(d){
-          if(d&&d.ok){ note.style.color='#34d399'; note.textContent='✓ پیام آزمایشی در تلگرام فرستاده شد.'; }
+          if(d&&d.ok){ note.style.color='#34d399'; note.textContent=(lang==='en'?'✓ Test message sent on Telegram.':'✓ پیام آزمایشی در تلگرام فرستاده شد.'); }
           else { note.style.color='#fb7185'; note.textContent=(d&&d.error)||'تست ناموفق'; }
           tgStatus();
         }).catch(function(e){ note.style.color='#fb7185'; note.textContent=e.message; });
@@ -2769,7 +2778,7 @@ function loadCCUsers(){
         'background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);font-size:12.5px';
       var dot=el('span');
       dot.style.cssText='width:8px;height:8px;border-radius:50%;background:'+(u.online?'#34d399':'#5d6478');
-      var nm=el('span'); nm.textContent=u.username+(u.online?'':' · '+(u.lastActive?('آخرین بار '+new Date(u.lastActive).toLocaleTimeString()):'آفلاین'));
+      var nm=el('span'); nm.textContent=u.username+(u.online?'':' · '+(u.lastActive?((lang==='en'?'last seen ':'آخرین بار ')+new Date(u.lastActive).toLocaleTimeString()):(lang==='en'?'offline':'آفلاین')));
       nm.style.color=u.online?'var(--text)':'var(--muted)';
       chip.appendChild(dot); chip.appendChild(nm); strip.appendChild(chip);
     });
@@ -2782,11 +2791,11 @@ function loadCCUsers(){
       h.textContent=u.username+(u.admin?(lang==='en'?' (admin)':' (مدیر)'):'')+(u.safe?(lang==='en'?' · kid mode':' · حالت کودک'):'');
       card.appendChild(h);
       var r=el('div'); r.style.cssText='display:flex;gap:8px;flex-wrap:wrap';
-      var age=el('input','input'); age.type='number'; age.placeholder='سن'; age.value=u.age||'';
+      var age=el('input','input'); age.type='number'; age.placeholder=(lang==='en'?'Age':'سن'); age.value=u.age||'';
       age.style.cssText='width:80px;font-size:12px';
-      var intr=el('input','input'); intr.placeholder='علایق...'; intr.value=u.interests||'';
+      var intr=el('input','input'); intr.placeholder=(lang==='en'?'Interests...':'علایق...'); intr.value=u.interests||'';
       intr.style.cssText='flex:1;min-width:140px;font-size:12px';
-      var sv=el('button','btn ghost'); sv.textContent='ذخیره'; sv.style.padding='6px 12px';
+      var sv=el('button','btn ghost'); sv.textContent=(lang==='en'?'Save':'ذخیره'); sv.style.padding='6px 12px';
       sv.addEventListener('click',function(){
         adminFetch('/api/admin/profile',{method:'POST',headers:{'Content-Type':'application/json'},
           body:JSON.stringify({username:u.username,age:age.value?Number(age.value):null,interests:intr.value})})
@@ -2803,14 +2812,14 @@ function loadCCPrivacy(){
     $('ccPrivOn').checked=!!d.enabled;
     $('ccPrivOn').onchange=function(){
       adminFetch('/api/admin/privacy/settings',{method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({enabled:$('ccPrivOn').checked})}).then(function(){ccNote('ذخیره شد.');});
+        body:JSON.stringify({enabled:$('ccPrivOn').checked})}).then(function(){ccNote((lang==='en'?'Saved.':'ذخیره شد.'));});
     };
     var lb=$('ccPrivList'); lb.innerHTML='';
-    if(!(d.terms||[]).length)lb.innerHTML='<div class="tk-hint">فقط نام حساب‌ها محافظت می‌شوند.</div>';
+    if(!(d.terms||[]).length)lb.innerHTML='<div class="tk-hint">'+(lang==='en'?'Only account names are protected.':'فقط نام حساب‌ها محافظت می‌شوند.')+'</div>';
     (d.terms||[]).forEach(function(t){
       var row=el('div','tk-card'); row.style.cssText='margin-bottom:6px;padding:8px 10px;display:flex;align-items:center;gap:8px';
       var sp=el('span'); sp.style.cssText='flex:1;font-size:12.5px'; sp.textContent=t;
-      var x=el('button','btn ghost'); x.textContent='حذف'; x.style.padding='4px 10px';
+      var x=el('button','btn ghost'); x.textContent=(lang==='en'?'Delete':'حذف'); x.style.padding='4px 10px';
       x.addEventListener('click',function(){
         adminFetch('/api/admin/privacy/terms?term='+encodeURIComponent(t),{method:'DELETE'})
           .then(loadCCPrivacy).catch(function(e){ccNote(e.message,true);});
@@ -2843,7 +2852,7 @@ $('ccSave').addEventListener('click',function(){
   if(!keys.length){ccNote('چیزی تغییر نکرده.');return;}
   adminFetch('/api/admin/settings',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({updates:CC.dirty})})
-    .then(function(d){ CC.dirty={}; ccNote(d.note||'ذخیره شد.'); loadCC(); })
+    .then(function(d){ CC.dirty={}; ccNote(d.note||(lang==='en'?'Saved.':'ذخیره شد.')); loadCC(); })
     .catch(function(e){ ccNote(e.message,true); });
 });
 
@@ -2921,13 +2930,13 @@ function renderLearnEngineBanner(d){
   b.className='tk-card';
   b.style.cssText='padding:12px 14px;margin-bottom:10px;border-color:rgba(251,191,36,.4);background:rgba(251,191,36,.08)';
   var h=el('div'); h.style.cssText='font-weight:700;font-size:13px;margin-bottom:4px;color:#fbbf24';
-  h.textContent='⚠️ هیچ موتوری برای تحقیق آماده نیست';
+  h.textContent=(lang==='en'?'⚠️ No engine is ready for research':'⚠️ هیچ موتوری برای تحقیق آماده نیست');
   var p=el('div'); p.style.cssText='font-size:12px;color:var(--muted);line-height:1.8;margin-bottom:10px';
-  p.textContent='برای اینکه ستایش بتواند تحقیق کند، یا یک کلید موتور (مثلاً Gemini رایگان) بگذار، یا موتور محلی Ollama را روی این کامپیوتر روشن کن.';
+  p.textContent=(lang==='en'?'For Setayesh to research, either add an engine key (e.g. free Gemini) or turn on the local Ollama engine on this computer.':'برای اینکه ستایش بتواند تحقیق کند، یا یک کلید موتور (مثلاً Gemini رایگان) بگذار، یا موتور محلی Ollama را روی این کامپیوتر روشن کن.');
   var row=el('div'); row.style.cssText='display:flex;gap:6px;flex-wrap:wrap';
-  var k=el('button','btn'); k.textContent='افزودن کلید موتور'; k.style.cssText='flex:1;padding:7px;font-size:12px';
+  var k=el('button','btn'); k.textContent=(lang==='en'?'Add an engine key':'افزودن کلید موتور'); k.style.cssText='flex:1;padding:7px;font-size:12px';
   k.addEventListener('click',function(){ closeLearn(); openCC(); setTimeout(function(){ccTab('engines');},200); });
-  var l=el('button','btn ghost'); l.textContent='روشن‌کردن موتور محلی'; l.style.cssText='flex:1;padding:7px;font-size:12px';
+  var l=el('button','btn ghost'); l.textContent=(lang==='en'?'Turn on the local engine':'روشن‌کردن موتور محلی'); l.style.cssText='flex:1;padding:7px;font-size:12px';
   l.addEventListener('click',function(){
     adminFetch('/api/admin/settings',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({updates:{ENABLE_LOCAL:'1'}})})
@@ -2972,7 +2981,7 @@ function renderLearnTopics(topics){
   topics.forEach(function(tp,i){
     var row=el('div','tk-card'); row.style.cssText='margin-bottom:6px;display:flex;align-items:center;gap:8px';
     var sp=el('span'); sp.style.cssText='flex:1;font-size:13px'; sp.textContent=tp;
-    var del=el('button','btn ghost'); del.textContent='حذف'; del.style.padding='4px 10px';
+    var del=el('button','btn ghost'); del.textContent=(lang==='en'?'Delete':'حذف'); del.style.padding='4px 10px';
     del.addEventListener('click',function(){
       adminFetch('/api/admin/research/topics/'+i,{method:'DELETE'})
         .then(function(d){renderLearnTopics(d.topics||[]);})
@@ -2994,7 +3003,7 @@ function knowledgeCard(k,pending){
   if((k.sourceUrls||[]).length){
     var sw=el('div'); sw.style.cssText='margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,.06)';
     var lb=el('div'); lb.style.cssText='font-size:11px;color:var(--muted);margin-bottom:4px';
-    lb.textContent='از این صفحات خوانده شد:'; sw.appendChild(lb);
+    lb.textContent=(lang==='en'?'Read from these pages:':'از این صفحات خوانده شد:'); sw.appendChild(lb);
     k.sourceUrls.forEach(function(u){
       var a=el('a'); a.href=u; a.target='_blank'; a.rel='noopener noreferrer';
       a.style.cssText='display:block;font-size:11px;color:var(--cyan);text-decoration:none;margin-bottom:3px;word-break:break-all';
@@ -3004,18 +3013,18 @@ function knowledgeCard(k,pending){
   }
   if(k.flagged){
     var w=el('div'); w.style.cssText='font-size:11.5px;color:var(--warn,#e0a800);margin-top:6px';
-    w.textContent='مدل‌ها جواب‌های خیلی متفاوتی دادند — با دقت بیشتری بررسی کنید.';
+    w.textContent=(lang==='en'?'The models gave very different answers — review more carefully.':'مدل‌ها جواب‌های خیلی متفاوتی دادند — با دقت بیشتری بررسی کنید.');
     card.appendChild(w);
   }
   var acts=el('div'); acts.style.cssText='display:flex;gap:8px;margin-top:10px';
   if(pending){
-    var ok=el('button','btn'); ok.textContent='✓ تأیید'; ok.style.padding='6px 14px';
+    var ok=el('button','btn'); ok.textContent=(lang==='en'?'✓ Approve':'✓ تأیید'); ok.style.padding='6px 14px';
     ok.addEventListener('click',function(){learnReview(k.id,'approve');});
-    var no=el('button','btn ghost'); no.textContent='✗ رد'; no.style.padding='6px 14px';
+    var no=el('button','btn ghost'); no.textContent=(lang==='en'?'✗ Reject':'✗ رد'); no.style.padding='6px 14px';
     no.addEventListener('click',function(){learnReview(k.id,'reject');});
     acts.appendChild(ok); acts.appendChild(no);
   }else{
-    var rm=el('button','btn ghost'); rm.textContent='حذف'; rm.style.padding='6px 14px';
+    var rm=el('button','btn ghost'); rm.textContent=(lang==='en'?'Delete':'حذف'); rm.style.padding='6px 14px';
     rm.addEventListener('click',function(){
       adminFetch('/api/admin/knowledge/'+k.id,{method:'DELETE'})
         .then(function(){loadLearnKnowledge();loadLearnSettings();})
@@ -3090,7 +3099,7 @@ $('learnSave').addEventListener('click',function(){
       allowedDomains:$('learnDomains').value.split('\n').map(function(x){return x.trim();}).filter(Boolean)
     })
   }).then(function(d){
-    learnNote('ذخیره شد.'); 
+    learnNote((lang==='en'?'Saved.':'ذخیره شد.')); 
     if(d.settings){$('learnMax').value=d.settings.maxPerDay;$('learnInterval').value=d.settings.intervalMinutes;}
   }).catch(function(e){learnNote(e.message,true);});
 });
@@ -3138,7 +3147,7 @@ function codeLibRefresh(keep){
       o.textContent=l.name+' ('+Math.max(1,Math.round(l.size/1024))+'k)';
       sel.appendChild(o);
     });
-    if(!codeLibList.length){var o=document.createElement('option');o.value='';o.textContent='— هنوز کتابخانه‌ای نیست —';sel.appendChild(o);$('codeLibText').value='';return;}
+    if(!codeLibList.length){var o=document.createElement('option');o.value='';o.textContent=(lang==='en'?'— no library yet —':'— هنوز کتابخانه‌ای نیست —');sel.appendChild(o);$('codeLibText').value='';return;}
     if(want&&codeLibList.some(function(l){return l.name===want;}))sel.value=want;
     codeLibLoad(sel.value);
   }).catch(function(){});
@@ -3370,14 +3379,14 @@ function showUpdateBar(){
     'font-size:13px;color:var(--text);padding-bottom:calc(11px + env(safe-area-inset-bottom,0px))';
   var t=document.createElement('span');
   t.style.flex='1';
-  t.textContent='نسخه‌ی جدید آماده است — تا ۵ ثانیه دیگر خودکار به‌روز می‌شود.';
+  t.textContent=(lang==='en'?'A new version is ready — it will auto-update in 5 seconds.':'نسخه‌ی جدید آماده است — تا ۵ ثانیه دیگر خودکار به‌روز می‌شود.');
   var now=document.createElement('button');
   now.className='btn'; now.style.cssText='padding:6px 14px;font-size:12px';
-  now.textContent='همین حالا';
+  now.textContent=(lang==='en'?'Now':'همین حالا');
   now.addEventListener('click',doReload);
   var later=document.createElement('button');
   later.className='btn ghost'; later.style.cssText='padding:6px 12px;font-size:12px';
-  later.textContent='بعداً';
+  later.textContent=(lang==='en'?'Later':'بعداً');
   later.addEventListener('click',function(){ bar.remove(); updatePending=false; });
   bar.appendChild(t); bar.appendChild(now); bar.appendChild(later);
   document.body.appendChild(bar);
@@ -3446,9 +3455,9 @@ function checkIntegrity(){
       'padding:10px 14px;font-size:13px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;box-shadow:0 2px 10px rgba(0,0,0,.4)';
     var msg=el('span'); msg.style.flex='1';
     msg.textContent='⚠ فایل‌های ظاهری اپ قدیمی مانده‌اند ('+which+') در حالی که سرور نسخه '+d.version+' است. برای دیدن مغز جدید و دکمه‌ها، تعمیر کن.';
-    var fix=el('button','btn'); fix.textContent='تعمیر (نصب مجدد)'; fix.style.cssText='background:#fff;color:#7f1d1d;font-weight:700;padding:5px 12px;font-size:12px';
-    fix.addEventListener('click',function(){ bar.remove(); openCC(); setTimeout(function(){ ccTab('update'); var rp=$('ccRepair'); if(rp){rp.checked=true;} var n=$('ccUpdNote'); if(n){n.textContent='حالت تعمیر روشن است — همان فایل زیپ ۹.۹.۷۰ را انتخاب کن تا فایل‌های جاافتاده نصب شوند.';} },250); });
-    var x=el('button','btn ghost'); x.textContent='بعداً'; x.style.cssText='color:#fff;border-color:rgba(255,255,255,.5);padding:5px 10px;font-size:12px';
+    var fix=el('button','btn'); fix.textContent=(lang==='en'?'Repair (reinstall)':'تعمیر (نصب مجدد)'); fix.style.cssText='background:#fff;color:#7f1d1d;font-weight:700;padding:5px 12px;font-size:12px';
+    fix.addEventListener('click',function(){ bar.remove(); openCC(); setTimeout(function(){ ccTab('update'); var rp=$('ccRepair'); if(rp){rp.checked=true;} var n=$('ccUpdNote'); if(n){n.textContent=(lang==='en'?'Repair mode is on — pick the same 9.9.70 ZIP so the missing files get installed.':'حالت تعمیر روشن است — همان فایل زیپ ۹.۹.۷۰ را انتخاب کن تا فایل‌های جاافتاده نصب شوند.');} },250); });
+    var x=el('button','btn ghost'); x.textContent=(lang==='en'?'Later':'بعداً'); x.style.cssText='color:#fff;border-color:rgba(255,255,255,.5);padding:5px 10px;font-size:12px';
     x.addEventListener('click',function(){ bar.remove(); });
     bar.appendChild(msg); bar.appendChild(fix); bar.appendChild(x);
     document.body.appendChild(bar);
@@ -3481,7 +3490,7 @@ function renderNetChip(){
   if(myOffline){
     chip.style.display='';
     chip.style.cssText+=';background:rgba(251,191,36,.10);border:1px solid rgba(251,191,36,.35);color:#fbbf24';
-    chip.textContent='📴 این دستگاه آفلاین است.';
+    chip.textContent=(lang==='en'?'📴 This device is offline.':'📴 این دستگاه آفلاین است.');
     return;
   }
   if(!h||h.trust==='ok'){ chip.style.display='none'; return; }
@@ -3761,13 +3770,13 @@ function openNotifications(){
     if(n.body){ var b=el('div'); b.style.cssText='font-size:12px;color:var(--muted);line-height:1.7'; b.textContent=n.body; card.appendChild(b); }
     var m=el('div'); m.style.cssText='display:flex;justify-content:space-between;align-items:center;font-size:10.5px;color:var(--muted);opacity:.7;margin-top:4px';
     var when=el('span'); when.textContent=new Date(n.at).toLocaleString()+(n.emailed?' · ایمیل شد':'');
-    var x=el('button'); x.textContent='حذف'; x.style.cssText='background:none;border:none;color:var(--muted);cursor:pointer;font-size:11px';
+    var x=el('button'); x.textContent=(lang==='en'?'Delete':'حذف'); x.style.cssText='background:none;border:none;color:var(--muted);cursor:pointer;font-size:11px';
     x.addEventListener('click',function(ev){ ev.stopPropagation();
       fetch('/api/notifications/'+n.id,{method:'DELETE',headers:authHeaders()}).then(function(){ card.remove(); pollNotifications(); }); });
     m.appendChild(when); m.appendChild(x);
     card.appendChild(m);
     if(n.level==='needs-approval'){
-      var go=el('button','btn'); go.textContent='رفتن به تأییدها'; go.style.cssText='padding:5px 12px;font-size:12px;margin-top:8px';
+      var go=el('button','btn'); go.textContent=(lang==='en'?'Go to approvals':'رفتن به تأییدها'); go.style.cssText='padding:5px 12px;font-size:12px;margin-top:8px';
       go.addEventListener('click',function(){ ov.classList.remove('on'); openCC(); setTimeout(function(){ ccTab('actions'); },200); });
       card.appendChild(go);
     }
@@ -3791,36 +3800,38 @@ function removeDuplicateSettings(){
 }
 
 function openDiagnostics(){
+  var _en=lang==='en';
   var ov=document.getElementById('diagOverlay');
   if(!ov){
     ov=document.createElement('div'); ov.id='diagOverlay'; ov.className='overlay';
-    ov.innerHTML='<div class="modal glass" style="max-width:480px"><h3>وضعیت حساب تو</h3>'+
+    ov.innerHTML='<div class="modal glass" style="max-width:480px"><h3>'+(_en?'Your account status':'وضعیت حساب تو')+'</h3>'+
       '<div id="diagBody" style="font-size:13px;line-height:2;direction:ltr;text-align:left;font-family:var(--mono)"></div>'+
-      '<div class="modal-actions"><button class="btn ghost" id="diagClose">بستن</button></div></div>';
+      '<div class="modal-actions"><button class="btn ghost" id="diagClose">'+(_en?'Close':'بستن')+'</button></div></div>';
     document.body.appendChild(ov);
     ov.addEventListener('click',function(e){ if(e.target===ov)ov.classList.remove('on'); });
     document.getElementById('diagClose').addEventListener('click',function(){ ov.classList.remove('on'); });
   }
   var body=document.getElementById('diagBody');
-  body.textContent='در حال بررسی...';
+  body.textContent=_en?'Checking…':'در حال بررسی...';
   ov.classList.add('on');
   fetch('/api/whoami-debug',{headers:authHeaders()})
     .then(function(r){return r.json();})
     .then(function(d){
       var lines=[];
-      lines.push('حساب تو: '+d.you);
-      lines.push('حساب مدیر: '+(d.resolvedAdmin||'(هیچ‌کدام)'));
-      lines.push('تو مدیر هستی: '+(d.youAreAdmin?'بله ✓':'نه ✗'));
-      lines.push('همه‌ی حساب‌ها: '+d.knownAccounts.join(', '));
+      var yes=_en?'yes ✓':'بله ✓', no=_en?'no ✗':'نه ✗';
+      lines.push((_en?'Your account: ':'حساب تو: ')+d.you);
+      lines.push((_en?'Admin account: ':'حساب مدیر: ')+(d.resolvedAdmin||(_en?'(none)':'(هیچ‌کدام)')));
+      lines.push((_en?'You are admin: ':'تو مدیر هستی: ')+(d.youAreAdmin?yes:no));
+      lines.push((_en?'All accounts: ':'همه‌ی حساب‌ها: ')+d.knownAccounts.join(', '));
       body.innerHTML='';
       lines.forEach(function(l){
         var p=document.createElement('div');
         p.textContent=l;
-        if(l.indexOf('نه ✗')>=0)p.style.color='#fb7185';
-        if(l.indexOf('بله')>=0)p.style.color='#34d399';
+        if(l.indexOf(no)>=0)p.style.color='#fb7185';
+        else if(l.indexOf(yes)>=0)p.style.color='#34d399';
         body.appendChild(p);
       });
-      // خطاهای زمان اجرا (اگر باشند) — همان چیزی که باعث کار نکردن دکمه‌ها می‌شود.
+      // Runtime errors (if any) — the thing that would make buttons not work.
       var errs=window.__setayeshErrors||[];
       if(errs.length){
         var eb=document.createElement('div');
@@ -3835,26 +3846,31 @@ function openDiagnostics(){
         body.appendChild(eb);
       } else {
         var okb=document.createElement('div');
-        okb.style.cssText='margin-top:14px;padding:10px;border-radius:10px;background:rgba(52,211,153,.1);border:1px solid rgba(52,211,153,.3);font-size:12px;color:#6ee7b7;direction:rtl;text-align:right';
-        okb.textContent='✓ هیچ خطای جاوااسکریپتی نیست — همه‌چیز باید کار کند.';
+        okb.style.cssText='margin-top:14px;padding:10px;border-radius:10px;background:rgba(52,211,153,.1);border:1px solid rgba(52,211,153,.3);font-size:12px;color:#6ee7b7;'+(_en?'direction:ltr;text-align:left':'direction:rtl;text-align:right');
+        okb.textContent=_en?'✓ No JavaScript errors — everything should work.':'✓ هیچ خطای جاوااسکریپتی نیست — همه‌چیز باید کار کند.';
         body.appendChild(okb);
       }
-      // بررسی بارگذاری کتابخانه‌ی سه‌بعدی
+      // 3D library load check
+      var have3d=typeof THREE!=='undefined';
       var three=document.createElement('div');
-      three.style.cssText='margin-top:8px;padding:10px;border-radius:10px;font-size:12px;direction:rtl;text-align:right;'+
-        (typeof THREE!=='undefined'?'background:rgba(52,211,153,.1);border:1px solid rgba(52,211,153,.3);color:#6ee7b7':'background:rgba(251,191,36,.12);border:1px solid rgba(251,191,36,.4);color:#fcd34d');
-      three.textContent=typeof THREE!=='undefined'?'✓ کتابخانه‌ی سه‌بعدی بارگذاری شد — مغز کار می‌کند.':'⚠ کتابخانه‌ی سه‌بعدی بارگذاری نشد — فایل three.min.js در پوشه‌ی public نیست یا نصب ناقص بوده. مغز نمای ساده نشان می‌دهد.';
+      three.style.cssText='margin-top:8px;padding:10px;border-radius:10px;font-size:12px;'+(_en?'direction:ltr;text-align:left;':'direction:rtl;text-align:right;')+
+        (have3d?'background:rgba(52,211,153,.1);border:1px solid rgba(52,211,153,.3);color:#6ee7b7':'background:rgba(251,191,36,.12);border:1px solid rgba(251,191,36,.4);color:#fcd34d');
+      three.textContent=have3d
+        ?(_en?'✓ The 3D library loaded — the brain view works.':'✓ کتابخانه‌ی سه‌بعدی بارگذاری شد — مغز کار می‌کند.')
+        :(_en?'⚠ The 3D library did not load — three.min.js is missing from the public folder or the install is incomplete. The brain shows a simple view.':'⚠ کتابخانه‌ی سه‌بعدی بارگذاری نشد — فایل three.min.js در پوشه‌ی public نیست یا نصب ناقص بوده. مغز نمای ساده نشان می‌دهد.');
       body.appendChild(three);
 
       if(!d.youAreAdmin){
         var hint=document.createElement('div');
         hint.style.cssText='margin-top:14px;padding-top:14px;border-top:1px solid rgba(255,255,255,.1);'+
-          'font-family:inherit;direction:rtl;text-align:right;color:var(--muted);font-size:12.5px;line-height:1.9';
-        hint.textContent='برای اینکه مدیر شوی، این خط را در فایل .setayesh-config (کنار index.js) اضافه کن: ADMIN='+d.you+'  — بعد برنامه را دوباره اجرا کن.';
+          'font-family:inherit;'+(_en?'direction:ltr;text-align:left;':'direction:rtl;text-align:right;')+'color:var(--muted);font-size:12.5px;line-height:1.9';
+        hint.textContent=_en
+          ?('To become admin, add this line to the .setayesh-config file (next to index.js): ADMIN='+d.you+'  — then restart the app.')
+          :('برای اینکه مدیر شوی، این خط را در فایل .setayesh-config (کنار index.js) اضافه کن: ADMIN='+d.you+'  — بعد برنامه را دوباره اجرا کن.');
         body.appendChild(hint);
       }
     })
-    .catch(function(e){ body.textContent='خطا: '+e.message; });
+    .catch(function(e){ body.textContent=(_en?'Error: ':'خطا: ')+e.message; });
 }
 document.getElementById('shDiag').addEventListener('click',function(){ sheetGo(openDiagnostics); });
 
@@ -4099,7 +4115,7 @@ function brainShowRegion(reg){
   document.getElementById('brainInfoBody').innerHTML='<div style="color:#7ee0ff;margin-bottom:6px">'+info.sub+'</div>'+info.detail;
   var act=document.getElementById('brainInfoAction');
   if(info.editable&&info.fileName){
-    act.style.display=''; act.textContent='✎ ویرایش این فایل';
+    act.style.display=''; act.textContent=(lang==='en'?'✎ Edit this file':'✎ ویرایش این فایل');
     act.onclick=function(){ brainOpenEditor(info.fileName); };
   } else act.style.display='none';
   document.getElementById('brainInfo').style.display='block';
@@ -4220,7 +4236,7 @@ function simplifyForFamily(){
   });
   // A calmer, more inviting prompt than "paste code or attach a file".
   var box=$('msgBox');
-  if(box)box.placeholder='چیزی بپرس...';
+  if(box)box.placeholder=(lang==='en'?'Ask something...':'چیزی بپرس...');
   document.body.classList.add('simple-mode');
 }
 
@@ -4315,7 +4331,7 @@ document.addEventListener('DOMContentLoaded', function(){
   $('brainEditBack').addEventListener('click',function(){ document.getElementById('brainEditor').style.display='none'; });
   $('brainEditSave').addEventListener('click',function(){
     var name=$('brainEditName').textContent, content=$('brainEditText').value;
-    var note=$('brainEditNote'); note.style.color='#8ea0c8'; note.textContent='در حال بررسی و ذخیره…';
+    var note=$('brainEditNote'); note.style.color='#8ea0c8'; note.textContent=(lang==='en'?'Checking and saving…':'در حال بررسی و ذخیره…');
     adminFetch('/api/admin/brain/file',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({name:name,content:content})})
       .then(function(d){
@@ -4422,7 +4438,7 @@ Object.assign(LANG.fa,{
  tk_vaultHint:'رمزهای خودت را امن و رمزنگاری‌شده ذخیره کن. با یک «رمز اصلی» قفل می‌شود و همه‌چیز روی همین دستگاه می‌ماند — هیچ‌جا فرستاده نمی‌شود.',
  tk_setMaster:'یک رمز اصلی بساز',tk_enterMaster:'رمز اصلی را وارد کن',tk_create:'ساختن گاوصندوق',tk_unlock:'باز کردن',tk_lock:'قفل کردن',
  tk_wrongMaster:'رمز اصلی اشتباه است',tk_addEntry:'افزودن رمز جدید',tk_site:'سایت / سرویس',tk_user:'نام کاربری',tk_pass:'رمز عبور',
- tk_add:'افزودن',tk_reveal:'نمایش',tk_hide:'پنهان',tk_del:'حذف',tk_empty:'هنوز رمزی ذخیره نشده',tk_masterShort:'رمز اصلی حداقل ۶ کاراکتر باشد',
+ tk_add:'افزودن',tk_reveal:'نمایش',tk_hide:'پنهان',tk_del:(lang==='en'?'Delete':'حذف'),tk_empty:'هنوز رمزی ذخیره نشده',tk_masterShort:'رمز اصلی حداقل ۶ کاراکتر باشد',
  tk_sslHint:'گواهی SSL سایت خودت را بررسی می‌کند: معتبر بودن، صادرکننده، و چند روز تا انقضا. فقط یک اتصال امن برای خواندن گواهی — هیچ حمله‌ای نیست.',
  tk_domain:'دامنه سایت',tk_valid:'معتبر',tk_invalid:'نامعتبر / هشدار',tk_issuer:'صادرکننده',tk_expires:'انقضا',tk_daysLeft:'روز تا انقضا',tk_expired:'منقضی شده!',
  tk_guardHint:'چند نکته‌ی ساده و مهم برای محافظت از خونه، ماشین و کامپیوترِ خودت.',
@@ -4450,7 +4466,7 @@ Object.assign(LANG.en,{
 Object.assign(LANG.fa,{
  tk_pw:'رمزساز',tk_pwHint:'رمز عبور قوی و تصادفی بساز — کاملاً روی دستگاه خودت، هیچ‌جا فرستاده نمی‌شود.',
  tk_length:'طول',tk_upper:'حروف بزرگ ABC',tk_lower:'حروف کوچک abc',tk_digits:'اعداد ۱۲۳',tk_symbols:'نمادها !@#',
- tk_generate:'بساز',tk_copy:'کپی',tk_copied:'کپی شد',tk_pwPick:'حداقل یک نوع کاراکتر را انتخاب کن',
+ tk_generate:'بساز',tk_copy:(lang==='en'?'Copy':'کپی'),tk_copied:'کپی شد',tk_pwPick:'حداقل یک نوع کاراکتر را انتخاب کن',
  tk_enc:'رمزگذار',tk_encHint:'متن را رمزگذاری/رمزگشایی کن یا توکن JWT خودت را بخوان — همه محلی و امن.',
  tk_input:'ورودی',tk_output:'خروجی',tk_b64enc:'Base64 →',tk_b64dec:'← Base64',tk_urlenc:'URL →',tk_urldec:'← URL',
  tk_jwt:'خواندن JWT',tk_encErr:'ورودی نامعتبر است'
@@ -4507,7 +4523,7 @@ function showTkTab(id){
   else if(id==='cable')body.appendChild(tkCablePanel());
   else if(id==='phonehw'){ var ph=el('div','tk-panel');
     if(window.renderPhoneHwPanel)window.renderPhoneHwPanel(ph,deviceLevel());
-    else ph.appendChild(el('div','tk-hint','بخش گوشی بارگذاری نشد.'));
+    else ph.appendChild(el('div','tk-hint',(lang==='en'?'The phone section did not load.':'بخش گوشی بارگذاری نشد.')));
     body.appendChild(ph); }
   else if(id==='devlibs')body.appendChild(tkDevlibsPanel());
   else if(id==='comms')body.appendChild(tkCommsPanel());
@@ -5065,7 +5081,7 @@ function tkLangPanel(){
   p.appendChild(w);
 
   var ta=el('textarea','input');
-  ta.rows=6;ta.placeholder='متن را اینجا بنویس یا بچسبان…';
+  ta.rows=6;ta.placeholder=(lang==='en'?'Write or paste the text here…':'متن را اینجا بنویس یا بچسبان…');
   ta.style.cssText='width:100%;resize:vertical;font-size:13px;line-height:1.9;margin:10px 0';
   p.appendChild(ta);
 
@@ -5076,7 +5092,7 @@ function tkLangPanel(){
   var boldSel=el('select','input');boldSel.style.cssText='font-size:12px;width:auto;padding:6px 10px';
   [['sure','فقط مطمئن‌ها'],['likely','مطمئن + محتمل'],['all','همه‌ی پیشنهادها']].forEach(function(o){
     var x=el('option');x.value=o[0];x.textContent=o[1];boldSel.appendChild(x);});
-  var go=el('button','btn');go.textContent='بررسی کن';go.style.fontSize='13px';
+  var go=el('button','btn');go.textContent=(lang==='en'?'Check':'بررسی کن');go.style.fontSize='13px';
   row.appendChild(langSel);row.appendChild(boldSel);row.appendChild(go);p.appendChild(row);
 
   var out=el('div');p.appendChild(out);
@@ -5113,7 +5129,7 @@ function tkLangPanel(){
           });
           out.appendChild(c);
         } else {
-          var okd=el('div','tk-hint');okd.style.color='#34d399';okd.textContent='چیزی پیدا نشد ✓';out.appendChild(okd);
+          var okd=el('div','tk-hint');okd.style.color='#34d399';okd.textContent=(lang==='en'?'Nothing found ✓':'چیزی پیدا نشد ✓');out.appendChild(okd);
         }
 
         if(d.changed){
@@ -5125,8 +5141,8 @@ function tkLangPanel(){
           pre.textContent=d.corrected;
           b2.appendChild(pre);
           var use=el('button','btn ghost');use.style.cssText='font-size:12px;margin-top:8px';
-          use.textContent='جایگزین کن';
-          use.addEventListener('click',function(){ta.value=d.corrected;use.textContent='انجام شد ✓';});
+          use.textContent=(lang==='en'?'Replace':'جایگزین کن');
+          use.addEventListener('click',function(){ta.value=d.corrected;use.textContent=(lang==='en'?'Done ✓':'انجام شد ✓');});
           b2.appendChild(use);
           c2.appendChild(b2);out.appendChild(c2);
         }
@@ -5151,7 +5167,7 @@ function tkLangPanel(){
     sel.addEventListener('change',function(){
       try{localStorage.setItem('setayesh.'+key,sel.value);}catch(e){}
       pushPrefs();
-      note.style.color='#34d399';note.textContent='ذخیره شد ✓ — از پیام بعدی اعمال می‌شود.';
+      note.style.color='#34d399';note.textContent=(lang==='en'?'Saved ✓ — applies from the next message.':'ذخیره شد ✓ — از پیام بعدی اعمال می‌شود.');
     });
     wrap.appendChild(l);wrap.appendChild(h);wrap.appendChild(sel);
     return wrap;
@@ -5210,19 +5226,19 @@ function hwOpenDevice(key,host,onChanged){
     /* --- the name we call it -------------------------------------------- */
     var nameRow=el('div');nameRow.style.cssText='display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px';
     var nameIn=el('input','input');
-    nameIn.placeholder='اسمی که تو صدایش می‌کنی';
+    nameIn.placeholder=(lang==='en'?'The name you call it':'اسمی که تو صدایش می‌کنی');
     nameIn.value=(d.note&&d.note.label)||'';
     nameIn.style.cssText='flex:1;min-width:130px;font-size:12px;padding:5px 9px';
     var ownerIn=el('input','input');
-    ownerIn.placeholder='مال کیست؟';
+    ownerIn.placeholder=(lang==='en'?'Whose is it?':'مال کیست؟');
     ownerIn.value=(d.note&&d.note.owner)||'';
     ownerIn.style.cssText='width:110px;font-size:12px;padding:5px 9px';
-    var saveB=el('button','btn ghost');saveB.style.cssText='font-size:11px;padding:5px 10px';saveB.textContent='ذخیره';
+    var saveB=el('button','btn ghost');saveB.style.cssText='font-size:11px;padding:5px 10px';saveB.textContent=(lang==='en'?'Save':'ذخیره');
     nameRow.appendChild(nameIn);nameRow.appendChild(ownerIn);nameRow.appendChild(saveB);
     box.appendChild(nameRow);
 
     var noteIn=el('textarea','input');
-    noteIn.rows=2;noteIn.placeholder='یادداشت — مثلاً رمزش، کجا استفاده می‌شود، چه مشکلی داشت';
+    noteIn.rows=2;noteIn.placeholder=(lang==='en'?'A note — e.g. its password, where it is used, what the problem was':'یادداشت — مثلاً رمزش، کجا استفاده می‌شود، چه مشکلی داشت');
     noteIn.value=(d.note&&d.note.note)||'';
     noteIn.style.cssText='width:100%;font-size:12px;resize:vertical;margin-bottom:8px';
     box.appendChild(noteIn);
@@ -5234,7 +5250,7 @@ function hwOpenDevice(key,host,onChanged){
       tkFetch('/api/hw/device/note',{method:'POST',headers:{'Content-Type':'application/json'},
         body:JSON.stringify({key:d.key,label:nameIn.value,owner:ownerIn.value,note:noteIn.value})})
         .then(function(r){
-          saveB.disabled=false;saved.style.color='#34d399';saved.textContent='ذخیره شد ✓';
+          saveB.disabled=false;saved.style.color='#34d399';saved.textContent=(lang==='en'?'Saved ✓':'ذخیره شد ✓');
           /* Hand the saved note back so the row above can show the new name.
              Reloading the whole list instead would close this sheet and wipe
              the confirmation the moment it appeared. */
@@ -5274,7 +5290,7 @@ function hwOpenDevice(key,host,onChanged){
       b.textContent=a.label;
       if(!a.allowed){
         b.disabled=true;
-        b.title='این کار درجه‌ی ۲ لازم دارد.';
+        b.title=(lang==='en'?'This needs level 2.':'این کار درجه‌ی ۲ لازم دارد.');
         b.style.opacity='.45';
       }
       b.addEventListener('click',function(){
@@ -5300,7 +5316,7 @@ function hwOpenDevice(key,host,onChanged){
           body:JSON.stringify({mac:d.key.replace(/^bt:/,''),action:a.id})})
           .then(function(r){b.disabled=false;
             actNote.style.color=r.ok?'#34d399':'#fb7185';
-            actNote.textContent=r.ok?'انجام شد ✓':((r.error||r.detail||'انجام نشد')+(r.hint?(' — '+r.hint):''));
+            actNote.textContent=r.ok?(lang==='en'?'Done ✓':'انجام شد ✓'):((r.error||r.detail||'انجام نشد')+(r.hint?(' — '+r.hint):''));
             if(r.ok&&onChanged)onChanged();})
           .catch(function(e){b.disabled=false;actNote.style.color='#fb7185';actNote.textContent=e.message;});
       });
@@ -5310,7 +5326,7 @@ function hwOpenDevice(key,host,onChanged){
     if((d.actions||[]).length)box.appendChild(act);
     else if(d.plumbing){
       var pl=el('div','tk-hint');pl.style.padding='0';
-      pl.textContent='این یک هاب/زیرساخت USB است — چیزی برای کنترل ندارد.';
+      pl.textContent=(lang==='en'?'This is a USB hub/infrastructure — nothing to control.':'این یک هاب/زیرساخت USB است — چیزی برای کنترل ندارد.');
       box.appendChild(pl);
     }
     host.appendChild(box);
@@ -5332,7 +5348,7 @@ function hwShowGatt(mac,host,note){
       var lbl=el('span');lbl.style.cssText='flex:1;min-width:120px';
       lbl.innerHTML=esc(a.label||a.uuid.slice(0,8))+'<span style="color:#8ea0c8;direction:ltr"> '+esc(a.uuid.slice(0,8))+'</span>';
       var val=el('span');val.style.cssText='color:#6ee7b7;min-width:60px';
-      var rd=el('button','btn ghost');rd.style.cssText='font-size:10.5px;padding:3px 8px';rd.textContent='بخوان';
+      var rd=el('button','btn ghost');rd.style.cssText='font-size:10.5px;padding:3px 8px';rd.textContent=(lang==='en'?'Read':'بخوان');
       rd.addEventListener('click',function(){
         rd.disabled=true;
         tkFetch('/api/hw/gatt/read',{method:'POST',headers:{'Content-Type':'application/json'},
@@ -5343,9 +5359,9 @@ function hwShowGatt(mac,host,note){
       });
       r.appendChild(lbl);r.appendChild(val);r.appendChild(rd);
       if(deviceLevel()>=2){
-        var inp=el('input','input');inp.placeholder='هگز';
+        var inp=el('input','input');inp.placeholder=(lang==='en'?'Hex':'هگز');
         inp.style.cssText='font-size:10.5px;width:74px;padding:3px 6px;direction:ltr';
-        var wr=el('button','btn ghost');wr.style.cssText='font-size:10.5px;padding:3px 8px';wr.textContent='بنویس';
+        var wr=el('button','btn ghost');wr.style.cssText='font-size:10.5px;padding:3px 8px';wr.textContent=(lang==='en'?'Write':'بنویس');
         wr.addEventListener('click',function(){
           if(!inp.value.trim())return;
           if(!confirm('روی «'+(a.label||a.uuid)+'» مقدار '+inp.value+' نوشته شود؟ نوشتن اشتباه می‌تواند دستگاه را خراب کند.'))return;
@@ -5368,12 +5384,12 @@ function hwSerialConsole(port){
   var wrap=el('div');
   wrap.style.cssText='margin-top:8px;padding:9px 10px;border-radius:10px;background:rgba(0,0,0,.22)';
   var line=el('div');line.style.cssText='display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:7px';
-  var cmd=el('input','input');cmd.placeholder='دستور، مثل AT';
+  var cmd=el('input','input');cmd.placeholder=(lang==='en'?'command, e.g. AT':'دستور، مثل AT');
   cmd.style.cssText='flex:1;min-width:120px;font-size:12px;direction:ltr;text-align:left;padding:5px 9px';
   var baud=el('select','input');baud.style.cssText='font-size:11px;width:auto;padding:5px 8px';
   [9600,19200,38400,57600,115200,230400,921600].forEach(function(b){
     var o=el('option');o.value=b;o.textContent=b;if(b===115200)o.selected=true;baud.appendChild(o);});
-  var send=el('button','btn');send.textContent='بفرست';send.style.cssText='font-size:11.5px;padding:5px 11px';
+  var send=el('button','btn');send.textContent=(lang==='en'?'Send':'بفرست');send.style.cssText='font-size:11.5px;padding:5px 11px';
   line.appendChild(cmd);line.appendChild(baud);line.appendChild(send);
   wrap.appendChild(line);
   var log=el('div');
@@ -5442,19 +5458,19 @@ function tkDevlibsPanel(){
       libs.innerHTML=c.libs.map(function(l){return '<span title="'+esc(l.use)+'"><code style="color:#c7d0e8">'+esc(l.name)+'</code></span>';}).join(' · ');
       b.appendChild(libs);
 
-      var dl=el('button','btn',c.ready?'دانلودِ همه':'مدیرش نصب نیست');
+      var dl=el('button','btn',c.ready?(lang==='en'?'Download all':'دانلودِ همه'):'مدیرش نصب نیست');
       dl.style.cssText='font-size:12px';
       if(!c.ready){ dl.disabled=true; dl.title='برای این زبان به '+c.manager+' نیاز است که روی این کامپیوتر نصب نیست.'; }
       var logBox=el('div');
       logBox.style.cssText='display:none;font-size:11px;direction:ltr;text-align:left;white-space:pre-wrap;'+
         'max-height:150px;overflow:auto;background:rgba(0,0,0,.22);border-radius:8px;padding:7px 9px;margin-top:7px';
       dl.addEventListener('click',function(){
-        dl.disabled=true;dl.textContent='در حال دانلود…';logBox.style.display='';
+        dl.disabled=true;dl.textContent=(lang==='en'?'Downloading…':'در حال دانلود…');logBox.style.display='';
         note.style.color='';note.textContent='دانلود '+c.label+' شروع شد…';
         tkFetch('/api/admin/devlibs/download',{method:'POST',headers:{'Content-Type':'application/json'},
           body:JSON.stringify({lang:c.id})})
           .then(function(){ watch(c.id,logBox); })
-          .catch(function(e){ dl.disabled=false;dl.textContent='دانلودِ همه'; note.style.color='#fb7185';note.textContent=e.message; });
+          .catch(function(e){ dl.disabled=false;dl.textContent=(lang==='en'?'Download all':'دانلودِ همه'); note.style.color='#fb7185';note.textContent=e.message; });
       });
       b.appendChild(dl);b.appendChild(logBox);
       card.appendChild(b);out.appendChild(card);
@@ -5479,8 +5495,8 @@ function tkBtPanel(){
   p.appendChild(w);
 
   var bar=el('div');bar.style.cssText='display:flex;gap:8px;flex-wrap:wrap;margin:10px 0';
-  var listBtn=el('button','btn');listBtn.textContent='جفت‌شده‌ها';listBtn.style.fontSize='13px';
-  var scanBtn=el('button','btn ghost');scanBtn.textContent='گشتن دور و بر';scanBtn.style.fontSize='13px';
+  var listBtn=el('button','btn');listBtn.textContent=(lang==='en'?'Paired':'جفت‌شده‌ها');listBtn.style.fontSize='13px';
+  var scanBtn=el('button','btn ghost');scanBtn.textContent=(lang==='en'?'Scan around':'گشتن دور و بر');scanBtn.style.fontSize='13px';
   bar.appendChild(listBtn);bar.appendChild(scanBtn);p.appendChild(bar);
   var note=el('div');note.style.cssText='font-size:12px;min-height:16px;margin-bottom:6px';p.appendChild(note);
   var out=el('div');p.appendChild(out);
@@ -5514,7 +5530,7 @@ function tkBtPanel(){
       // a strip of buttons that duplicate what is inside.
       var openHint=el('span');
       openHint.style.cssText='font-size:11px;color:#8ea0c8';
-      openHint.textContent='باز کن ›';
+      openHint.textContent=(lang==='en'?'Open ›':'باز کن ›');
       btns.appendChild(openHint);
 
       var row=hwRow(main,esc(dev.mac||''),btns);
@@ -5557,8 +5573,8 @@ function tkCablePanel(){
   p.appendChild(w);
 
   var bar=el('div');bar.style.cssText='display:flex;gap:8px;flex-wrap:wrap;margin:10px 0';
-  var go=el('button','btn');go.textContent='بخوان';go.style.fontSize='13px';
-  var watchB=el('button','btn ghost');watchB.textContent='چه چیزی تازه وصل شد؟';watchB.style.fontSize='13px';
+  var go=el('button','btn');go.textContent=(lang==='en'?'Read':'بخوان');go.style.fontSize='13px';
+  var watchB=el('button','btn ghost');watchB.textContent=(lang==='en'?'What just connected?':'چه چیزی تازه وصل شد؟');watchB.style.fontSize='13px';
   bar.appendChild(go);bar.appendChild(watchB);p.appendChild(bar);
   var note=el('div');note.style.cssText='font-size:12px;min-height:16px;margin-bottom:6px';p.appendChild(note);
   var out=el('div');p.appendChild(out);
@@ -5591,7 +5607,7 @@ function tkCablePanel(){
       var sc=hwCard('پورت‌های سریال / کابل داده');
       d.serial.forEach(function(sp){
         var sub=[sp.description,sp.vendor,sp.serial,sp.usbId].filter(Boolean).join(' · ');
-        var hint=el('span');hint.style.cssText='font-size:11px;color:#8ea0c8';hint.textContent='باز کن ›';
+        var hint=el('span');hint.style.cssText='font-size:11px;color:#8ea0c8';hint.textContent=(lang==='en'?'Open ›':'باز کن ›');
         var key=sp.key||sp.port;
         var row=hwRow(titleFor(key,sp.port),esc(sub),hint);
         var host=el('div');host.style.flexBasis='100%';row.appendChild(host);
@@ -5619,7 +5635,7 @@ function tkCablePanel(){
         var facts=[u.manufacturer,id?('ID '+id):'',u.serial?('سریال '+u.serial):'',
                    u.usbClass,u.speed,u.driver?('درایور '+u.driver+(u.driverVersion?(' '+u.driverVersion):'')):'',
                    u.location,u.maxPower].filter(Boolean).join(' · ');
-        var hint=el('span');hint.style.cssText='font-size:11px;color:#8ea0c8';hint.textContent='باز کن ›';
+        var hint=el('span');hint.style.cssText='font-size:11px;color:#8ea0c8';hint.textContent=(lang==='en'?'Open ›':'باز کن ›');
         var row=hwRow(titleFor(u.key,u.name||u.product||'USB'),esc(facts),hint);
         var host=el('div');host.style.flexBasis='100%';row.appendChild(host);
         row.style.cursor='pointer';
@@ -5655,7 +5671,7 @@ function tkCablePanel(){
       .catch(function(e){out.innerHTML='<div class="tk-hint" style="color:#fb7185">'+esc(e.message)+'</div>';});
   });
   watchB.addEventListener('click',function(){
-    note.style.color='';note.textContent='مقایسه با دفعه‌ی قبل…';
+    note.style.color='';note.textContent=(lang==='en'?'Comparing with last time…':'مقایسه با دفعه‌ی قبل…');
     tkFetch('/api/hw/watch').then(function(d){
       if(d.first){note.style.color='#8ea0c8';note.textContent=d.note;return;}
       var parts=[];
@@ -5677,13 +5693,13 @@ function tkDevicesPanel(){
   p.appendChild(w);
 
   var bar=el('div');bar.style.cssText='display:flex;gap:8px;flex-wrap:wrap;margin:10px 0';
-  var scanBtn=el('button','btn');scanBtn.textContent='جست‌وجوی دستگاه‌ها';scanBtn.style.fontSize='13px';
-  var netBtn=el('button','btn ghost');netBtn.textContent='وضعیت شبکه';netBtn.style.fontSize='13px';
+  var scanBtn=el('button','btn');scanBtn.textContent=(lang==='en'?'Search devices':'جست‌وجوی دستگاه‌ها');scanBtn.style.fontSize='13px';
+  var netBtn=el('button','btn ghost');netBtn.textContent=(lang==='en'?'Network status':'وضعیت شبکه');netBtn.style.fontSize='13px';
   bar.appendChild(scanBtn);bar.appendChild(netBtn);p.appendChild(bar);
 
   var out=el('div');p.appendChild(out);
   var TRANSPORT={usb:'USB',bluetooth:'بلوتوث',drive:'درایو',network:'شبکه'};
-  var LEVEL={high:['#fb7185','خطر'],medium:['#fbbf24','بررسی کن'],low:['#8ea0c8','نکته'],ok:['#34d399','سالم']};
+  var LEVEL={high:['#fb7185','خطر'],medium:['#fbbf24',(lang==='en'?'Check':'بررسی کن')],low:['#8ea0c8','نکته'],ok:['#34d399','سالم']};
 
   function card(title){
     var c=el('div','tk-card');
@@ -5787,7 +5803,7 @@ function tkDevicesPanel(){
            and Bluetooth tabs know about, so tapping the row opens the very
            same detail sheet — one way in, from wherever you happen to be. */
         if(['bluetooth','usb','drive'].indexOf(dev.transport)>=0){
-          var hint=el('span');hint.style.cssText='font-size:11px;color:#8ea0c8';hint.textContent='باز کن ›';
+          var hint=el('span');hint.style.cssText='font-size:11px;color:#8ea0c8';hint.textContent=(lang==='en'?'Open ›':'باز کن ›');
           row.appendChild(hint);
           var host=el('div');host.style.flexBasis='100%';row.appendChild(host);
           row.style.cursor='pointer';
@@ -5804,7 +5820,7 @@ function tkDevicesPanel(){
       out.appendChild(c.card);
     });
     if(!(d.devices||[]).length){
-      var e=el('div','tk-hint');e.textContent='هیچ دستگاهی پیدا نشد.';out.appendChild(e);
+      var e=el('div','tk-hint');e.textContent=(lang==='en'?'No device found.':'هیچ دستگاهی پیدا نشد.');out.appendChild(e);
     }
   }
 
@@ -5818,7 +5834,7 @@ function tkDevicesPanel(){
     out.innerHTML='<div class="tk-hint"><span class="spin"></span> بررسی شبکه…</div>';
     tkFetch('/api/network/status').then(function(d){
       out.innerHTML='';
-      var c=card('وضعیت شبکه');
+      var c=card((lang==='en'?'Network status':'وضعیت شبکه'));
       var col=d.trust==='ok'?'#34d399':(d.trust==='caution'?'#fbbf24':'#fb7185');
       c.body.innerHTML='<div style="font-size:13px;color:'+col+'">'+
         (d.online?('آنلاین · '+d.latencyMs+' میلی‌ثانیه'):'آفلاین')+'</div>'+
@@ -5914,7 +5930,7 @@ function tkCommsPanel(){
     });
   }).catch(function(){});
   function saveThenTest(statNode,testUrl){
-    statNode.innerHTML='<span class="spin"></span> '+(_en?'Saving and testing…':'در حال ذخیره و تست...');
+    statNode.innerHTML='<span class="spin"></span> '+(_en?'Saving and testing…':(lang==='en'?'Saving and testing…':'در حال ذخیره و تست...'));
     tkFetch('/api/admin/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({updates:dirty})})
       .then(function(){dirty={};return tkFetch(testUrl,{method:'POST'});})
       .then(function(d){
@@ -6359,7 +6375,7 @@ $('devBody').addEventListener('click', async function(ev){
         body.tuyaId = ti.trim();
       } else { return devSay('این دستگاه تنظیم اضافه‌ای ندارد.'); }
       await devApi('/api/home/devices/'+id+'/flags', { body:body });
-      devSay('ذخیره شد.', true);
+      devSay((lang==='en'?'Saved.':'ذخیره شد.'), true);
       return devLoad();
     }
     if(act === 'addfound'){
