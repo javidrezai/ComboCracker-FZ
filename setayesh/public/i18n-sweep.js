@@ -202,7 +202,7 @@ window.__FA2EN = {
   // — third sweep pass (final stragglers) —
   'مغز ستایش ۰.۶':'Setayesh brain 0.6','✕ بستن':'✕ Close','در حال انتخاب موضوع برای تحقیق…':'Choosing a research topic…',
   'هنوز چیزی تأیید نشده.':'Nothing approved yet.','دستگاه‌ها:':'Devices:','والتی پیدا نشد — مسیر را دستی بنویس.':'No vault found — type the path manually.',
-  'تنظیم نشده':'Not set'
+  'تنظیم نشده':'Not set','بسته':'Closed','مغز محلی ستایش (پایتون) (default)':'Setayesh local brain (Python) (default)'
 };
 
 (function(){
