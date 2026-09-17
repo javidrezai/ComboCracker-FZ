@@ -195,7 +195,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.120';
+const APP_VERSION = '9.9.121';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -4013,13 +4013,22 @@ const codeLib = require('./codelib').makeCodeLib();
 // all its HTTP routes now live in codelib.js (charter rule 3.4).
 const codeLibrary = codeLib.codeLibrary;
 
-function promptFor(username, modeId, safe, libSel, message) {
+function promptFor(username, modeId, safe, libSel, message, opts) {
+  opts = opts || {};
   let base = promptForMode(modeId, safe);
   if (modeId === 'code') base += codeLibrary(libSel, message);
   base += personalizationBlock(username);
   base += memoryBlock(username);
-  base += knowledgeSystemBlock();
-  base += brainVaultBlock();
+  // The full growing-knowledge + brain-vault dump is useful on the desktop
+  // (long context, the user can steer), but on Telegram it OVERWHELMED short
+  // questions: a "give me an https link" follow-up with no chat history latched
+  // onto the dev-libraries shelf sitting in the prompt and answered about that,
+  // in English. `lite` skips both dumps; the caller injects only grounding that
+  // is RELEVANT to the actual question instead.
+  if (!opts.lite) {
+    base += knowledgeSystemBlock();
+    base += brainVaultBlock();
+  }
   base += voiceBlock(username);
   const tut = TUTORS[(username || '').toLowerCase()];
   return tut ? base + tut : base;
@@ -6710,7 +6719,21 @@ require('./routes/connectors').register(app, { requireAuth, requireAdmin, connec
 // An inbound message from the whitelisted chat is answered as the owner: same
 // engine routing and the same tools (Gmail/Calendar/…) via callWithTools, so
 // the family can drive Setayesh from their phone outside the house.
-async function runTelegramTurn(text) {
+// Per-chat conversation memory for Telegram. Without it every message was a
+// cold start: a follow-up like «لینک https هم بده» arrived with no idea what it
+// was about, so the model answered from whatever sat in the system prompt (the
+// dev-libraries shelf) — off-topic, in English. We keep a short rolling window
+// per chat so follow-ups stay on the same subject. Trimmed hard: Telegram is
+// short-form and old turns just add noise.
+const telegramHistory = new Map();   // chatId -> [{role, content}, ...]
+const TELEGRAM_HISTORY_TURNS = 8;    // last 8 messages (≈4 exchanges)
+function telegramHistoryFor(chatId) {
+  const key = String(chatId || 'default');
+  if (!telegramHistory.has(key)) telegramHistory.set(key, []);
+  return telegramHistory.get(key);
+}
+
+async function runTelegramTurn(text, chatId) {
   const msg = String(text || '').trim();
   if (!msg) return '';
   if (!anyConfigured()) return 'هنوز هیچ موتور هوش مصنوعی روی سرور تنظیم نشده — از مرکز کنترل یک کلید API اضافه کن.';
@@ -6754,15 +6777,37 @@ async function runTelegramTurn(text) {
     telegramRules += '\n۵) این سؤال به اطلاعاتِ روز نیاز دارد (هوا، اخبار، قیمت…). '
       + 'اول ابزار web_search را صدا بزن، از نتایج واقعی جواب بده و اگر جستجو چیزی نداد، صادقانه بگو که اطلاعاتِ زنده در دسترس نیست — چیزی از خودت نساز.';
   }
-  const systemPrompt = promptFor(adminUser, 'chat', false, null, msg) + telegramRules;
+  // Lite prompt (no full knowledge/vault dump) + grounding that is RELEVANT to
+  // THIS question only, so the prompt helps instead of hijacking the answer.
+  let grounding = '';
+  try {
+    const hits = insight.search(msg, { user: adminUser, all: true, limit: 3 });
+    if (hits && hits.length) {
+      let g = hits.map((h) => '• ' + String(h.text || h.snippet || '').replace(/\s+/g, ' ').trim().slice(0, 220)).filter(Boolean).join('\n');
+      if (g && privacy.enabled) g = redactOutbound(g);
+      if (g) grounding = '\n\n*** آنچه از قبل درباره‌ی همین موضوع می‌دانی (اگر مربوط بود استفاده کن، وگرنه نادیده بگیر) ***\n' + g;
+    }
+  } catch (e) {}
+  const systemPrompt = promptFor(adminUser, 'chat', false, null, msg, { lite: true }) + grounding + telegramRules;
+  // Conversation memory: prepend the recent turns for this chat so a follow-up
+  // has context. The current message is added after a successful reply.
+  const hist = telegramHistoryFor(chatId);
+  const convo = hist.slice(-TELEGRAM_HISTORY_TURNS).concat([{ role: 'user', content: msg }]);
   let lastErr = null;
   for (const eid of order) {
     const model = modelFor(eid);
     const toolCtx = { preferredId: eid, basePrompt: systemPrompt, message: msg, sideEffects: {}, pinned: false, isAdmin: true, username: adminUser };
     try {
-      const raw = await callWithTools(eid, model, systemPrompt, [{ role: 'user', content: msg }], toolCtx, {});
+      const raw = await callWithTools(eid, model, systemPrompt, convo, toolCtx, {});
       const reply = stripToolNoise(raw || '');
-      if (reply) { try { noteEngine(eid, true); } catch (e) {} return reply; }
+      if (reply) {
+        try { noteEngine(eid, true); } catch (e) {}
+        // Remember this exchange (trimmed) for the next follow-up.
+        hist.push({ role: 'user', content: msg });
+        hist.push({ role: 'assistant', content: reply });
+        if (hist.length > TELEGRAM_HISTORY_TURNS) telegramHistory.set(String(chatId || 'default'), hist.slice(-TELEGRAM_HISTORY_TURNS));
+        return reply;
+      }
       // Empty reply — try the next engine.
     } catch (e) {
       lastErr = e;
