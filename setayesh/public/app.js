@@ -1,4 +1,4 @@
-/* SETAYESH_BUILD 9.9.113 */
+/* SETAYESH_BUILD 9.9.115 */
 (function(){
 'use strict';
 
@@ -1237,6 +1237,10 @@ function applyLang(){
   document.querySelectorAll('[data-i18n-arialabel]').forEach(function(e){e.setAttribute('aria-label',t(e.getAttribute('data-i18n-arialabel')));});
   $('hintLine').textContent=t('hint');
   if(CFG){buildModes();setMode(mode);buildModelPicker();buildCompareChips();renderChatList();renderThread();}
+  // Whole-UI sweep: flips every remaining Persian UI phrase to English (and back)
+  // — including panels built on the fly — while leaving the user's own content
+  // untouched. Runs last so it sees the freshly-rendered pieces above.
+  try{ if(window.i18nSweep) window.i18nSweep(lang); }catch(e){}
 }
 
 /* ================= ADMIN (account management) ================= */
@@ -2366,8 +2370,9 @@ function loadCC(){
   adminFetch('/api/admin/settings').then(function(d){
     CC.settings=d;
     var L=d.live;
-    $('ccLive').innerHTML='نسخه '+d.version+' · موتورهای فعال: '+(L.engines.join('، ')||'هیچ')+
-      ' · '+L.accounts.length+' کاربر'+(L.pendingKnowledge?(' · '+L.pendingKnowledge+' مورد منتظر تأیید'):'');
+    var _en=lang==='en';
+    $('ccLive').innerHTML=(_en?'v':'نسخه ')+d.version+' · '+(_en?'active engines: ':'موتورهای فعال: ')+(L.engines.join(_en?', ':'، ')||(_en?'none':'هیچ'))+
+      ' · '+L.accounts.length+(_en?' users':' کاربر')+(L.pendingKnowledge?(' · '+L.pendingKnowledge+(_en?' awaiting approval':' مورد منتظر تأیید')):'');
     // engine keys — with add/remove (hide) controls
     CC.hidden=d.providers.filter(function(p){return p.hidden;}).map(function(p){return p.id;});
     var box=$('ccKeyList'); box.innerHTML='';

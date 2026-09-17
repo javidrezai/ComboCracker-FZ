@@ -189,7 +189,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.113';
+const APP_VERSION = '9.9.115';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -6830,23 +6830,24 @@ async function runTelegramTurn(text) {
   // "half-gateway of this world" answers جاوید saw. Pick the strongest HEALTHY
   // CLOUD engine (gemini is allowed here — answering is its job) and its GENERAL
   // model, so replies are real and quick.
-  let target;
-  const cloud = rankEngines(tags, { exclude: ['brain', 'local'] });
-  const id = cloud.find((x) => isConfigured(x) && engineUsable(x))
-          || cloud.find((x) => isConfigured(x))
-          || Object.keys(PROVIDERS).filter((x) => x !== 'brain' && x !== 'local').find(isConfigured);
-  if (id) {
-    const models = PROVIDERS[id].models || [];
+  // Build an ORDERED list of engines to try. Strongest healthy cloud engines
+  // first (fast + smart), then any other configured cloud engine, then the
+  // local model, then the brain as the final safety net. We walk this list on
+  // failure (a bad key / quota on one engine no longer means a dead reply —
+  // that "provider error" جاوید saw was one engine throwing with no failover).
+  const modelFor = (eid) => {
+    if (eid === 'gemini') return GEMINI_MODEL;
+    const models = PROVIDERS[eid].models || [];
     const codeModel = (models.find((m) => m.best === 'code') || {}).id;
     const generalModel = (models.find((m) => m.best !== 'code') || {}).id;
-    const model = id === 'gemini' ? GEMINI_MODEL
-      : (tags.includes('code') ? (codeModel || generalModel) : (generalModel || codeModel)) || (models[0] || {}).id;
-    target = { id, model };
-  } else {
-    // Only local/brain is configured — still answer rather than refuse.
-    try { target = resolveTarget(undefined, undefined, adminUser, { tags }); }
-    catch (e) { return e.message || 'موتوری در دسترس نیست.'; }
-  }
+    return (tags.includes('code') ? (codeModel || generalModel) : (generalModel || codeModel)) || (models[0] || {}).id;
+  };
+  const cloud = rankEngines(tags, { exclude: ['brain', 'local'] });
+  const order = [];
+  cloud.forEach((x) => { if (isConfigured(x) && engineUsable(x)) order.push(x); });   // healthy cloud
+  cloud.forEach((x) => { if (isConfigured(x) && !order.includes(x)) order.push(x); }); // cooling cloud
+  ['local', 'brain'].forEach((x) => { if (isConfigured(x) && !order.includes(x)) order.push(x); }); // last resort
+  if (!order.length) return 'هیچ موتوری روی سرور تنظیم نشده — از مرکز کنترل یک کلید API اضافه کن.';
   // Telegram had replied in Chinese/Thai and dumped raw <tool_call> JSON. Lock
   // the output: Persian only, human sentences only, no tool/JSON/markup syntax.
   let telegramRules = '\n\n=== قانون پاسخ در تلگرام ===\n'
@@ -6859,10 +6860,29 @@ async function runTelegramTurn(text) {
       + 'اول ابزار web_search را صدا بزن، از نتایج واقعی جواب بده و اگر جستجو چیزی نداد، صادقانه بگو که اطلاعاتِ زنده در دسترس نیست — چیزی از خودت نساز.';
   }
   const systemPrompt = promptFor(adminUser, 'chat', false, null, msg) + telegramRules;
-  const toolCtx = { preferredId: target.id, basePrompt: systemPrompt, message: msg, sideEffects: {}, pinned: !!target.pinned, isAdmin: true, username: adminUser };
-  let reply = await callWithTools(target.id, target.model, systemPrompt, [{ role: 'user', content: msg }], toolCtx, {});
-  reply = stripToolNoise(reply || '');
-  return reply || '(پاسخی نیامد — دوباره بپرس.)';
+  let lastErr = null;
+  for (const eid of order) {
+    const model = modelFor(eid);
+    const toolCtx = { preferredId: eid, basePrompt: systemPrompt, message: msg, sideEffects: {}, pinned: false, isAdmin: true, username: adminUser };
+    try {
+      const raw = await callWithTools(eid, model, systemPrompt, [{ role: 'user', content: msg }], toolCtx, {});
+      const reply = stripToolNoise(raw || '');
+      if (reply) { try { noteEngine(eid, true); } catch (e) {} return reply; }
+      // Empty reply — try the next engine.
+    } catch (e) {
+      lastErr = e;
+      try { noteEngine(eid, false); } catch (_) {}
+      console.warn(`   [telegram] ${PROVIDERS[eid] && PROVIDERS[eid].label || eid} failed: ${e && (e.status ? e.status + ' ' : '')}${e && e.message}`);
+      // fall through to the next engine
+    }
+  }
+  // Every engine failed — tell the owner the REAL reason, not a bare "provider error".
+  const reason = lastErr
+    ? (lastErr.status === 401 || lastErr.status === 403 ? 'کلید API یکی از موتورها نامعتبر یا منقضی است'
+      : lastErr.status === 429 ? 'سقف/اعتبار موتورها پر شده (۴۲۹)'
+      : (lastErr.status ? ('خطای موتور ' + lastErr.status) : (lastErr.message || 'خطای نامشخص')))
+    : 'هیچ موتوری جواب نداد';
+  return 'الان نتوانستم جواب بدهم — ' + reason + '. کلیدهای API را در «مرکز کنترل ← موتورها» چک کن یا کمی بعد دوباره بپرس.';
 }
 
 app.get('/api/admin/telegram', requireAuth, requireAdmin, (req, res) => {

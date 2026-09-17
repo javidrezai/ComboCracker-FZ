@@ -320,6 +320,13 @@ via the app's own self-editing feature.
   weather/forecast/"فردا"/prices as `current`, and the Telegram prompt then
   tells the model to web_search first and to say "I don't know" rather than
   invent — no more baseless answers.
+  **Telegram failover (v9.9.115):** `runTelegramTurn` builds an ORDERED engine
+  list (healthy cloud → cooling cloud → local → brain) and walks it on failure;
+  a bad key/quota on one engine no longer surfaces as a bare "provider error"
+  (that was one engine throwing with NO failover). If every engine fails it
+  returns the REAL reason (401/403 = invalid/expired key, 429 = quota, else the
+  status) and points the owner to Control centre → Engines. `noteEngine` records
+  each success/failure so health tracking stays accurate.
 - **Voice**: `voiceBlock()` in index.js builds the tone rules from each member's
   `tone` and `writeLang` prefs. Children never get the adult "خودمونی" register.
 
