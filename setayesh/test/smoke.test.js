@@ -1697,6 +1697,24 @@ test('mathutil: tryCompute does arithmetic and unit conversions exactly', () => 
   assert.equal(mu.convertUnit(0, 'c', 'k'), 273.15, 'celsius→kelvin');
 });
 
+// toolspec.js — the AI tool catalogue (JSON schemas) is well-formed static data.
+test('toolspec: every tool has a name/description/schema and names are unique', () => {
+  const { TOOLS_SPEC } = require(path.join(ROOT, 'toolspec.js'));
+  assert.ok(Array.isArray(TOOLS_SPEC) && TOOLS_SPEC.length > 20, 'a full catalogue of tools');
+  const seen = new Set();
+  for (const t of TOOLS_SPEC) {
+    assert.equal(typeof t.name, 'string', 'tool has a name');
+    assert.ok(t.name && !seen.has(t.name), 'name is present and unique: ' + t.name);
+    seen.add(t.name);
+    assert.ok(t.description && typeof t.description === 'string', t.name + ' has a description');
+    assert.ok(t.input_schema && t.input_schema.type === 'object', t.name + ' has an object schema');
+  }
+  // A few well-known tools must still be in the catalogue.
+  for (const n of ['build_project', 'run_python', 'web_search', 'read_own_source']) {
+    assert.ok(seen.has(n), 'catalogue includes ' + n);
+  }
+});
+
 // personas.js — the hand-written per-account persona prompts, keyed by username.
 test('personas: TUTORS exposes non-empty persona text for known accounts', () => {
   const { TUTORS } = require(path.join(ROOT, 'personas.js'));
