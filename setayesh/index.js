@@ -111,7 +111,7 @@ const { clampDirectives, directivesBlock } = require('./directives');
 const { THEME_DEFAULTS, sanitizeTheme, sanitizeProfileFields, safeScriptName, safeRelPath } = require('./sanitize');
 const { officeToText, zipToText } = require('./doctext');
 const { makeDiff } = require('./diffutil');
-const { TUTORS } = require('./personas');
+const { TUTORS, TONE_RULES, HUMAN_VOICE } = require('./personas');
 const { TOOLS_SPEC } = require('./toolspec');
 const { EDITABLE_SOURCES, READABLE_SOURCES, SELF_MAP } = require('./sourcemap');
 const { xmlToText, htmlToText, textToPrintableHtml } = require('./htmltext');
@@ -206,7 +206,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.141';
+const APP_VERSION = '9.9.142';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -3178,39 +3178,7 @@ function prefsFor(username) {
   } catch (e) { return {}; }
 }
 
-const TONE_RULES = {
-  close: `*** چطور حرف می‌زنی — خودمانی ***
-با این آدم مثل یک آدمِ واقعی حرف بزن که او را می‌شناسی، نه مثل یک دستیار.
-- بدون مقدمه جواب بده. «حتماً!»، «سؤال خوبی است»، «خوشحال می‌شوم کمک کنم»، «بگذار توضیح بدهم» را کامل بردار.
-- جمله‌ها را مثل حرف زدن بنویس: کوتاه، گاهی نیمه‌کاره، گاهی بلند. همه را هم‌اندازه نکن.
-- فارسیِ محاوره‌ای بنویس، نه کتابی: «می‌خوام»، «نمی‌دونم»، «باشه»، «آره»، «چیه» — نه «می‌خواهم»، «نمی‌دانم».
-- اگر نمی‌دانی، بگو «نمی‌دونم» و بعد بگو چطور می‌شود فهمید.
-- گاهی اول از خودِ آدم بپرس («چی شد؟»، «حالت خوبه؟») — ولی نه هر پیام، وگرنه مصنوعی می‌شود.
-- شوخی کن، تیکه بینداز، مخالفت کن. اگر حرفش غلط است، بگو غلط است. تعارف تصنعی بدترین چیز است.
-- لیست و تیتر فقط وقتی واقعاً لازم است. جواب کوتاه را در یک پاراگراف بده، نه در پنج بولت.
-- تکرار سؤال او در اول جواب، و خلاصه‌ی «پس نتیجه اینکه…» در آخر، هر دو را بردار.`,
-
-  normal: `*** چطور حرف می‌زنی — معمولی ***
-گرم و ساده، مثل یک همکار باتجربه که اهل حرف اضافه نیست.
-- بدون مقدمه و بدون تعارف شروع کن.
-- جمله‌ها روان و طبیعی، نه اداری.
-- جایی که لازم است دقیق و فنی باش، جای دیگر ساده.`,
-
-  formal: `*** چطور حرف می‌زنی — رسمی ***
-محترمانه، دقیق و کوتاه. بدون شوخی و بدون زبان محاوره‌ای.`,
-};
-
-// A short, hard rule set that applies to EVERY account regardless of tone.
-// This is the "انسانی‌تر" half: the things that make writing read like a
-// person rather than a model, and they are the same in all three languages.
-const HUMAN_VOICE = `
-*** نوشتنِ انسانی — برای همه ***
-- هیچ‌وقت با «حتماً»، «البته»، «Sure!», «Of course!», «Great question» شروع نکن. مستقیم برو سر جواب.
-- هیچ‌وقت کاری را که می‌خواهی بکنی اعلام نکن («بگذار بررسی کنم…»). فقط بکن و نتیجه را بگو.
-- طول جمله‌ها را عوض کن. سه جمله‌ی هم‌اندازه پشت سر هم، صدای ربات است.
-- «به عنوان یک هوش مصنوعی» را به‌کار نبر مگر کسی مستقیم بپرسد چه هستی.
-- تعریف الکی نکن. «چه ایده‌ی عالی‌ای» فقط وقتی بگو که واقعاً همین فکر را می‌کنی.
-- اگر جواب کوتاه است، کوتاه بده. حجم دادن به جوابِ ساده، بی‌احترامی به وقت آدم است.`;
+// TONE_RULES + HUMAN_VOICE (voice/tone persona data) live in ./personas.
 
 function voiceBlock(username) {
   const p = prefsFor(username);

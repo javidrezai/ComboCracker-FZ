@@ -1738,6 +1738,14 @@ test('personas: TUTORS exposes non-empty persona text for known accounts', () =>
   assert.ok(TUTORS.setayesh, 'setayesh persona present');
 });
 
+test('personas: TONE_RULES has the three registers and HUMAN_VOICE is shared', () => {
+  const { TONE_RULES, HUMAN_VOICE } = require(path.join(ROOT, 'personas.js'));
+  for (const k of ['close', 'normal', 'formal']) {
+    assert.ok(TONE_RULES[k] && TONE_RULES[k].length > 20, 'tone register present: ' + k);
+  }
+  assert.ok(typeof HUMAN_VOICE === 'string' && HUMAN_VOICE.length > 50, 'shared human-voice rules present');
+});
+
 // htmltext.js — text → printable HTML (RTL auto-detected, markdown-ish inline).
 test('htmltext: textToPrintableHtml builds a page and detects direction', () => {
   const ht = require(path.join(ROOT, 'htmltext.js'));
