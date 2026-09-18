@@ -1697,6 +1697,18 @@ test('mathutil: tryCompute does arithmetic and unit conversions exactly', () => 
   assert.equal(mu.convertUnit(0, 'c', 'k'), 273.15, 'celsius→kelvin');
 });
 
+// personas.js — the hand-written per-account persona prompts, keyed by username.
+test('personas: TUTORS exposes non-empty persona text for known accounts', () => {
+  const { TUTORS } = require(path.join(ROOT, 'personas.js'));
+  assert.ok(TUTORS && typeof TUTORS === 'object', 'TUTORS is an object');
+  for (const [k, v] of Object.entries(TUTORS)) {
+    assert.equal(typeof v, 'string', k + ' persona is a string');
+    assert.ok(v.trim().length > 50, k + ' persona is substantial');
+  }
+  assert.ok(TUTORS.javid && TUTORS.javid.includes('جاوید'), 'owner persona addresses Javid by name');
+  assert.ok(TUTORS.setayesh, 'setayesh persona present');
+});
+
 // htmltext.js — text → printable HTML (RTL auto-detected, markdown-ish inline).
 test('htmltext: textToPrintableHtml builds a page and detects direction', () => {
   const ht = require(path.join(ROOT, 'htmltext.js'));
