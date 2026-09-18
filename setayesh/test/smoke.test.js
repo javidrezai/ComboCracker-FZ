@@ -1697,6 +1697,22 @@ test('mathutil: tryCompute does arithmetic and unit conversions exactly', () => 
   assert.equal(mu.convertUnit(0, 'c', 'k'), 273.15, 'celsius→kelvin');
 });
 
+// runners.js — the language-runner catalogue + ext routing + detection probe.
+test('runners: catalogue maps extensions and probe fills availability', () => {
+  const r = require(path.join(ROOT, 'runners.js'));
+  assert.ok(r.RUNNERS.python && r.RUNNERS.python.exts.includes('.py'), 'python runs .py');
+  assert.equal(r.runnerForExt('.py'), 'python', '.py → python');
+  assert.equal(r.runnerForExt('.JS'), 'node', 'case-insensitive .js → node');
+  assert.equal(r.runnerForExt('.xyz'), null, 'unknown ext → null');
+  // probe writes a key for every runner (value is a version string or null).
+  const avail = {};
+  r.probeRunners(avail);
+  for (const k of Object.keys(r.RUNNERS)) {
+    assert.ok(k in avail, 'availability recorded for ' + k);
+    assert.ok(avail[k] === null || typeof avail[k] === 'string', k + ' is version-or-null');
+  }
+});
+
 // projectpaths.js — safe paths under the workspace/script dirs, no escape.
 test('projectpaths: names are sanitized and paths cannot escape their base', () => {
   const { makeProjectPaths } = require(path.join(ROOT, 'projectpaths.js'));

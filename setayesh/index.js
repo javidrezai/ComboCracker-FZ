@@ -212,7 +212,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.155';
+const APP_VERSION = '9.9.156';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -5824,31 +5824,12 @@ app.post('/api/admin/incidents/clear', requireAuth, requireAdmin, (req, res) => 
 // machine happens until the admin approves it, and only the admin.
 const PROJECTS_DIR = process.env.SETAYESH_PROJECTS_DIR || path.join(DATA_DIR, 'projects');
 
-// Which languages this machine can actually run, checked at startup so the
-// answer is real rather than assumed. This is the "know your environment"
-// part — on a new computer Setayesh sees for itself what is available.
-const RUNNERS = {
-  python: { label: 'Python', exts: ['.py'], probe: ['--version'],
-            cmd: process.platform === 'win32' ? 'python' : 'python3',
-            install: process.platform === 'win32' ? 'از python.org نصب کن و «Add to PATH» را بزن' : 'sudo apt install python3' },
-  node:   { label: 'Node.js', exts: ['.js', '.mjs'], probe: ['--version'], cmd: 'node',
-            install: 'از nodejs.org نصب کن' },
-  bash:   { label: 'Shell', exts: ['.sh'], probe: ['--version'], cmd: 'bash',
-            install: 'روی ویندوز از طریق WSL یا Git Bash' },
-};
+// The language-runner catalogue + detection live in ./runners. probeRunners
+// fills runnerAvailable (key → version or null) at startup, so Setayesh knows
+// what THIS machine can actually run.
+const { RUNNERS, probeRunners, runnerForExt } = require('./runners');
 const runnerAvailable = {};   // key -> version string or null
-
-function probeRunners() {
-  for (const [key, r] of Object.entries(RUNNERS)) {
-    try {
-      const out = require('child_process').spawnSync(r.cmd, r.probe, { timeout: 4000, windowsHide: true });
-      runnerAvailable[key] = (out.status === 0)
-        ? String(out.stdout || out.stderr || '').trim().split('\n')[0].slice(0, 40)
-        : null;
-    } catch (e) { runnerAvailable[key] = null; }
-  }
-}
-probeRunners();
+probeRunners(runnerAvailable);
 
 // safeProjectName / projectDir / safeInProject (safe paths under the project
 // workspace) live in ./projectpaths, bound below (with scriptPath).
@@ -5899,7 +5880,7 @@ function runProjectFile(projName, rel) {
     const full = safeInProject(projName, rel);
     if (!full || !fs.existsSync(full)) return resolve({ error: 'فایل پیدا نشد.' });
     const ext = path.extname(full).toLowerCase();
-    const key = Object.keys(RUNNERS).find((k) => RUNNERS[k].exts.includes(ext));
+    const key = runnerForExt(ext);
     if (!key) return resolve({ error: 'این نوع فایل قابل اجرا نیست: ' + ext });
     if (!runnerAvailable[key]) {
       return resolve({ error: `${RUNNERS[key].label} روی این کامپیوتر نصب نیست. ${RUNNERS[key].install}` });
