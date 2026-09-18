@@ -48,7 +48,14 @@ function stripToolNoise(content) {
   t = t.replace(TOOL_CALL_TAG_RE, ' ')      // whole <tool_call>…</tool_call> blocks
        .replace(/<\/?tool_call>/gi, ' ')    // stray, unbalanced tags
        .replace(/<\|[^|]*\|>/g, ' ');       // harmony channel tokens <|...|>
-  return t.replace(/[ \t]{2,}/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
+  t = t.replace(/[ \t]{2,}/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
+  // A whole reply that is nothing but a bare tool name — a weak model emitted the
+  // tool it meant to CALL as its answer (the "web_fetch" / "web_search" that
+  // reached جاوید instead of a weather answer). A single snake_case identifier,
+  // optionally with (), is never a real human reply, so drop it and let the
+  // caller fail over to an engine that actually runs the tool.
+  if (/^[a-z][a-z0-9]*_[a-z0-9_]*(\s*\(\s*\))?$/i.test(t) || /^[a-z][a-z0-9_]*\(\s*\)$/i.test(t)) return '';
+  return t;
 }
 
 module.exports = { toPlainText, parseTextToolCalls, stripToolNoise };

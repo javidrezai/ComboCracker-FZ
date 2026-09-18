@@ -1596,6 +1596,13 @@ test('harmony tool-call text is parsed out and never leaks to the user', () => {
   assert.equal(tn.stripToolNoise(mixed), 'قیمت‌ها را می‌گیرم.', 'the human sentence must survive, the noise must not');
   // Plain text is left untouched.
   assert.equal(tn.stripToolNoise('سلام جاوید'), 'سلام جاوید');
+  // A reply that is ONLY a bare tool name (a weak model emitting the tool it
+  // meant to call) is noise → dropped so the caller fails over.
+  assert.equal(tn.stripToolNoise('web_fetch'), '', 'a bare tool name is not an answer');
+  assert.equal(tn.stripToolNoise('web_search()'), '', 'a bare tool call is not an answer');
+  // But a real one-word human reply survives (no underscore, not a call).
+  assert.equal(tn.stripToolNoise('بله'), 'بله', 'a real short answer must survive');
+  assert.equal(tn.stripToolNoise('yes'), 'yes', 'a real one-word answer must survive');
 });
 
 // ---- Dev libraries: download plan is injection-safe (v9.9.105) ----

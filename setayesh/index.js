@@ -197,7 +197,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.125';
+const APP_VERSION = '9.9.126';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -446,7 +446,12 @@ function reloadKeys() {
 // Google keeps rotating which Gemini models a *new* API key may use (older ones
 // return 404 "no longer available to new users"). So instead of hardcoding a
 // name, we ask the key which models it actually has and pick the best flash one.
-let GEMINI_MODEL = (cfg.GEMINI_MODEL || '').trim() || 'gemini-3.6-flash';
+// The fallback used ONLY until discovery names a model this key can actually
+// use (discoverGeminiModel lists them from Google). It must be a REAL model, or
+// every Gemini call 404s whenever discovery hasn't run or momentarily failed —
+// which is exactly why "Gemini won't connect". gemini-2.0-flash is a long-lived,
+// free-tier GA model; the owner's own cfg.GEMINI_MODEL still wins over it.
+let GEMINI_MODEL = (cfg.GEMINI_MODEL || '').trim() || 'gemini-2.0-flash';
 let IMAGE_MODEL_RESOLVED = '';
 async function discoverGeminiModel() {
   if (!keys.gemini) return;
@@ -476,7 +481,7 @@ async function discoverGeminiModel() {
     // for keys created after its cutoff ("no longer available to new users").
     // So prefer the NEWEST stable flash model, not the oldest. The API only
     // lists models this key can actually use, so anything here is valid.
-    const PREF = ['gemini-3.6-flash', 'gemini-3-flash', 'gemini-2.5-flash', 'gemini-2.0-flash'];
+    const PREF = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-flash-latest', 'gemini-1.5-flash'];
     let pick = '';
     for (const p of PREF) {
       const m = names.find(n => n === p) || names.find(n => n.startsWith(p) && !/preview|exp|thinking/i.test(n));
@@ -3816,7 +3821,18 @@ function resolveTarget(providerId, model, username, opts) {
   const autoModel = tags.includes('code')
     ? (codeModel || generalModel)
     : (generalModel || codeModel);
-  const chosen = (pin ? (modelOk ? model : null) : model) || autoModel || (models[0] || {}).id;
+  // The client can send a persisted model choice. If that choice is a
+  // code-completion model (Mistral's Codestral) but THIS is not a code question,
+  // override it to the engine's general model: a code model won't follow the
+  // system prompt, answers in the wrong language, and — for a weather/news
+  // question — can't run web_search, so it leaked the bare tool name "web_fetch"
+  // instead of an answer. A pin/explicit code question still keeps the code model.
+  let picked = (pin ? (modelOk ? model : null) : model);
+  if (picked && !tags.includes('code')) {
+    const pm = models.find((m) => m.id === picked);
+    if (pm && pm.best === 'code' && generalModel) picked = generalModel;
+  }
+  const chosen = picked || autoModel || (models[0] || {}).id;
   if (!chosen) throw Object.assign(new Error('مدلی انتخاب نشده است.'), { userFacing: true });
   return { id, model: chosen, pinned: !!pin };
 }
@@ -5868,6 +5884,20 @@ app.get('/api/download/:token(*)', requireAuth, (req, res) => {
 // Only these files can be touched, and only the admin can approve.
 const PATCH_DIR = path.join(DATA_DIR, 'patches');
 const ROLLBACK_DIR = path.join(DATA_DIR, 'rollback');
+// Keep only the most recent undo snapshots so the rollback folder can't grow
+// into a pile of dead files over months of self-edits. The recent ones are what
+// an undo would ever reach for; older copies are also in the timestamped backups.
+const ROLLBACK_KEEP = 20;
+function pruneRollback() {
+  try {
+    const files = fs.readdirSync(ROLLBACK_DIR)
+      .map((f) => ({ f, t: fs.statSync(path.join(ROLLBACK_DIR, f)).mtimeMs }))
+      .sort((a, b) => b.t - a.t);
+    for (const { f } of files.slice(ROLLBACK_KEEP)) {
+      try { fs.unlinkSync(path.join(ROLLBACK_DIR, f)); } catch (e) {}
+    }
+  } catch (e) {}
+}
 // Files Setayesh may EDIT (propose_change) — every one is syntax-checked, and
 // index.js is actually booted, before the owner sees the diff. Only .js/.html
 // (a .css would fail `node --check`).
@@ -6218,6 +6248,7 @@ function applyProposalNow(p) {
   const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
   const safeName = p.file.replace(/[\/\\]/g, '_');
   fs.writeFileSync(path.join(ROLLBACK_DIR, `${stamp}__${safeName}`), fs.readFileSync(full));
+  pruneRollback();   // don't let old undo snapshots pile up as dead files
   runBackup('before-patch');
   fs.writeFileSync(full, after, 'utf8');
   delete proposals[p.id];
