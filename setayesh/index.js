@@ -117,6 +117,7 @@ const { EDITABLE_SOURCES, READABLE_SOURCES, SELF_MAP } = require('./sourcemap');
 const { EDITABLE_KEYS } = require('./configkeys');
 const { PII_PATTERNS, HIGH_VALUE, SECRET_PATTERNS, KIND_LABEL } = require('./privacydata');
 const { buildSynthesisPrompt } = require('./council');
+const { SEARCH_LABELS, defaultSearchEngines, searchOne } = require('./websearch');
 const { xmlToText, htmlToText, textToPrintableHtml } = require('./htmltext');
 const selfsign = require('./selfsign');
 const helmet = require('helmet');
@@ -209,7 +210,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.145';
+const APP_VERSION = '9.9.146';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -1817,18 +1818,13 @@ async function webFetch(rawUrl, maxChars) {
 // DuckDuckGo's HTML endpoint, which needs no key.
 // ---- Search engines: an editable, ordered list the owner can add to / remove ----
 const SEARCH_FILE = process.env.SETAYESH_SEARCH_FILE || path.join(DATA_DIR, '.setayesh-search.json');
-const SEARCH_LABELS = { duckduckgo: 'DuckDuckGo (رایگان)', brave: 'Brave Search', tavily: 'Tavily' };
-function defaultSearchEngines() {
-  return [
-    { id: 'duckduckgo', label: SEARCH_LABELS.duckduckgo, enabled: true, keyless: true },
-    { id: 'brave', label: SEARCH_LABELS.brave, enabled: !!cfg.KEY_BRAVE, keyless: false },
-    { id: 'tavily', label: SEARCH_LABELS.tavily, enabled: !!cfg.KEY_TAVILY, keyless: false },
-  ];
-}
+// SEARCH_LABELS + defaultSearchEngines(cfg) + the per-engine HTTP fetchers live
+// in ./websearch (required at the top). The wrappers below keep the state (the
+// enabled-engine list, the key lookup) and the fallback order here.
 let searchEngines = (function () {
   const saved = loadJsonFile(SEARCH_FILE, null);
   if (saved && Array.isArray(saved.engines) && saved.engines.length) return saved.engines;
-  return defaultSearchEngines();
+  return defaultSearchEngines(cfg);
 })();
 function searchKeyFor(id) {
   const e = searchEngines.find((x) => x.id === id);
@@ -1837,46 +1833,9 @@ function searchKeyFor(id) {
   if (id === 'tavily') return cfg.KEY_TAVILY || '';
   return '';
 }
+// Thin wrapper: supply this engine's key + shared helpers to the pure fetcher.
 async function searchOneEngine(id, q, n) {
-  try {
-    if (id === 'brave') {
-      const key = searchKeyFor('brave'); if (!key) return null;
-      const r = await fetchWithTimeout('https://api.search.brave.com/res/v1/web/search?q=' + encodeURIComponent(q) + '&count=' + n,
-        { headers: { Accept: 'application/json', 'X-Subscription-Token': key } });
-      if (!r.ok) return null;
-      const d = await r.json();
-      const items = ((d.web && d.web.results) || []).slice(0, n).map((x) => ({ title: x.title, url: x.url, snippet: x.description || '' }));
-      return items.length ? items : null;
-    }
-    if (id === 'tavily') {
-      const key = searchKeyFor('tavily'); if (!key) return null;
-      const r = await fetchWithTimeout('https://api.tavily.com/search', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ api_key: key, query: q, max_results: n }),
-      });
-      if (!r.ok) return null;
-      const d = await r.json();
-      const items = (d.results || []).slice(0, n).map((x) => ({ title: x.title, url: x.url, snippet: x.content || '' }));
-      return items.length ? items : null;
-    }
-    if (id === 'duckduckgo') {
-      const r = await fetchWithTimeout('https://html.duckduckgo.com/html/?q=' + encodeURIComponent(q),
-        { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; SetayeshAI/1.0)' } });
-      if (!r.ok) return null;
-      const html = await r.text();
-      const out = [];
-      const re = /<a[^>]+class="result__a"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
-      let m;
-      while ((m = re.exec(html)) && out.length < n) {
-        let link = m[1];
-        const dd = link.match(/uddg=([^&]+)/);
-        if (dd) { try { link = decodeURIComponent(dd[1]); } catch (e) {} }
-        out.push({ title: htmlToText(m[2]).slice(0, 200), url: link, snippet: '' });
-      }
-      return out.length ? out : null;
-    }
-  } catch (e) { /* try the next engine */ }
-  return null;
+  return searchOne(id, q, n, { key: searchKeyFor(id), fetchWithTimeout, htmlToText });
 }
 async function webSearch(query, count) {
   const q = String(query || '').trim();

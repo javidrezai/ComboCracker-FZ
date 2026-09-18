@@ -1697,6 +1697,29 @@ test('mathutil: tryCompute does arithmetic and unit conversions exactly', () => 
   assert.equal(mu.convertUnit(0, 'c', 'k'), 273.15, 'celsius→kelvin');
 });
 
+// websearch.js — pure per-provider fetchers + defaults, driven by injected deps.
+test('websearch: defaults follow keys and providers parse results via fake fetch', async () => {
+  const ws = require(path.join(ROOT, 'websearch.js'));
+  // defaultSearchEngines reflects which keys are present in cfg.
+  const eng = ws.defaultSearchEngines({ KEY_BRAVE: 'x' });
+  const brave = eng.find((e) => e.id === 'brave');
+  const tavily = eng.find((e) => e.id === 'tavily');
+  assert.ok(brave.enabled === true && tavily.enabled === false, 'enabled tracks the key');
+  assert.ok(eng.find((e) => e.id === 'duckduckgo').enabled, 'duckduckgo always on');
+  // Brave: a fake fetch returns JSON; searchOne maps it to {title,url,snippet}.
+  const braveFetch = async () => ({ ok: true, json: async () => ({ web: { results: [{ title: 'T', url: 'https://a', description: 'D' }] } }) });
+  const r1 = await ws.searchOne('brave', 'q', 3, { key: 'k', fetchWithTimeout: braveFetch });
+  assert.deepEqual(r1, [{ title: 'T', url: 'https://a', snippet: 'D' }], 'brave parsed');
+  // No key → null without any fetch.
+  assert.equal(await ws.searchOne('brave', 'q', 3, { key: '', fetchWithTimeout: braveFetch }), null, 'no key → null');
+  // DuckDuckGo: HTML scraped, uddg-wrapped link decoded, htmlToText applied.
+  const ddHtml = '<a class="result__a" href="/l/?uddg=https%3A%2F%2Fex.com%2Fp">Hello <b>World</b></a>';
+  const ddFetch = async () => ({ ok: true, text: async () => ddHtml });
+  const r2 = await ws.searchOne('duckduckgo', 'q', 3, { fetchWithTimeout: ddFetch, htmlToText: (s) => s.replace(/<[^>]+>/g, '') });
+  assert.equal(r2[0].url, 'https://ex.com/p', 'uddg link decoded');
+  assert.ok(r2[0].title.includes('Hello'), 'title extracted via htmlToText');
+});
+
 // council.js — synthesis prompt composes members' answers with a label callback.
 test('council: buildSynthesisPrompt folds answers in and resolves labels', () => {
   const { buildSynthesisPrompt } = require(path.join(ROOT, 'council.js'));
