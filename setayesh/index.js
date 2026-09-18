@@ -105,6 +105,7 @@ const { ALLOWED_IMAGE_TYPES, MAX_FILE_BYTES, MAX_TEXT_CHARS, TEXT_EXTENSIONS, OF
 const { guessDueDate, detectCommitment, extractFacts } = require('./factextract');
 const { classifyQuestion, cooldownFor } = require('./engineselect');
 const { friendlyProviderError } = require('./providererror');
+const { wantsImage, wantsSearch, wantsCouncil } = require('./intent');
 const { xmlToText, htmlToText } = require('./htmltext');
 const selfsign = require('./selfsign');
 const helmet = require('helmet');
@@ -197,7 +198,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.129';
+const APP_VERSION = '9.9.130';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -4100,25 +4101,7 @@ function voiceBlock(username) {
 // without the user flipping any switch.
 
 // "Draw / make an image of ..." — but NOT "describe/what is this image".
-function wantsImage(message) {
-  const m = String(message || '').toLowerCase().trim();
-  if (!m) return false;
-  // don't fire when they're asking ABOUT an existing image
-  if (/(توضیح|چیست|چیه|describe|what('| i)s|analyze|read).{0,20}(این )?(عکس|تصویر|image|picture|photo)/.test(m)) return false;
-  const fa = /(بکش|نقاشی(‌| )?کن|طراحی(‌| )?کن|تصویر(ی)?( از| بساز| درست)|عکس(ی)?( از| بساز| درست)|یه تصویر|یک تصویر|یه عکس|یک عکس|لوگو( بساز| طراحی)|پوستر( بساز| طراحی))/;
-  const en = /\b(draw|paint|sketch|render|generate|create|make|design)\b.{0,24}\b(image|picture|photo|illustration|logo|poster|drawing|art|wallpaper|icon)\b/;
-  const en2 = /\b(image|picture|photo|illustration) of\b/;
-  return fa.test(m) || en.test(m) || en2.test(m);
-}
-
-// Fresh-info questions that benefit from live web grounding.
-function wantsSearch(message) {
-  const m = String(message || '').toLowerCase();
-  if (!m) return false;
-  const fa = /(امروز|الان|همین حالا|اخبار|خبر|جدیدترین|آخرین|تازه‌ترین|قیمت|نرخ|چند(م| است| شد)|هوا|آب و هوا|نتیجه|امسال|پارسال|دیروز|فردا|کی برنده|زنده)/;
-  const en = /\b(today|right now|latest|newest|current|currently|news|price|stock|weather|score|this year|yesterday|tomorrow|who won|as of|202[4-9]|near me)\b/;
-  return fa.test(m) || en.test(m);
-}
+// wantsImage / wantsSearch / wantsCouncil moved to intent.js (pure, unit-tested).
 
 // Deterministic calculator + common unit conversions, so numbers are exact
 // instead of the model doing mental arithmetic. Returns a short string or null.
@@ -4187,10 +4170,16 @@ app.post('/api/chat', requireAuth, chatLimiter, upload.array('files', 8), async 
 
   const safeHistory = sanitizeHistory(req.body.history);
   const hasFiles = !!(req.files && req.files.length);
+  // VISION means an actual IMAGE, not any attachment. A text file or a PDF is
+  // read as TEXT (or a PDF document), so forcing vision routing for them sent the
+  // question to a vision-only engine that then couldn't help — and if the only
+  // vision engine was down (Gemini), even a plain text upload failed. Route on a
+  // real image only.
+  const hasImage = !!(req.files && req.files.some((f) => { try { return classifyFile(f) === 'image'; } catch (e) { return false; } }));
   // Work out what KIND of question this is before choosing an engine, so a
   // one-line greeting goes to the fast engine and a refactor goes to the one
   // that can actually do it.
-  const askTags = classifyQuestion(message, { needsVision: hasFiles });
+  const askTags = classifyQuestion(message, { needsVision: hasImage });
   // Grow on her own: learn any durable facts from this message, in the
   // background, so it never delays the answer. Uses the RAW message (local
   // memory never leaves the machine), so she remembers the real name/detail.
@@ -4199,7 +4188,7 @@ app.post('/api/chat', requireAuth, chatLimiter, upload.array('files', 8), async 
   let target;
   try {
     target = resolveTarget((req.body.provider || '').toLowerCase(), req.body.model, req.username,
-      { tags: askTags, needsVision: hasFiles });
+      { tags: askTags, needsVision: hasImage });
   } catch (err) {
     return res.status(400).json({ error: err.message });
   }
@@ -4371,7 +4360,7 @@ app.post('/api/chat', requireAuth, chatLimiter, upload.array('files', 8), async 
     // conversation the pin exists to keep on this machine. An honest error is
     // better than quietly breaking that promise.
     const worthRetrying = !target.pinned && (!err.status || FAILOVER_STATUSES.includes(err.status));
-    const needsVision = hasFiles;
+    const needsVision = hasImage;
 
     if (worthRetrying) {
       // Best engine for THIS question first, health weighted heaviest — not
@@ -4518,11 +4507,7 @@ app.post('/api/compare', requireAuth, chatLimiter, async (req, res) => {
 // synthesizer model that reads them and writes a single, final, merged reply.
 // The user never sees the intermediate calls — just the merged answer, plus
 // a small "members" list for transparency.
-const COUNCIL_TRIGGERS = /(چند\s*مدل|چند\s*هوش\s*مصنوعی|چند\s*تا\s*ای‌?آی|مطمئن\s*شو|مطمئن\s*باش|با\s*هم\s*مشورت|مشورت\s*کن|حالت\s*شورا|دقیق‌?ترین\s*جواب|چک\s*کن\s*با|صحت\s*بسنج|consensus|multiple models|cross[- ]check|double[- ]check)/i;
 
-function wantsCouncil(message) {
-  return COUNCIL_TRIGGERS.test(message || '');
-}
 
 // Build the list of providers to consult: preferred one first, then any
 // other configured provider, up to `max`.

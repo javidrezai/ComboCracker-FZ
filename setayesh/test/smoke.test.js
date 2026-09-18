@@ -1603,6 +1603,11 @@ test('harmony tool-call text is parsed out and never leaks to the user', () => {
   // But a real one-word human reply survives (no underscore, not a call).
   assert.equal(tn.stripToolNoise('بله'), 'بله', 'a real short answer must survive');
   assert.equal(tn.stripToolNoise('yes'), 'yes', 'a real one-word answer must survive');
+  // A bare tool-call JSON object (with a stray garbage char) must NOT leak.
+  assert.equal(tn.stripToolNoise('诓 {"name": "web_search", "arguments": {"query": "اخبار امروز فولدا", "count": 5}}'), '', 'raw tool-call JSON must never reach the user');
+  assert.equal(tn.stripToolNoise('{"name":"web_search","arguments":{"query":"x"}}'), '', 'bare tool-call JSON strips to empty');
+  // But a real sentence that merely mentions a brace is kept.
+  assert.equal(tn.stripToolNoise('نتیجه: هوا آفتابی است.'), 'نتیجه: هوا آفتابی است.', 'a real sentence survives');
 });
 
 // ---- Dev libraries: download plan is injection-safe (v9.9.105) ----
@@ -1668,4 +1673,15 @@ test('providererror: maps statuses and network errors to friendly messages', () 
   const conn = pe.friendlyProviderError({ cause: { code: 'ECONNREFUSED' } }, 'Gemini');
   assert.equal(conn.status, 503, 'connection refused → 503');
   assert.ok(/[؀-ۿ]/.test(conn.error), 'the message is Persian, human-readable');
+});
+
+// intent.js — pure detectors for draw-an-image, live-web-search, and council.
+test('intent: wantsImage / wantsSearch / wantsCouncil detect the right asks', () => {
+  const it = require(path.join(ROOT, 'intent.js'));
+  assert.equal(it.wantsImage('یک تصویر از یک گربه بساز'), true, 'draw request → image');
+  assert.equal(it.wantsImage('این عکس چیست؟'), false, 'asking ABOUT an image is vision, not draw');
+  assert.equal(it.wantsSearch('اخبار امروز فولدا'), true, 'today\'s news → search');
+  assert.equal(it.wantsSearch('سلام حالت خوبه'), false, 'small talk → no search');
+  assert.equal(it.wantsCouncil('با چند مدل مشورت کن'), true, 'multi-model → council');
+  assert.equal(it.wantsCouncil('سلام'), false, 'greeting → no council');
 });
