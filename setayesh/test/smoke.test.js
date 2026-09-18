@@ -1697,6 +1697,39 @@ test('mathutil: tryCompute does arithmetic and unit conversions exactly', () => 
   assert.equal(mu.convertUnit(0, 'c', 'k'), 273.15, 'celsius→kelvin');
 });
 
+// obsidian.js — read-only vault reader driven by the live config.
+test('obsidian: vault resolves from cfg and lists only .md notes', () => {
+  const { makeObsidian } = require(path.join(ROOT, 'obsidian.js'));
+  const fs = require('fs'), os = require('os');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'obs-'));
+  fs.mkdirSync(path.join(dir, '.obsidian'), { recursive: true });
+  fs.mkdirSync(path.join(dir, 'sub'), { recursive: true });
+  fs.writeFileSync(path.join(dir, 'a.md'), '# note a');
+  fs.writeFileSync(path.join(dir, 'sub', 'b.md'), '# note b');
+  fs.writeFileSync(path.join(dir, 'ignore.txt'), 'not markdown');
+  let cfg = {};
+  const o = makeObsidian({ getCfg: () => cfg });
+  assert.equal(o.obsidianVault(), '', 'no vault until configured');
+  assert.deepEqual(o.obsidianNotes(), [], 'no notes without a vault');
+  cfg = { OBSIDIAN_VAULT: dir };
+  const notes = o.obsidianNotes(500);
+  assert.equal(notes.length, 2, 'both .md files found (recursively)');
+  assert.ok(notes.every((f) => f.endsWith('.md')), 'only markdown listed');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// github.js verifyToken — one shared PAT check for both connect routes.
+test('github: verifyToken parses /user, flags empty, reports bad status', async () => {
+  const gh = require(path.join(ROOT, 'github.js'));
+  assert.deepEqual(await gh.verifyToken('', {}), { ok: false, status: 0, empty: true }, 'empty token short-circuits');
+  const good = async () => ({ ok: true, status: 200, json: async () => ({ login: 'javid', name: 'J', public_repos: 7 }) });
+  const v = await gh.verifyToken('ghp_x', { fetchWithTimeout: good });
+  assert.ok(v.ok && v.login === 'javid' && v.publicRepos === 7, 'valid token → login + repo count');
+  const bad = async () => ({ ok: false, status: 401 });
+  const b = await gh.verifyToken('ghp_bad', { fetchWithTimeout: bad });
+  assert.deepEqual(b, { ok: false, status: 401 }, 'rejected token reports its status');
+});
+
 // mail.js — the IMAP client resolves host/config from the live cfg via getCfg.
 test('mail: mailConfigured + mailHost follow the config and presets', () => {
   const { makeMail, MAIL_PRESETS } = require(path.join(ROOT, 'mail.js'));

@@ -39,4 +39,21 @@ async function githubGetFile(repo, filePath, ref, deps) {
   return { repo: rp, path: path_, branch, url, content: clampText(text, rp + '/' + path_) };
 }
 
-module.exports = { GH_HEADERS, githubSearchRepos, githubGetFile };
+// Verify a personal-access token against GET /user (used by both the connect
+// GET and POST routes, so the check lives in one place). deps: { fetchWithTimeout }.
+// Returns { ok, status, login, name, publicRepos } — never throws for an HTTP
+// error, only for a transport failure the caller reports as "couldn't connect".
+async function verifyToken(token, deps) {
+  const { fetchWithTimeout } = deps || {};
+  const t = String(token || '').trim();
+  if (!t) return { ok: false, status: 0, empty: true };
+  const r = await fetchWithTimeout('https://api.github.com/user', {
+    headers: { Authorization: 'Bearer ' + t, 'User-Agent': 'Setayesh', Accept: 'application/vnd.github+json' },
+    timeout: 8000,
+  });
+  if (!r.ok) return { ok: false, status: r.status };
+  const d = await r.json();
+  return { ok: true, status: r.status, login: d.login, name: d.name || '', publicRepos: d.public_repos };
+}
+
+module.exports = { GH_HEADERS, githubSearchRepos, githubGetFile, verifyToken };

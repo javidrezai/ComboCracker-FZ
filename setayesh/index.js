@@ -119,7 +119,7 @@ const { PII_PATTERNS, HIGH_VALUE, SECRET_PATTERNS, KIND_LABEL } = require('./pri
 const { buildSynthesisPrompt } = require('./council');
 const { SEARCH_LABELS, defaultSearchEngines, searchOne } = require('./websearch');
 const { encryptBuffer, decryptBuffer } = require('./cryptobackup');
-const { githubSearchRepos: ghSearchRepos, githubGetFile: ghGetFile } = require('./github');
+const { githubSearchRepos: ghSearchRepos, githubGetFile: ghGetFile, verifyToken: ghVerifyToken } = require('./github');
 const { xmlToText, htmlToText, textToPrintableHtml } = require('./htmltext');
 const selfsign = require('./selfsign');
 const helmet = require('helmet');
@@ -212,7 +212,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.150';
+const APP_VERSION = '9.9.151';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -5015,45 +5015,12 @@ app.get('/api/admin/patch/:id/diff', requireAuth, requireAdmin, (req, res) => {
 // inside it, so no API and no account is needed — we look in the usual places,
 // and once a vault is chosen Setayesh can search and read those notes. Reading
 // only: nothing in the vault is ever written or deleted from here.
-function obsidianCandidates() {
-  const home = os.homedir();
-  const roots = [home, path.join(home, 'Documents'), path.join(home, 'OneDrive'),
-                 path.join(home, 'OneDrive', 'Documents'), path.join(home, 'Desktop')];
-  const found = [];
-  const seen = new Set();
-  for (const root of roots) {
-    let entries = [];
-    try { entries = fs.readdirSync(root, { withFileTypes: true }); } catch (e) { continue; }
-    // the root itself may be a vault
-    try { if (fs.existsSync(path.join(root, '.obsidian')) && !seen.has(root)) { seen.add(root); found.push(root); } } catch (e) {}
-    for (const d of entries) {
-      if (!d.isDirectory() || d.name.startsWith('.')) continue;
-      const p = path.join(root, d.name);
-      try { if (fs.existsSync(path.join(p, '.obsidian')) && !seen.has(p)) { seen.add(p); found.push(p); } } catch (e) {}
-      if (found.length >= 12) return found;
-    }
-  }
-  return found;
-}
-function obsidianVault() { return String(cfg.OBSIDIAN_VAULT || '').trim(); }
-function obsidianNotes(limit) {
-  const root = obsidianVault();
-  if (!root) return [];
-  const out = [];
-  (function walk(dir, depth) {
-    if (depth > 4 || out.length >= (limit || 500)) return;
-    let entries = [];
-    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch (e) { return; }
-    for (const d of entries) {
-      if (out.length >= (limit || 500)) return;
-      if (d.name.startsWith('.')) continue;
-      const p = path.join(dir, d.name);
-      if (d.isDirectory()) walk(p, depth + 1);
-      else if (/\.md$/i.test(d.name)) out.push(p);
-    }
-  })(root, 0);
-  return out;
-}
+// obsidianCandidates / obsidianVault / obsidianNotes (the read-only Obsidian
+// vault reader) live in ./obsidian; makeObsidian reads the live config.
+const _obsidian = require('./obsidian').makeObsidian({ getCfg: () => cfg });
+const obsidianCandidates = _obsidian.obsidianCandidates;
+const obsidianVault = _obsidian.obsidianVault;
+const obsidianNotes = _obsidian.obsidianNotes;
 app.get('/api/admin/obsidian', requireAuth, requireAdmin, (req, res) => {
   res.set('Cache-Control', 'no-store');
   const vault = obsidianVault();
@@ -5099,13 +5066,9 @@ app.get('/api/admin/github', requireAuth, requireAdmin, async (req, res) => {
   const tokenSet = !!String(cfg.GITHUB_TOKEN || '').trim();
   if (!tokenSet) return res.json({ connected: false, tokenSet: false });
   try {
-    const r = await fetchWithTimeout('https://api.github.com/user', {
-      headers: { Authorization: 'Bearer ' + String(cfg.GITHUB_TOKEN).trim(), 'User-Agent': 'Setayesh', Accept: 'application/vnd.github+json' },
-      timeout: 8000,
-    });
-    if (!r.ok) return res.json({ connected: false, tokenSet: true, error: 'توکن پذیرفته نشد (' + r.status + ')' });
-    const d = await r.json();
-    res.json({ connected: true, tokenSet: true, login: d.login, name: d.name || '', repos: d.public_repos });
+    const v = await ghVerifyToken(cfg.GITHUB_TOKEN, { fetchWithTimeout });
+    if (!v.ok) return res.json({ connected: false, tokenSet: true, error: 'توکن پذیرفته نشد (' + v.status + ')' });
+    res.json({ connected: true, tokenSet: true, login: v.login, name: v.name, repos: v.publicRepos });
   } catch (e) {
     res.json({ connected: false, tokenSet: true, error: 'وصل نشد: ' + e.message });
   }
@@ -5115,16 +5078,12 @@ app.post('/api/admin/github', requireAuth, requireAdmin, async (req, res) => {
   if (!t) { writeConfigFile({ GITHUB_TOKEN: '' }); cfg.GITHUB_TOKEN = ''; return res.json({ ok: true, connected: false }); }
   if (t.length > 300) return res.status(400).json({ error: 'توکن نامعتبر است.' });
   try {
-    const r = await fetchWithTimeout('https://api.github.com/user', {
-      headers: { Authorization: 'Bearer ' + t, 'User-Agent': 'Setayesh', Accept: 'application/vnd.github+json' },
-      timeout: 8000,
-    });
-    if (!r.ok) return res.status(400).json({ error: 'گیت‌هاب این توکن را قبول نکرد (' + r.status + ').' });
-    const d = await r.json();
+    const v = await ghVerifyToken(t, { fetchWithTimeout });
+    if (!v.ok) return res.status(400).json({ error: 'گیت‌هاب این توکن را قبول نکرد (' + v.status + ').' });
     writeConfigFile({ GITHUB_TOKEN: t });
     cfg.GITHUB_TOKEN = t;
-    nightLog(`گیت‌هاب وصل شد: ${d.login}`, 'ok', 'github connected');
-    res.json({ ok: true, connected: true, login: d.login, name: d.name || '' });
+    nightLog(`گیت‌هاب وصل شد: ${v.login}`, 'ok', 'github connected');
+    res.json({ ok: true, connected: true, login: v.login, name: v.name });
   } catch (e) {
     res.status(400).json({ error: 'وصل نشد: ' + e.message });
   }
