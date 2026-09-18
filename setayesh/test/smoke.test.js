@@ -1697,6 +1697,20 @@ test('mathutil: tryCompute does arithmetic and unit conversions exactly', () => 
   assert.equal(mu.convertUnit(0, 'c', 'k'), 273.15, 'celsius→kelvin');
 });
 
+// toolnoise.stripLinks — Telegram "no links unless asked" rule, enforced in code.
+test('toolnoise: stripLinks removes markdown/image/bare links; wantsLink detects intent', () => {
+  const tn = require(path.join(ROOT, 'toolnoise.js'));
+  const t = 'هوا خوبه\n![](https://maps.example/staticmap?key=AIzaFAKE)\n- [آب‌وهوا](https://wetter.de/fulda) و www.foo.com';
+  const out = tn.stripLinks(t);
+  assert.ok(!/https?:\/\//.test(out), 'no bare/embedded URLs remain');
+  assert.ok(!/\]\(/.test(out) && !/!\[/.test(out), 'no markdown link/image syntax remains');
+  assert.ok(out.includes('آب‌وهوا') && out.includes('هوا خوبه'), 'the link TEXT and prose are kept');
+  assert.ok(!out.includes('AIzaFAKE'), 'the hallucinated key is gone');
+  assert.equal(tn.wantsLink('وضعیت آب هوا'), false, 'a weather question does not ask for a link');
+  assert.equal(tn.wantsLink('یه لینک بده'), true, 'an explicit link request is honored');
+  assert.equal(tn.wantsLink('آدرس سایت هواشناسی چیه'), true, 'asking for a site/address counts');
+});
+
 // runners.js — the language-runner catalogue + ext routing + detection probe.
 test('runners: catalogue maps extensions and probe fills availability', () => {
   const r = require(path.join(ROOT, 'runners.js'));

@@ -212,7 +212,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.156';
+const APP_VERSION = '9.9.157';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -2627,7 +2627,7 @@ function openAiToolsFrom(ctx) {
 // Harmony models sometimes emit a tool call as plain text; these helpers parse
 // those out (so we run them for real) and strip any leftover tool-call/harmony
 // tokens so a reply is never raw JSON. See toolnoise.js for the details.
-const { toPlainText, parseTextToolCalls, stripToolNoise } = require('./toolnoise');
+const { toPlainText, parseTextToolCalls, stripToolNoise, stripLinks, wantsLink } = require('./toolnoise');
 async function callOpenAiWithTools(providerId, model, systemPrompt, messages, ctx, opts) {
   opts = opts || {};
   const tools = openAiToolsFrom(ctx);
@@ -3453,10 +3453,12 @@ app.post('/api/chat', requireAuth, chatLimiter, upload.array('files', 8), async 
     const mapped = friendlyProviderError(err, PROVIDERS[target.id].label);
 
     // The owner asked for no error banners: she should answer, not throw a
-    // red box. The last thing we try is a REAL local model (Ollama) — no key,
-    // no quota. The toy Python brain is deliberately NOT here: a garbage
-    // one-liner from it is worse than the honest "engines are busy" note below.
-    const lastResort = ['local'].filter((id) =>
+    // red box. The last things we try are the on-device engines — no key, no
+    // quota: first the local Ollama model, then the Python brain (which, when
+    // Ollama + a real model like qwen are installed, gives a real answer, not
+    // the old toy one-liner). One of these should always catch the fall so the
+    // owner never hits the "همه موتورها پر است" wall while a local model exists.
+    const lastResort = ['local', 'brain'].filter((id) =>
       id !== target.id && isConfigured(id) && !(needsVision && !PROVIDERS[id].vision));
     for (const id of lastResort) {
       try {
@@ -3477,6 +3479,39 @@ app.post('/api/chat', requireAuth, chatLimiter, upload.array('files', 8), async 
         });
       } catch (e3) { noteEngine(id, false, e3.status, e3.detail); }
     }
+
+    // SELF-HEAL against "سقف پر": if every engine only LOOKS unusable because it
+    // is cooling/quarantined (a stuck health flag, not a live quota), the owner
+    // still deserves an answer. Wipe the health slate once and try the single
+    // best engine for this question — this is the owner's "با یک سؤال درستش کن".
+    try {
+      const allCooling = Object.keys(PROVIDERS).filter(isConfigured).length > 0
+        && Object.keys(PROVIDERS).filter(isConfigured).every((id) => !engineUsable(id));
+      if (allCooling) {
+        for (const id of Object.keys(engineHealth)) {
+          Object.assign(engineHealth[id], { streak: 0, cooldownUntil: 0, quarantined: false, needsAttention: null });
+        }
+        saveEngineHealth();
+        const revived = rankEngines(askTags, { needsVision, exclude: ['brain'] })[0];
+        if (revived) {
+          const rModels = PROVIDERS[revived].models || [];
+          const rModel = ((askTags.includes('code') && rModels.find((m) => m.best === 'code')) || rModels[0] || {}).id;
+          if (revived === 'gemini') await ensureGeminiModel();
+          const rPrompt = promptFor(req.username, req.body.mode, safe, req.body.codelib, message);
+          const rReply = await callWithTools(revived, rModel, rPrompt, messages, toolCtx, callOpts);
+          if (rReply) {
+            noteEngine(revived, true, 0, '', 0);
+            return res.json({
+              reply: rReply,
+              historyText: message || (req.files || []).map(f => `[file: ${f.originalname}]`).join(' '),
+              provider: revived, providerLabel: PROVIDERS[revived].label + ' · ♻️ بازیابی',
+              model: revived === 'gemini' ? GEMINI_MODEL : rModel,
+              elapsedMs: Date.now() - started,
+            });
+          }
+        }
+      }
+    } catch (eHeal) { /* fall through to the honest note */ }
 
     // Nothing at all could answer. Still not a red error box: she says it
     // herself, in her own voice, and says exactly what is wrong and what the
@@ -5613,7 +5648,11 @@ async function runTelegramTurn(text, chatId) {
     const toolCtx = { preferredId: eid, basePrompt: systemPrompt, message: msg, sideEffects: {}, pinned: false, isAdmin: true, username: adminUser };
     try {
       const raw = await callWithTools(eid, model, systemPrompt, convo, toolCtx, {});
-      const reply = stripToolNoise(raw || '');
+      let reply = stripToolNoise(raw || '');
+      // Owner's standing Telegram rule: never send a link unless he asked for
+      // one. Enforce it in code (the model kept ignoring the prompt and even
+      // hallucinated a fake maps URL), so no stray/invented link ever ships.
+      if (reply && !wantsLink(msg)) reply = stripLinks(reply);
       if (reply && isBrainDump(eid, reply)) { continue; }   // note-dump, not an answer
       if (reply) {
         try { noteEngine(eid, true); } catch (e) {}

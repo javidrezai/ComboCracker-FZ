@@ -69,4 +69,29 @@ function stripToolNoise(content) {
   return t;
 }
 
-module.exports = { toPlainText, parseTextToolCalls, stripToolNoise };
+// Strip links from a reply for a channel where the owner asked for NONE (his
+// standing Telegram rule: "هیچ‌وقت لینک نده تا ازت نخواستم"). A weak model kept
+// dumping markdown links and even a hallucinated Google-Maps image URL with a
+// fake API key; the prompt rule alone didn't stop it, so this removes them
+// deterministically: image markdown gone, [text](url) → text, bare URLs dropped.
+function stripLinks(content) {
+  let t = toPlainText(content);
+  t = t.replace(/!\[[^\]]*\]\([^)]*\)/g, ' ')                 // ![alt](url) images — remove whole thing
+       .replace(/\[([^\]]+)\]\((?:[^)]*)\)/g, '$1')           // [text](url) → text
+       .replace(/\bhttps?:\/\/[^\s)]+/gi, ' ')                // bare URLs
+       .replace(/\bwww\.[^\s)]+/gi, ' ')                      // bare www.… hosts
+       .replace(/[ \t]{2,}/g, ' ')
+       .replace(/[ \t]+([.,!؟?])/g, '$1')                     // tidy space left before punctuation
+       .replace(/\(\s*\)/g, ' ')                              // empty () left by a removed url
+       .replace(/^[\s\-–—•]+$/gm, '')                         // lines that were only a bullet + link
+       .replace(/\n{3,}/g, '\n\n')
+       .trim();
+  return t;
+}
+
+// Does the user's own message ask for a link/site/address? Then links are fine.
+function wantsLink(message) {
+  return /لینک|نشانی|آدرس(?!\s*ایمیل)|سایت|وب\s*سایت|url|link|website/i.test(String(message || ''));
+}
+
+module.exports = { toPlainText, parseTextToolCalls, stripToolNoise, stripLinks, wantsLink };
