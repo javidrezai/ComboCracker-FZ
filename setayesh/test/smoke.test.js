@@ -1697,6 +1697,34 @@ test('mathutil: tryCompute does arithmetic and unit conversions exactly', () => 
   assert.equal(mu.convertUnit(0, 'c', 'k'), 273.15, 'celsius→kelvin');
 });
 
+// sanitize.js — untrusted client input is always bounded, never written raw.
+test('sanitize: theme / profile / script-name inputs are validated and bounded', () => {
+  const s = require(path.join(ROOT, 'sanitize.js'));
+  // Theme: good hex kept, bad hex dropped, numbers clamped, unknown keys ignored.
+  const th = s.sanitizeTheme({ appName: '  My House  ', accent: '#12ab34', bg: 'red', fontScale: 999, radius: -5, effects: 'yes', evil: 1 });
+  assert.equal(th.appName, 'My House', 'appName trimmed');
+  assert.equal(th.accent, '#12ab34', 'valid hex kept');
+  assert.equal(th.bg, undefined, 'invalid hex dropped');
+  assert.equal(th.fontScale, 140, 'fontScale clamped to max');
+  assert.equal(th.radius, 0, 'radius clamped to min');
+  assert.equal(th.effects, undefined, 'non-boolean effects ignored');
+  assert.equal(th.evil, undefined, 'unknown key ignored');
+  assert.equal(s.sanitizeTheme(null).appName, undefined, 'null input → empty object, no throw');
+  assert.equal(s.THEME_DEFAULTS.appName, 'Setayesh AI', 'defaults exported');
+  // Profile: age bounded 1..120, null passes through, strings capped.
+  assert.equal(s.sanitizeProfileFields({ age: 5000 }).age, 120, 'age clamped to 120');
+  assert.equal(s.sanitizeProfileFields({ age: -3 }).age, 1, 'age clamped to 1');
+  assert.equal(s.sanitizeProfileFields({ age: '' }).age, null, 'blank age → null');
+  assert.equal(s.sanitizeProfileFields({ interests: 'x'.repeat(500) }).interests.length, 300, 'interests capped');
+  assert.equal(s.sanitizeProfileFields(null).age, undefined, 'null body → empty object, no throw');
+  // Script name: path traversal stripped, .py appended, empty → null.
+  assert.equal(s.safeScriptName('../../etc/passwd'), 'passwd.py', 'traversal stripped to basename + .py');
+  assert.equal(s.safeScriptName('report'), 'report.py', '.py appended');
+  assert.equal(s.safeScriptName('run.py'), 'run.py', 'existing .py kept');
+  assert.equal(s.safeScriptName('....'), null, 'all-dots → null');
+  assert.equal(s.safeScriptName(''), null, 'empty → null');
+});
+
 // directives.js — the admin's notes must actually reach the brain's prompt.
 test('directives: the admin note is wrapped into the system-prompt block', () => {
   const d = require(path.join(ROOT, 'directives.js'));

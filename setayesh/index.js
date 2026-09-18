@@ -108,6 +108,7 @@ const { friendlyProviderError } = require('./providererror');
 const { wantsImage, wantsSearch, wantsCouncil } = require('./intent');
 const { tryCompute, convertUnit, round4 } = require('./mathutil');
 const { clampDirectives, directivesBlock } = require('./directives');
+const { THEME_DEFAULTS, sanitizeTheme, sanitizeProfileFields, safeScriptName } = require('./sanitize');
 const { xmlToText, htmlToText } = require('./htmltext');
 const selfsign = require('./selfsign');
 const helmet = require('helmet');
@@ -200,7 +201,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.134';
+const APP_VERSION = '9.9.135';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -1008,15 +1009,6 @@ app.get('/api/admin/users', requireAuth, requireAdmin, (req, res) => {
     }),
   });
 });
-
-function sanitizeProfileFields(body) {
-  const out = {};
-  if (body.age === null || body.age === '') out.age = null;
-  else if (Number.isFinite(Number(body.age))) out.age = Math.max(1, Math.min(120, Math.round(Number(body.age))));
-  if (typeof body.interests === 'string') out.interests = body.interests.slice(0, 300);
-  if (typeof body.tone === 'string') out.tone = body.tone.slice(0, 200);
-  return out;
-}
 
 app.post('/api/admin/users', requireAuth, requireAdmin, (req, res) => {
   const { username, password, safe } = req.body || {};
@@ -6281,29 +6273,9 @@ app.post('/api/admin/rollback/:name', requireAuth, requireAdmin, (req, res) => {
 // source file: colours, name, greeting, text size. Stored as data, applied as
 // CSS variables at load time, so a mistake here can never break the app.
 const THEME_FILE = process.env.SETAYESH_THEME_FILE || path.join(DATA_DIR, '.setayesh-theme.json');
-const THEME_DEFAULTS = {
-  appName: 'Setayesh AI',
-  greeting: '',
-  accent: '#38bdf8',
-  accent2: '#7b5cff',
-  bg: '#0a0e1a',
-  fontScale: 100,
-  radius: 16,
-  effects: true,
-};
-// Only these keys exist, and each is validated — a bad value falls back to the
-// default rather than writing broken CSS into everyone's browser.
-function sanitizeTheme(input) {
-  const out = {};
-  const hex = (v) => (/^#[0-9a-fA-F]{6}$/.test(String(v || '')) ? String(v) : null);
-  if (typeof input.appName === 'string') out.appName = input.appName.trim().slice(0, 40) || THEME_DEFAULTS.appName;
-  if (typeof input.greeting === 'string') out.greeting = input.greeting.trim().slice(0, 120);
-  for (const k of ['accent', 'accent2', 'bg']) if (hex(input[k])) out[k] = hex(input[k]);
-  if (Number.isFinite(Number(input.fontScale))) out.fontScale = Math.max(80, Math.min(140, Math.round(Number(input.fontScale))));
-  if (Number.isFinite(Number(input.radius))) out.radius = Math.max(0, Math.min(28, Math.round(Number(input.radius))));
-  if (typeof input.effects === 'boolean') out.effects = input.effects;
-  return out;
-}
+// THEME_DEFAULTS + sanitizeTheme live in ./sanitize (only known keys, each
+// validated — a bad value falls back to the default rather than writing broken
+// CSS into everyone's browser).
 let theme = Object.assign({}, THEME_DEFAULTS, sanitizeTheme(loadJsonFile(THEME_FILE, {})));
 
 // Readable by anyone logged in — the browser needs it to paint the page.
@@ -7171,13 +7143,7 @@ app.post('/api/admin/actions/:id/reject', requireAuth, requireAdmin, (req, res) 
 // is turned off.
 const SCRIPTS_DIR = process.env.SETAYESH_SCRIPTS_DIR || path.join(DATA_DIR, 'scripts');
 
-function safeScriptName(name) {
-  const base = path.basename(String(name || '').replace(/\\/g, '/'));
-  const clean = base.replace(/[^\p{L}\p{N}_\-. ]/gu, '').replace(/^\.+/, '').trim();
-  if (!clean) return null;
-  const withExt = /\.py$/i.test(clean) ? clean : clean + '.py';
-  return withExt.slice(0, 80);
-}
+// safeScriptName lives in ./sanitize (client name → safe .py basename, or null).
 
 function scriptPath(name) {
   const safe = safeScriptName(name);
