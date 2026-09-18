@@ -1,4 +1,4 @@
-/* SETAYESH_BUILD 9.9.132 */
+/* SETAYESH_BUILD 9.9.133 */
 (function(){
 'use strict';
 
@@ -1916,7 +1916,7 @@ function ccNote(m,bad){ var n=$('ccNote'); n.textContent=m||''; n.className='not
 function openCC(){ ccNote(''); CC.dirty={}; $('ccOverlay').classList.add('on'); ccTab('engines'); loadCC(); checkRestartSupport(); }
 function closeCC(){ $('ccOverlay').classList.remove('on'); }
 function ccTab(which){
-  ['engines','users','privacy','power','devices','look','update','scripts','actions','sync'].forEach(function(t){
+  ['engines','users','privacy','power','devices','look','update','scripts','actions','sync','directives'].forEach(function(t){
     var pane=$('cc'+t.charAt(0).toUpperCase()+t.slice(1));
     if(pane)pane.style.display=(t===which)?'':'none';
   });
@@ -1933,9 +1933,46 @@ function ccTab(which){
   if(which==='update')loadCCUpdate();
   if(which==='scripts')loadCCScripts();
   if(which==='actions')loadCCActions();
+  if(which==='directives')loadCCDirectives();
   updateActionBadge();
   if(which==='sync')loadCCSync();
 }
+
+function loadCCDirectives(){
+  var _en=lang==='en';
+  adminFetch('/api/admin/directives').then(function(d){
+    var ta=$('ccDirText'); if(ta)ta.value=(d&&d.text)||'';
+  }).catch(function(){});
+}
+(function(){
+  var save=$('ccDirSave');
+  if(save)save.addEventListener('click',function(){
+    var _en=lang==='en', note=$('ccDirNote');
+    var text=($('ccDirText')||{}).value||'';
+    if(note){note.style.color='';note.textContent=_en?'Saving…':'در حال ذخیره…';}
+    adminFetch('/api/admin/directives',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:text})})
+      .then(function(){ if(note){note.style.color='#34d399';note.textContent=_en?'Saved ✓ — Setayesh will follow these from the next message.':'ذخیره شد ✓ — ستایش از پیام بعدی رعایتشان می‌کند.';} })
+      .catch(function(e){ if(note){note.style.color='#fb7185';note.textContent=(_en?'Error: ':'خطا: ')+e.message;} });
+  });
+  var run=$('ccCodeRun');
+  if(run)run.addEventListener('click',function(){
+    var _en=lang==='en', out=$('ccCodeOut');
+    var code=($('ccCodeText')||{}).value||'';
+    if(!code.trim())return;
+    if(out){out.style.display='';out.innerHTML='<div class="tk-hint"><span class="spin"></span> '+(_en?'Running…':'در حال اجرا…')+'</div>';}
+    run.disabled=true;
+    adminFetch('/api/admin/run-code',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:code})})
+      .then(function(r){
+        run.disabled=false;
+        var box=el('div');
+        box.style.cssText='padding:10px 12px;border-radius:10px;font-family:var(--mono);font-size:12px;white-space:pre-wrap;word-break:break-word;direction:ltr;text-align:left;max-height:260px;overflow:auto;'+
+          (r.stderr?'background:rgba(251,113,133,.10);border:1px solid rgba(251,113,133,.3)':'background:rgba(52,211,153,.08);border:1px solid rgba(52,211,153,.28)');
+        box.textContent=(r.stdout||'')+(r.stderr?'\n'+r.stderr:'')||(_en?'(no output)':'(بدون خروجی)');
+        if(out){out.innerHTML='';out.appendChild(box);}
+      })
+      .catch(function(e){ run.disabled=false; if(out){out.innerHTML='<div class="note err">'+esc(e.message)+'</div>';} });
+  });
+})();
 
 /* ===== Appearance =====
    Stored as plain values and applied as CSS variables, so someone who never

@@ -199,7 +199,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.132';
+const APP_VERSION = '9.9.133';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -4002,8 +4002,31 @@ function promptFor(username, modeId, safe, libSel, message, opts) {
     base += brainVaultBlock();
   }
   base += voiceBlock(username);
+  base += ownerDirectivesBlock();   // the admin's own standing instructions to Setayesh
   const tut = TUTORS[(username || '').toLowerCase()];
   return tut ? base + tut : base;
+}
+
+// ---------------- Owner directives: a direct line to every brain ----------------
+// The admin writes standing instructions/notes in Control centre → «دستورها» and
+// they are injected into EVERY engine's system prompt (cloud + local + the Python
+// brain), with high priority. This is the owner's own voice steering Setayesh —
+// "always answer short", "never send links unless asked", house rules, etc. It is
+// admin-only to write; it never comes from an outside message.
+const DIRECTIVES_FILE = process.env.SETAYESH_DIRECTIVES_FILE || path.join(DATA_DIR, '.setayesh-directives.md');
+let ownerDirectives = '';
+try { ownerDirectives = fs.readFileSync(DIRECTIVES_FILE, 'utf8'); } catch (e) { ownerDirectives = ''; }
+function saveDirectives(text) {
+  ownerDirectives = String(text == null ? '' : text).slice(0, 8000);
+  try { fs.writeFileSync(DIRECTIVES_FILE, ownerDirectives, { mode: 0o600 }); } catch (e) {}
+  try { reindexInsight(); } catch (e) {}
+}
+function ownerDirectivesBlock() {
+  const t = (ownerDirectives || '').trim();
+  if (!t) return '';
+  return '\n\n*** دستورهای همیشگیِ صاحبِ خانه (بالاترین اولویت) ***\n'
+    + 'این‌ها را خودِ ادمین نوشته و همیشه رعایتشان کن، مگر با ایمنی در تضاد باشد:\n'
+    + t;
 }
 
 // ---------------- How she actually talks ----------------
@@ -7235,6 +7258,31 @@ app.post('/api/admin/scripts/:name/run', requireAuth, requireAdmin, async (req, 
   try {
     const out = await runPython(fs.readFileSync(full, 'utf8'));
     res.json({ ok: true, name: path.basename(full), ...out });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+// ---- Owner directives (admin-only notes/instructions fed to every brain) ----
+app.get('/api/admin/directives', requireAuth, requireAdmin, (req, res) => {
+  res.json({ text: ownerDirectives || '' });
+});
+app.post('/api/admin/directives', requireAuth, requireAdmin, (req, res) => {
+  saveDirectives(typeof req.body.text === 'string' ? req.body.text : '');
+  res.json({ ok: true, text: ownerDirectives });
+});
+
+// ---- Run code directly (admin-only, the "direct line to the machine") ----
+// The admin can run their OWN code on their OWN machine. Same gate as the script
+// runner (Python must be enabled in Capabilities); it is never reachable from an
+// outside message — only the logged-in admin, on purpose.
+app.post('/api/admin/run-code', requireAuth, requireAdmin, async (req, res) => {
+  if (!PYTHON_ENABLED) {
+    return res.status(400).json({ error: 'اجرای پایتون خاموش است. مرکز کنترل > قابلیت‌ها روشنش کن.' });
+  }
+  const code = typeof req.body.code === 'string' ? req.body.code : '';
+  if (!code.trim()) return res.status(400).json({ error: 'کدی نوشته نشده.' });
+  try {
+    const out = await runPython(code);
+    res.json({ ok: true, ...out });
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
 

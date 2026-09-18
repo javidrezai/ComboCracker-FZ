@@ -235,6 +235,14 @@ window.__FA2EN = {
   'کابل / سریالِ گوشی':'Phone cable / serial','انتخاب پورت و اتصال':'Choose port and connect',
   '«گوشی خودش را کیبرد معرفی کند» — چرا از مرورگر نمی‌شود':'“Make the phone present itself as a keyboard” — why the browser can’t',
   'بخش گوشی بارگذاری نشد.':'The phone section did not load.',
+  // — directives & code tab (admin: notes to the brain + run code) —
+  'دستورها و کد':'Directives & code',
+  '🧠 دستورها و یادداشت‌ها — رابط مستقیم روی مغز':'🧠 Directives & notes — a direct line to the brain',
+  'هر چیزی اینجا بنویسی، مستقیم و با بالاترین اولویت به همهٔ مغزها (ابری و محلی) داده می‌شود — مثل «همیشه کوتاه جواب بده»، «تا نخواستم لینک نده»، قانون‌های خانه. فقط ادمین می‌بیند و می‌نویسد.':'Whatever you write here goes straight to every brain (cloud and local) with top priority — like “always answer short”, “don’t send links unless I ask”, house rules. Only the admin sees and writes it.',
+  'دستورها و یادداشت‌های همیشگی‌ات به ستایش را اینجا بنویس…':'Write your standing directives and notes to Setayesh here…',
+  'ذخیره دستورها':'Save directives',
+  '⚡ اجرای کد (پایتون) — آزادِ ادمین':'⚡ Run code (Python) — admin, unrestricted',
+  'کدِ پایتونِ خودت را همین‌جا بنویس و اجرا کن. روی همین کامپیوتر و فقط با حساب ادمین اجرا می‌شود. اگر خاموش بود، «مرکز کنترل ← قابلیت‌ها ← اجرای پایتون» را روشن کن.':'Write and run your own Python code here. It runs on this computer, admin-only. If it is off, turn on Control centre → Capabilities → Run Python.',
   // — sixth pass (static description/hint paragraphs across the control centre,
   //   board, engines, update and connector panels; found by a full phone-width walk) —
   'همه می‌بینند و همه می‌نویسند. این پیام‌ها روی همین کامپیوتر می‌مانند و به هیچ هوش مصنوعی فرستاده نمی‌شوند.':'Everyone sees and everyone writes. These messages stay on this computer and are sent to no AI.',
