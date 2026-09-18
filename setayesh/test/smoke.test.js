@@ -1697,6 +1697,17 @@ test('mathutil: tryCompute does arithmetic and unit conversions exactly', () => 
   assert.equal(mu.convertUnit(0, 'c', 'k'), 273.15, 'celsius→kelvin');
 });
 
+// sourcemap.js — self-edit allowlists + the project map are consistent static data.
+test('sourcemap: readable is a superset of editable and the map is described', () => {
+  const sm = require(path.join(ROOT, 'sourcemap.js'));
+  assert.ok(Array.isArray(sm.EDITABLE_SOURCES) && sm.EDITABLE_SOURCES.includes('index.js'), 'editable lists index.js');
+  for (const f of sm.EDITABLE_SOURCES) assert.ok(sm.READABLE_SOURCES.includes(f), 'readable superset of editable: ' + f);
+  assert.ok(sm.READABLE_SOURCES.includes('public/app.css'), 'readable adds the stylesheet');
+  assert.ok(sm.SELF_MAP && typeof sm.SELF_MAP['index.js'] === 'string', 'SELF_MAP describes index.js');
+  // Every editable file should have a description in the map (so self_map is complete).
+  for (const f of sm.EDITABLE_SOURCES) assert.ok(sm.SELF_MAP[f], 'SELF_MAP covers ' + f);
+});
+
 // toolspec.js — the AI tool catalogue (JSON schemas) is well-formed static data.
 test('toolspec: every tool has a name/description/schema and names are unique', () => {
   const { TOOLS_SPEC } = require(path.join(ROOT, 'toolspec.js'));
