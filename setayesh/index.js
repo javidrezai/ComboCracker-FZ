@@ -108,8 +108,9 @@ const { friendlyProviderError } = require('./providererror');
 const { wantsImage, wantsSearch, wantsCouncil } = require('./intent');
 const { tryCompute, convertUnit, round4 } = require('./mathutil');
 const { clampDirectives, directivesBlock } = require('./directives');
-const { THEME_DEFAULTS, sanitizeTheme, sanitizeProfileFields, safeScriptName } = require('./sanitize');
+const { THEME_DEFAULTS, sanitizeTheme, sanitizeProfileFields, safeScriptName, safeRelPath } = require('./sanitize');
 const { officeToText, zipToText } = require('./doctext');
+const { makeDiff } = require('./diffutil');
 const { xmlToText, htmlToText, textToPrintableHtml } = require('./htmltext');
 const selfsign = require('./selfsign');
 const helmet = require('helmet');
@@ -202,7 +203,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.137';
+const APP_VERSION = '9.9.138';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -2633,18 +2634,7 @@ async function runPython(code) {
 // the user reviews and sends things themselves.
 const OUT_DIR = path.join(DATA_DIR, 'workspace', 'out');
 
-// Filenames come from the model, so they are treated as hostile: no absolute
-// paths, no "..", nothing that could escape the output folder.
-function safeRelPath(name) {
-  const cleaned = String(name || '').replace(/\\/g, '/').replace(/^\/+/, '');
-  const parts = cleaned.split('/')
-    .map((p) => p.replace(/[<>:"|?*\u0000-\u001f]/g, '_').trim())
-    .filter((p) => p && p !== '.' && p !== '..');
-  if (!parts.length) throw new Error('نام فایل نامعتبر است.');
-  const rel = parts.join('/');
-  if (rel.length > 200) throw new Error('نام فایل خیلی بلند است.');
-  return rel;
-}
+// safeRelPath (model filename → safe path under the workspace) lives in ./sanitize.
 
 function newJobDir() {
   const dir = path.join(OUT_DIR, Date.now().toString(36) + '-' + crypto.randomBytes(3).toString('hex'));
@@ -5771,25 +5761,7 @@ function sourcePath(rel, forEdit) {
   return full;
 }
 
-// Line-level diff, enough for a human to judge an edit at a glance.
-function makeDiff(before, after) {
-  const a = before.split('\n'), b = after.split('\n');
-  const out = [];
-  let i = 0, j = 0;
-  while (i < a.length || j < b.length) {
-    if (i < a.length && j < b.length && a[i] === b[j]) { i++; j++; continue; }
-    const nextMatch = b.indexOf(a[i], j);
-    if (i < a.length && nextMatch !== -1 && nextMatch - j < 40) {
-      while (j < nextMatch) out.push({ t: '+', n: j + 1, s: b[j++] });
-    } else if (j < b.length && a.indexOf(b[j], i) === -1) {
-      out.push({ t: '+', n: j + 1, s: b[j++] });
-    } else if (i < a.length) {
-      out.push({ t: '-', n: i + 1, s: a[i++] });
-    } else { out.push({ t: '+', n: j + 1, s: b[j++] }); }
-    if (out.length > 400) { out.push({ t: '!', n: 0, s: '... (تفاوت خیلی بزرگ است — کوتاه شد)' }); break; }
-  }
-  return out;
-}
+// makeDiff (line-level diff for judging a proposed edit) lives in ./diffutil.
 
 // Does the proposed code actually run? For JS, parse it. For index.js, also
 // boot it on a scratch port and see whether it answers.

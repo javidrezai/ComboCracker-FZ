@@ -1758,6 +1758,23 @@ test('sanitize: theme / profile / script-name inputs are validated and bounded',
   assert.equal(s.safeScriptName('run.py'), 'run.py', 'existing .py kept');
   assert.equal(s.safeScriptName('....'), null, 'all-dots → null');
   assert.equal(s.safeScriptName(''), null, 'empty → null');
+  // safeRelPath: traversal/absolute stripped, illegal chars replaced, throws on empty.
+  assert.equal(s.safeRelPath('a/b/c.txt'), 'a/b/c.txt', 'nested path kept');
+  assert.equal(s.safeRelPath('/../../etc/passwd'), 'etc/passwd', 'absolute + .. stripped');
+  assert.equal(s.safeRelPath('bad:name?.txt'), 'bad_name_.txt', 'illegal chars replaced');
+  assert.throws(() => s.safeRelPath('../..'), /نامعتبر/, 'all-traversal → throws');
+  assert.throws(() => s.safeRelPath('x'.repeat(300)), /بلند/, 'over-long → throws');
+});
+
+// diffutil.js — line-level diff for judging a proposed edit.
+test('diffutil: makeDiff reports added and removed lines, capped', () => {
+  const { makeDiff } = require(path.join(ROOT, 'diffutil.js'));
+  assert.deepEqual(makeDiff('a\nb', 'a\nb'), [], 'identical → no rows');
+  const d = makeDiff('a\nb\nc', 'a\nB\nc');
+  assert.ok(d.some((r) => r.t === '-' && r.s === 'b'), 'old line removed');
+  assert.ok(d.some((r) => r.t === '+' && r.s === 'B'), 'new line added');
+  const big = makeDiff('', Array.from({ length: 1000 }, (_, i) => 'l' + i).join('\n'));
+  assert.ok(big.length <= 402 && big[big.length - 1].t === '!', 'huge diff is capped');
 });
 
 // directives.js — the admin's notes must actually reach the brain's prompt.
