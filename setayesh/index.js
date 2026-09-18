@@ -107,6 +107,7 @@ const { classifyQuestion, cooldownFor } = require('./engineselect');
 const { friendlyProviderError } = require('./providererror');
 const { wantsImage, wantsSearch, wantsCouncil } = require('./intent');
 const { tryCompute, convertUnit, round4 } = require('./mathutil');
+const { clampDirectives, directivesBlock } = require('./directives');
 const { xmlToText, htmlToText } = require('./htmltext');
 const selfsign = require('./selfsign');
 const helmet = require('helmet');
@@ -199,7 +200,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.133';
+const APP_VERSION = '9.9.134';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -4017,17 +4018,11 @@ const DIRECTIVES_FILE = process.env.SETAYESH_DIRECTIVES_FILE || path.join(DATA_D
 let ownerDirectives = '';
 try { ownerDirectives = fs.readFileSync(DIRECTIVES_FILE, 'utf8'); } catch (e) { ownerDirectives = ''; }
 function saveDirectives(text) {
-  ownerDirectives = String(text == null ? '' : text).slice(0, 8000);
+  ownerDirectives = clampDirectives(text);
   try { fs.writeFileSync(DIRECTIVES_FILE, ownerDirectives, { mode: 0o600 }); } catch (e) {}
   try { reindexInsight(); } catch (e) {}
 }
-function ownerDirectivesBlock() {
-  const t = (ownerDirectives || '').trim();
-  if (!t) return '';
-  return '\n\n*** دستورهای همیشگیِ صاحبِ خانه (بالاترین اولویت) ***\n'
-    + 'این‌ها را خودِ ادمین نوشته و همیشه رعایتشان کن، مگر با ایمنی در تضاد باشد:\n'
-    + t;
-}
+function ownerDirectivesBlock() { return directivesBlock(ownerDirectives); }
 
 // ---------------- How she actually talks ----------------
 // The owner's note was short and exact: «لحن نوشتن و گفتگو انسانی‌تر» and

@@ -1696,3 +1696,53 @@ test('mathutil: tryCompute does arithmetic and unit conversions exactly', () => 
   assert.equal(mu.tryCompute('سلام حالت خوبه'), null, 'not a calculation → null');
   assert.equal(mu.convertUnit(0, 'c', 'k'), 273.15, 'celsius→kelvin');
 });
+
+// directives.js — the admin's notes must actually reach the brain's prompt.
+test('directives: the admin note is wrapped into the system-prompt block', () => {
+  const d = require(path.join(ROOT, 'directives.js'));
+  assert.equal(d.directivesBlock(''), '', 'empty notes → nothing injected');
+  assert.equal(d.directivesBlock('   '), '', 'whitespace-only → nothing injected');
+  const block = d.directivesBlock('همیشه کوتاه جواب بده. تا نخواستم لینک نده.');
+  assert.ok(block.includes('همیشه کوتاه جواب بده'), 'the note text is in the block');
+  assert.ok(block.includes('بالاترین اولویت'), 'it is framed as top priority');
+  assert.equal(d.clampDirectives('x'.repeat(9000)).length, 8000, 'a runaway paste is capped');
+  assert.equal(d.clampDirectives(null), '', 'null → empty string');
+});
+
+// End-to-end: a saved directive must actually be injected into the system prompt
+// sent to the engine, so "the notes don't work" can't regress silently. A stub
+// engine echoes the system prompt it received; the reply must contain the note.
+test('directives reach the engine: a saved note appears in the chat system prompt', async () => {
+  const http = require('node:http');
+  const marker = 'قانونِ_تستِ_دستور_' + Date.now();
+  const stub = http.createServer((req, res) => {
+    let body = '';
+    req.on('data', (c) => { body += c; });
+    req.on('end', () => {
+      let sys = '';
+      try {
+        const j = JSON.parse(body || '{}');
+        const m = (j.messages || []).find((x) => x.role === 'system');
+        sys = m ? (typeof m.content === 'string' ? m.content : JSON.stringify(m.content)) : '';
+      } catch (e) {}
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(req.url.endsWith('/chat/completions')
+        ? { choices: [{ message: { content: 'SYS>>' + sys } }] }
+        : { data: [] }));
+    });
+  });
+  await new Promise((r) => stub.listen(0, '127.0.0.1', r));
+  const sp = stub.address().port;
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  try {
+    await api('/api/admin/directives', { method: 'POST', token, body: { text: marker } });
+    await api('/api/admin/providers/custom', { method: 'POST', token, body: { id: 'dirtest', label: 'Dir Test', baseUrl: `http://127.0.0.1:${sp}/v1`, models: 'm1', key: 'k' } });
+    const r = await api('/api/chat', { method: 'POST', token, body: { message: 'سلام', provider: 'dirtest', model: 'm1', auto: 'false' } });
+    const d = await r.json();
+    assert.ok(String(d.reply || '').includes(marker), 'the saved directive must be in the system prompt sent to the engine');
+  } finally {
+    await api('/api/admin/directives', { method: 'POST', token, body: { text: '' } });   // don't leak into other tests
+    await api('/api/admin/providers/custom/dirtest', { method: 'DELETE', token });
+    stub.close();
+  }
+});
