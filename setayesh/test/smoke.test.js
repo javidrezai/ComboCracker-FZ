@@ -1697,6 +1697,18 @@ test('mathutil: tryCompute does arithmetic and unit conversions exactly', () => 
   assert.equal(mu.convertUnit(0, 'c', 'k'), 273.15, 'celsius→kelvin');
 });
 
+// configkeys.js — the control-centre settings allowlist marks secrets correctly.
+test('configkeys: EDITABLE_KEYS lists known settings and flags secrets', () => {
+  const { EDITABLE_KEYS } = require(path.join(ROOT, 'configkeys.js'));
+  assert.ok(EDITABLE_KEYS.KEY_ANTHROPIC && EDITABLE_KEYS.KEY_ANTHROPIC.secret === true, 'API keys are secret');
+  assert.ok(EDITABLE_KEYS.TELEGRAM_BOT_TOKEN.secret === true, 'bot token is secret');
+  assert.ok(EDITABLE_KEYS.PROVIDER && EDITABLE_KEYS.PROVIDER.secret === false, 'PROVIDER is not secret');
+  for (const [k, m] of Object.entries(EDITABLE_KEYS)) {
+    assert.equal(typeof m.secret, 'boolean', k + ' has a boolean secret flag');
+    assert.ok(m.label && typeof m.label === 'string', k + ' has a label');
+  }
+});
+
 // sourcemap.js — self-edit allowlists + the project map are consistent static data.
 test('sourcemap: readable is a superset of editable and the map is described', () => {
   const sm = require(path.join(ROOT, 'sourcemap.js'));
