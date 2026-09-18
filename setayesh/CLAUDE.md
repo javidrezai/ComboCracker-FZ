@@ -1,5 +1,11 @@
 # Setayesh — guidance for Claude Code
 
+> **Read `OWNER-REQUESTS.md` first, every session.** It is the owner's (Javid's)
+> standing orders — language purity, "don't touch my settings", full-zip
+> delivery, keep modularizing with 100%-green tests, Telegram/Gemini/quota
+> behavior, self-repair, dead-file cleanup. He should not have to repeat them;
+> honor that list, and append any new standing request he makes.
+
 Setayesh AI is a private, self-hosted family assistant (Node.js + Express).
 The full development charter is in **`RULES.md`** — read it before changing
 anything here. The invariants below are binding for any change, hand-written or
