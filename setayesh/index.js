@@ -212,7 +212,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.154';
+const APP_VERSION = '9.9.155';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -5850,28 +5850,8 @@ function probeRunners() {
 }
 probeRunners();
 
-function safeProjectName(name) {
-  const clean = String(name || '').replace(/[^\p{L}\p{N}_\- ]/gu, '').trim().slice(0, 50);
-  return clean || null;
-}
-function projectDir(name) {
-  const safe = safeProjectName(name);
-  if (!safe) return null;
-  const full = path.resolve(PROJECTS_DIR, safe);
-  if (!full.startsWith(path.resolve(PROJECTS_DIR) + path.sep)) return null;
-  return full;
-}
-function safeInProject(projName, rel) {
-  const dir = projectDir(projName);
-  if (!dir) return null;
-  const parts = String(rel || '').replace(/\\/g, '/').split('/')
-    .map((p) => p.replace(/[<>:"|?*\u0000-\u001f]/g, '_').trim())
-    .filter((p) => p && p !== '.' && p !== '..');
-  if (!parts.length) return null;
-  const full = path.resolve(dir, parts.join('/'));
-  if (!full.startsWith(dir + path.sep)) return null;
-  return full;
-}
+// safeProjectName / projectDir / safeInProject (safe paths under the project
+// workspace) live in ./projectpaths, bound below (with scriptPath).
 
 function listProjects() {
   try {
@@ -6022,16 +6002,11 @@ app.post('/api/admin/actions/:id/reject', requireAuth, requireAdmin, (req, res) 
 const SCRIPTS_DIR = process.env.SETAYESH_SCRIPTS_DIR || path.join(DATA_DIR, 'scripts');
 
 // safeScriptName lives in ./sanitize (client name → safe .py basename, or null).
+// The safe-path helpers (bound to the real base dirs) live in ./projectpaths.
+const { safeProjectName, projectDir, safeInProject, scriptPath } =
+  require('./projectpaths').makeProjectPaths({ PROJECTS_DIR, SCRIPTS_DIR, safeScriptName });
 
-function scriptPath(name) {
-  const safe = safeScriptName(name);
-  if (!safe) return null;
-  const full = path.resolve(SCRIPTS_DIR, safe);
-  // The name comes from the client, so the resolved path is checked rather
-  // than trusted.
-  if (!full.startsWith(path.resolve(SCRIPTS_DIR) + path.sep)) return null;
-  return full;
-}
+// scriptPath lives in ./projectpaths (bound below with the project helpers).
 
 function listScripts() {
   try {

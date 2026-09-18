@@ -1697,6 +1697,25 @@ test('mathutil: tryCompute does arithmetic and unit conversions exactly', () => 
   assert.equal(mu.convertUnit(0, 'c', 'k'), 273.15, 'celsius→kelvin');
 });
 
+// projectpaths.js — safe paths under the workspace/script dirs, no escape.
+test('projectpaths: names are sanitized and paths cannot escape their base', () => {
+  const { makeProjectPaths } = require(path.join(ROOT, 'projectpaths.js'));
+  const PROJECTS_DIR = '/data/projects', SCRIPTS_DIR = '/data/scripts';
+  const safeScriptName = require(path.join(ROOT, 'sanitize.js')).safeScriptName;
+  const pp = makeProjectPaths({ PROJECTS_DIR, SCRIPTS_DIR, safeScriptName });
+  assert.equal(pp.safeProjectName('../evil'), 'evil', 'traversal chars stripped from name');
+  assert.equal(pp.safeProjectName('my app 1'), 'my app 1', 'normal name kept');
+  assert.equal(pp.safeProjectName('///'), null, 'all-illegal → null');
+  assert.equal(pp.projectDir('site'), path.resolve(PROJECTS_DIR, 'site'), 'project dir under base');
+  const inside = pp.safeInProject('site', 'src/app.js');
+  assert.ok(inside && inside.startsWith(path.resolve(PROJECTS_DIR, 'site') + path.sep), 'file stays inside project');
+  // ".." segments are stripped (neutralized), so the result still stays inside.
+  const esc = pp.safeInProject('site', '../../etc/passwd');
+  assert.ok(esc && esc.startsWith(path.resolve(PROJECTS_DIR, 'site') + path.sep), 'traversal neutralized, stays inside project');
+  const sp = pp.scriptPath('run');
+  assert.ok(sp && sp.startsWith(path.resolve(SCRIPTS_DIR) + path.sep) && sp.endsWith('run.py'), 'script under scripts dir, .py added');
+});
+
 // ollama.js — probe/status helpers are pure over an injected fetch.
 test('ollama: probe parses tags, ensureUp reports down cleanly, hints are honest', async () => {
   const o = require(path.join(ROOT, 'ollama.js'));
