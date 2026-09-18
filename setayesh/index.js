@@ -212,7 +212,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.157';
+const APP_VERSION = '9.9.158';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -2812,6 +2812,13 @@ function loadEngineHealth() {
       if (PROVIDERS[id] && h && typeof h === 'object') engineHealth[id] = h;
     }
   } catch (e) { /* first run */ }
+  // On-device engines are never quarantined any more (they are free + local),
+  // but an OLD health file may still carry a 6h quarantine from before that
+  // rule — which would keep a working local model "set aside" after upgrade.
+  // Free them at boot so the upgrade takes effect immediately.
+  for (const id of ['local', 'brain']) {
+    if (engineHealth[id]) Object.assign(engineHealth[id], { cooldownUntil: 0, quarantined: false, streak: 0, needsAttention: null });
+  }
 }
 let healthSaveTimer = null;
 function saveEngineHealth() {
@@ -2838,6 +2845,17 @@ function noteEngine(id, success, status, detail, elapsedMs) {
     return;
   }
   h.fail++; h.lastFail = Date.now();
+  // The on-device engines (local Ollama, the Python brain) are FREE and local —
+  // a hiccup costs nothing to retry. They must NEVER be quarantined for hours,
+  // or a single transient failure sends every question to the (possibly
+  // quota-exhausted) cloud and the owner hits the "همه موتورها پر" wall while a
+  // working local model sits idle. Give them only a short rest and keep them in.
+  if (id === 'local' || id === 'brain') {
+    h.cooldownUntil = Date.now() + 15000;   // 15s breather, then usable again
+    h.streak = 0; h.quarantined = false; h.lastStatus = status || 0;
+    saveEngineHealth();
+    return;
+  }
   const { ms, noCredit, rateLimited } = cooldownFor(status, detail, (h.streak || 0) + 1);
   // A rate limit is not a "strike" — it must never build toward quarantine, or a
   // burst of quick questions would park every engine for hours. Only real faults
