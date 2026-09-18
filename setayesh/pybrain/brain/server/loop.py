@@ -81,6 +81,7 @@ class AgentLoop:
 
         final_answer = None
         learned = []
+        last_prose = ""   # a plain answer the model gave without the FINAL: tag
         for step in range(1, max_steps + 1):
             reply = engine.chat(messages, temperature=temperature, model=model)
             trace.append(f"\n**گام {step} — استدلال:**\n```\n{reply.strip()}\n```")
@@ -97,6 +98,13 @@ class AgentLoop:
                 break
 
             tm = TOOL_RE.search(reply)
+            # Remember prose that is neither a tool call nor a FINAL: line, so a
+            # capable model that just answered plainly isn't thrown away as a
+            # "hit the step limit" dead-end at the end.
+            if not tm:
+                cleaned = reply.strip()
+                if cleaned and len(cleaned) > 8:
+                    last_prose = cleaned
             if tm:
                 name, arg = tm.group(1).strip(), tm.group(2).strip().strip('"\'')
                 fn = registry.get(name)
@@ -117,8 +125,15 @@ class AgentLoop:
             messages.append({"role": "user", "content": "با فرمت TOOL: یا FINAL: پاسخ بده."})
 
         if final_answer is None:
-            final_answer = "به سقف گام رسیدم بدون پاسخ نهاییِ قطعی. آخرین استدلال در لاگ ثبت شد."
-            trace.append("**هشدار:** سقف گام تمام شد.")
+            # Prefer the model's own last plain answer over a bare "I hit the
+            # step limit" message — that dead-end was itself a source of useless
+            # replies. Strip any stray protocol prefix first.
+            if last_prose:
+                final_answer = re.sub(r"^(FINAL|TOOL|LESSON)\s*:\s*", "", last_prose).strip()
+                trace.append("**توجه:** پاسخ نهایی بدون تگ FINAL آمد؛ همان استفاده شد.")
+            else:
+                final_answer = "به سقف گام رسیدم بدون پاسخ نهاییِ قطعی. آخرین استدلال در لاگ ثبت شد."
+                trace.append("**هشدار:** سقف گام تمام شد.")
 
         # نوشتن در حافظهٔ دائمی
         for lesson in learned:

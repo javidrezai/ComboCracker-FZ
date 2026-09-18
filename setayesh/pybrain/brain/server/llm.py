@@ -8,19 +8,27 @@ class OllamaClient:
     """کلاینت سبک برای Ollama (بدون وابستگی خارجی)."""
 
     def __init__(self, host="http://localhost:11434", model="qwen2.5:7b",
-                 temperature=0.4, timeout=120):
+                 temperature=0.4, timeout=120, num_ctx=8192):
         self.host = host.rstrip("/")
         self.model = model
         self.temperature = temperature
         self.timeout = timeout
+        # Ollama defaults to a 2048-token context, which SILENTLY truncates our
+        # system prompt + retrieved vault knowledge + the agent-loop turns —
+        # the model then answers half-blind (a big cause of confused replies).
+        # Give it real room; qwen2.5 handles far more. 0 = leave Ollama's default.
+        self.num_ctx = int(num_ctx) if num_ctx else 0
 
     def chat(self, messages, temperature=None, model=None):
         """یک درخواست chat به Ollama می‌فرستد و متن پاسخ را برمی‌گرداند."""
+        options = {"temperature": self.temperature if temperature is None else temperature}
+        if self.num_ctx:
+            options["num_ctx"] = self.num_ctx
         payload = {
             "model": model or self.model,
             "messages": messages,
             "stream": False,
-            "options": {"temperature": self.temperature if temperature is None else temperature},
+            "options": options,
         }
         data = json.dumps(payload).encode("utf-8")
         req = urllib.request.Request(

@@ -212,7 +212,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.152';
+const APP_VERSION = '9.9.153';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -2664,11 +2664,17 @@ async function callOpenAiWithTools(providerId, model, systemPrompt, messages, ct
 // One entry point for a tool-enabled call, whichever engine family answers.
 function callWithTools(providerId, model, systemPrompt, messages, ctx, opts) {
   // The Python brain runs its own agent loop; hand it the question directly.
+  // The local Ollama model gets a PLAIN chat with NO tool schemas: a small local
+  // model handles the 29-tool protocol poorly (it leaked tool-call JSON) and the
+  // schemas eat its limited context. resolveTarget already routes any real
+  // tool/vision/current question to a cloud engine, so local never needs them.
   const p = PROVIDERS[providerId].kind === 'brain'
     ? askPythonBrain(messages)
-    : PROVIDERS[providerId].kind === 'anthropic'
-      ? callAnthropicWithTools(providerId, model, systemPrompt, messages, ctx)
-      : callOpenAiWithTools(providerId, model, systemPrompt, messages, ctx, opts);
+    : providerId === 'local'
+      ? callOpenAiCompatible(providerId, model, systemPrompt, messages, false, opts)
+      : PROVIDERS[providerId].kind === 'anthropic'
+        ? callAnthropicWithTools(providerId, model, systemPrompt, messages, ctx)
+        : callOpenAiWithTools(providerId, model, systemPrompt, messages, ctx, opts);
   // Final safety net: no reply, from any engine, ever reaches a person with raw
   // <tool_call> / harmony tokens still in it.
   return Promise.resolve(p).then((r) => (typeof r === 'string' ? (stripToolNoise(r) || r) : r));
@@ -5254,11 +5260,17 @@ registerCustomProviders();
 // what Ollama actually has installed. Stored in its own file so it takes effect
 // without a restart and never needs a code edit.
 const LOCAL_MODELS_FILE = process.env.SETAYESH_LOCAL_MODELS_FILE || path.join(DATA_DIR, '.setayesh-local-models.json');
+// A local tag whose name says "coder"/"code" is a code model, so mark it
+// best:'code' — then resolveTarget sends code questions to it and plain chat to
+// the general model, instead of always using the first one in the list.
+function localModelEntry(t) {
+  return { id: t, label: t + ' (local)', best: /coder|code/i.test(t) ? 'code' : undefined };
+}
 function applyLocalModels() {
   try {
     const saved = loadJsonFile(LOCAL_MODELS_FILE, null);
     if (saved && Array.isArray(saved.models) && saved.models.length) {
-      PROVIDERS.local.models = saved.models.map((t) => ({ id: t, label: t + ' (local)' }));
+      PROVIDERS.local.models = saved.models.map(localModelEntry);
     }
   } catch (e) {}
 }
@@ -5318,7 +5330,7 @@ async function autoSyncLocalModels() {
     const savedList = (saved && Array.isArray(saved.models)) ? saved.models : [];
     // real installed tags first, then any the owner added by hand, unique
     const merged = [...new Set([...detected, ...savedList])].slice(0, 30);
-    PROVIDERS.local.models = merged.map((t) => ({ id: t, label: t + ' (local)' }));
+    PROVIDERS.local.models = merged.map(localModelEntry);
     // "فقط اسم لوکال رو بدم و خودش اتومات مچ شود": the moment Ollama answers with
     // a real model, keep it. PERSIST it (ENABLE_LOCAL=1 + the detected tags) so
     // local never vanishes from the picker just because Ollama was still warming

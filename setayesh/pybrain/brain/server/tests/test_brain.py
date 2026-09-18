@@ -201,6 +201,16 @@ class FakeOllama:
         return True
 
 
+class OllamaClientTests(unittest.TestCase):
+    def test_num_ctx_defaults_and_can_disable(self):
+        from llm import OllamaClient
+        # Default gives the model real context (Ollama's 2048 default truncates).
+        self.assertEqual(OllamaClient().num_ctx, 8192)
+        self.assertEqual(OllamaClient(num_ctx=16384).num_ctx, 16384)
+        # 0/None means "leave Ollama's own default".
+        self.assertEqual(OllamaClient(num_ctx=0).num_ctx, 0)
+
+
 class OllamaConnectTests(unittest.TestCase):
     def test_connected_when_available_and_model_present(self):
         c = FakeOllama(available=True, models=["qwen2.5:7b"])
@@ -335,6 +345,20 @@ class LocalFallbackTests(unittest.TestCase):
     def test_default_intro_when_no_signal(self):
         out = self.llm.chat([{"role": "user", "content": "درخواست کاربر:\nسلام"}])
         self.assertTrue(out.startswith("FINAL:"))
+
+    def test_bare_prose_reply_is_used_as_answer(self):
+        # اگر مدل بدون تگ FINAL: یک جوابِ ساده بدهد، همان باید جوابِ نهایی شود،
+        # نه پیامِ بی‌فایدهٔ «به سقف گام رسیدم».
+        tmp = tempfile.mkdtemp()
+        try:
+            vault = Vault(tmp)
+            prose = "پایتخت فرانسه پاریس است."
+            loop = AgentLoop(MockLLM([prose, prose, prose]), vault, max_steps=3)
+            res = loop.run("پایتخت فرانسه کجاست؟")
+            self.assertIn("پاریس", res["answer"])
+            self.assertNotIn("سقف گام", res["answer"])
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
 
     def test_loop_uses_fallback_when_ollama_down(self):
         tmp = tempfile.mkdtemp()

@@ -62,6 +62,7 @@ def make_brain():
         host=os.environ.get("OLLAMA_HOST", s.get("ollama_host", "http://localhost:11434")),
         model=s.get("model", "qwen2.5:7b"),
         temperature=float(s.get("temperature", 0.4)),
+        num_ctx=int(s.get("num_ctx", 8192)),
     )
     bridge = VaultBridge(
         VAULT_PATH,
