@@ -212,7 +212,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.158';
+const APP_VERSION = '9.9.159';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -3530,6 +3530,47 @@ app.post('/api/chat', requireAuth, chatLimiter, upload.array('files', 8), async 
         }
       }
     } catch (eHeal) { /* fall through to the honest note */ }
+
+    // BULLETPROOF LOCAL RESCUE — the last line against "همه موتورها پر". This
+    // bypasses ALL routing/health/isConfigured logic and talks straight to a
+    // locally-installed Ollama (then the Python brain). If Ollama is running at
+    // all, the owner gets a real answer instead of the apology — no stale
+    // quarantine, no config flag, nothing can keep a working local model out.
+    if (!needsVision) {
+      try {
+        const state = await ollama.ensureUp(ollamaBase(), fetchWithTimeout);
+        if (state.running && state.models.length) {
+          const localModel = ((PROVIDERS.local.models || [])[0] || {}).id || state.models[0];
+          const rescuePrompt = promptFor(req.username, req.body.mode, safe, req.body.codelib, message);
+          const rescue = await callOllamaNative(localModel, rescuePrompt, messages, callOpts);
+          const clean = stripToolNoise(rescue || '') || (rescue || '').trim();
+          if (clean) {
+            try { noteEngine('local', true, 0, '', 0); } catch (e) {}
+            return res.json({
+              reply: clean,
+              historyText: message || (req.files || []).map(f => `[file: ${f.originalname}]`).join(' '),
+              provider: 'local', providerLabel: (PROVIDERS.local.label || 'محلی') + ' · 🏠 محلی',
+              model: localModel,
+              elapsedMs: Date.now() - started,
+            });
+          }
+        }
+      } catch (eLocal) { /* try the Python brain next */ }
+      // Even if the local ENGINE path failed, the Python brain (its own Ollama
+      // loop) may still answer — it worked for the greeting, so try it too.
+      try {
+        const brainReply = stripToolNoise(await askPythonBrain(messages) || '');
+        if (brainReply) {
+          return res.json({
+            reply: brainReply,
+            historyText: message || (req.files || []).map(f => `[file: ${f.originalname}]`).join(' '),
+            provider: 'brain', providerLabel: 'مغز ستایش · 🧠 محلی',
+            model: 'brain',
+            elapsedMs: Date.now() - started,
+          });
+        }
+      } catch (eBrain) { /* nothing local could answer either */ }
+    }
 
     // Nothing at all could answer. Still not a red error box: she says it
     // herself, in her own voice, and says exactly what is wrong and what the
