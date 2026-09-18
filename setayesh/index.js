@@ -212,7 +212,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.160';
+const APP_VERSION = '9.9.161';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -3114,9 +3114,20 @@ function promptFor(username, modeId, safe, libSel, message, opts) {
     base += brainVaultBlock();
   }
   base += voiceBlock(username);
+  base += factsBlock();             // things she should KNOW (her own version, today's date)
   base += ownerDirectivesBlock();   // the admin's own standing instructions to Setayesh
   const tut = TUTORS[(username || '').toLowerCase()];
   return tut ? base + tut : base;
+}
+
+// Facts Setayesh should never have to guess or ask for: her OWN app version
+// (so "شماره آخرین آپدیت/نسخه چند؟" is answered directly, not with a request for
+// a link) and today's date (models otherwise invent it). Cheap, always on.
+function factsBlock() {
+  const today = new Date().toISOString().slice(0, 10);
+  return '\n\n*** چیزهایی که می‌دانی (نپرس و از خودت نساز) ***\n'
+    + `- نسخهٔ فعلیِ برنامهٔ ستایش: ${APP_VERSION}. اگر کسی پرسید «نسخه/آخرین آپدیت چند است؟» همین را مستقیم بگو؛ لینک نخواه.\n`
+    + `- تاریخِ امروز: ${today}.`;
 }
 
 // ---------------- Owner directives: a direct line to every brain ----------------
