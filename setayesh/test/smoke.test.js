@@ -1697,6 +1697,28 @@ test('mathutil: tryCompute does arithmetic and unit conversions exactly', () => 
   assert.equal(mu.convertUnit(0, 'c', 'k'), 273.15, 'celsius→kelvin');
 });
 
+// doctext.js — office/ZIP → text. Round-trip a built ZIP and a minimal .docx.
+test('doctext: reads a plain ZIP listing and a .docx document', () => {
+  const dt = require(path.join(ROOT, 'doctext.js'));
+  const { buildZip } = require(path.join(ROOT, 'ziputil.js'));
+  // Plain ZIP: listing + inlined readable text file.
+  const zip = buildZip([{ name: 'notes.txt', data: Buffer.from('سلام دنیا', 'utf8') }]);
+  const listed = dt.zipToText(zip, 'bundle.zip');
+  assert.ok(listed.includes('notes.txt'), 'file name listed');
+  assert.ok(listed.includes('سلام دنیا'), 'readable text inlined');
+  assert.equal(dt.zipEntries(zip).length, 1, 'one entry parsed back');
+  // Minimal .docx: word/document.xml with two paragraphs.
+  const docXml = '<w:document><w:body>'
+    + '<w:p><w:r><w:t>خط اول</w:t></w:r></w:p>'
+    + '<w:p><w:r><w:t>line two</w:t></w:r></w:p>'
+    + '</w:body></w:document>';
+  const docx = buildZip([{ name: 'word/document.xml', data: Buffer.from(docXml, 'utf8') }]);
+  const text = dt.officeToText(docx, 'letter.docx');
+  assert.ok(text.includes('خط اول'), 'first paragraph extracted');
+  assert.ok(text.includes('line two'), 'second paragraph extracted');
+  assert.throws(() => dt.zipEntries(Buffer.from('not a zip')), /ZIP/, 'garbage buffer rejected');
+});
+
 // sanitize.js — untrusted client input is always bounded, never written raw.
 test('sanitize: theme / profile / script-name inputs are validated and bounded', () => {
   const s = require(path.join(ROOT, 'sanitize.js'));
