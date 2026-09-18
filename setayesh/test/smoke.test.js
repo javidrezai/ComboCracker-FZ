@@ -1650,3 +1650,15 @@ test('engineselect: classifyQuestion tags weather and code correctly', () => {
   assert.ok(es.classifyQuestion('fix this python bug').includes('code'), 'code → code');
   assert.ok(es.classifyQuestion('سلام').includes('chat'), 'small talk → chat');
 });
+
+// providererror.js — a raw provider/network error becomes a family-readable
+// message with a sensible HTTP status, never a bare errno or red box.
+test('providererror: maps statuses and network errors to friendly messages', () => {
+  const pe = require(path.join(ROOT, 'providererror.js'));
+  assert.equal(pe.friendlyProviderError({ status: 429 }, 'Gemini').status, 429, '429 stays 429');
+  assert.equal(pe.friendlyProviderError({ status: 401 }, 'Gemini').status, 502, 'bad key → 502');
+  assert.equal(pe.friendlyProviderError({ name: 'AbortError' }, 'Gemini').status, 504, 'timeout → 504');
+  const conn = pe.friendlyProviderError({ cause: { code: 'ECONNREFUSED' } }, 'Gemini');
+  assert.equal(conn.status, 503, 'connection refused → 503');
+  assert.ok(/[؀-ۿ]/.test(conn.error), 'the message is Persian, human-readable');
+});
