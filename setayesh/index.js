@@ -198,7 +198,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.130';
+const APP_VERSION = '9.9.131';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -448,11 +448,12 @@ function reloadKeys() {
 // return 404 "no longer available to new users"). So instead of hardcoding a
 // name, we ask the key which models it actually has and pick the best flash one.
 // The fallback used ONLY until discovery names a model this key can actually
-// use (discoverGeminiModel lists them from Google). It must be a REAL model, or
-// every Gemini call 404s whenever discovery hasn't run or momentarily failed —
-// which is exactly why "Gemini won't connect". gemini-2.0-flash is a long-lived,
-// free-tier GA model; the owner's own cfg.GEMINI_MODEL still wins over it.
-let GEMINI_MODEL = (cfg.GEMINI_MODEL || '').trim() || 'gemini-2.0-flash';
+// use (discoverGeminiModel lists them from Google). It must be the CURRENT flash
+// model. NOTE (learned the hard way): Google retired gemini-2.5/2.0-flash for
+// new keys and its own 404 says "use models/gemini-3.6-flash", so 3.6-flash is
+// the real current model — do NOT downgrade this to a 2.x name. The owner's own
+// cfg.GEMINI_MODEL still wins, and discovery/adoption below correct it live.
+let GEMINI_MODEL = (cfg.GEMINI_MODEL || '').trim() || 'gemini-3.6-flash';
 let IMAGE_MODEL_RESOLVED = '';
 async function discoverGeminiModel() {
   if (!keys.gemini) return;
@@ -482,7 +483,7 @@ async function discoverGeminiModel() {
     // for keys created after its cutoff ("no longer available to new users").
     // So prefer the NEWEST stable flash model, not the oldest. The API only
     // lists models this key can actually use, so anything here is valid.
-    const PREF = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-flash-latest', 'gemini-1.5-flash'];
+    const PREF = ['gemini-flash-latest', 'gemini-3.6-flash', 'gemini-3-flash', 'gemini-2.5-flash'];
     let pick = '';
     for (const p of PREF) {
       const m = names.find(n => n === p) || names.find(n => n.startsWith(p) && !/preview|exp|thinking/i.test(n));
@@ -1659,11 +1660,24 @@ async function callOpenAiCompatible(providerId, model, systemPrompt, messages, _
     }
     if (res.status === 404 && providerId === 'gemini' && !_retried) {
       const before = GEMINI_MODEL;
+      const body = await res.text();
+      // Google's own 404 names the replacement, e.g.
+      //   "... models/gemini-2.5-flash is no longer available ... use models/gemini-3.6-flash ..."
+      // Adopt exactly what Google recommends — the most reliable source of the
+      // current model id — before falling back to a fresh discovery.
+      const rec = (body.match(/use\s+models\/([A-Za-z0-9.\-]+)/i) || [])[1]
+               || (body.match(/models\/([A-Za-z0-9.\-]+)\s+for\s+the\s+latest/i) || [])[1];
+      if (rec && rec !== before) {
+        GEMINI_MODEL = rec;
+        console.warn(`   Gemini 404 on "${before}" — Google recommends "${rec}", switching`);
+        return callOpenAiCompatible(providerId, GEMINI_MODEL, systemPrompt, messages, true, opts);
+      }
       await rediscoverGeminiModel();
       if (GEMINI_MODEL !== before) {
         console.warn(`   Gemini 404 on "${before}" — retrying with "${GEMINI_MODEL}"`);
-        return callOpenAiCompatible(providerId, GEMINI_MODEL, systemPrompt, messages, true);
+        return callOpenAiCompatible(providerId, GEMINI_MODEL, systemPrompt, messages, true, opts);
       }
+      throw Object.assign(new Error('provider error'), { status: res.status, detail: body });
     }
     throw Object.assign(new Error('provider error'), { status: res.status, detail: await res.text() });
   }
