@@ -106,6 +106,7 @@ const { guessDueDate, detectCommitment, extractFacts } = require('./factextract'
 const { classifyQuestion, cooldownFor } = require('./engineselect');
 const { friendlyProviderError } = require('./providererror');
 const { wantsImage, wantsSearch, wantsCouncil } = require('./intent');
+const { tryCompute, convertUnit, round4 } = require('./mathutil');
 const { xmlToText, htmlToText } = require('./htmltext');
 const selfsign = require('./selfsign');
 const helmet = require('helmet');
@@ -198,7 +199,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.131';
+const APP_VERSION = '9.9.132';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -4117,49 +4118,7 @@ function voiceBlock(username) {
 // "Draw / make an image of ..." — but NOT "describe/what is this image".
 // wantsImage / wantsSearch / wantsCouncil moved to intent.js (pure, unit-tested).
 
-// Deterministic calculator + common unit conversions, so numbers are exact
-// instead of the model doing mental arithmetic. Returns a short string or null.
-function tryCompute(message) {
-  const raw = String(message || '').trim();
-  if (!raw || raw.length > 200) return null;
-
-  // Unit conversions: "3 km to miles", "20 c to f", "5 kg in lb"
-  const conv = raw.match(/(-?\d+(?:\.\d+)?)\s*([a-zA-Z°]+)\s*(?:to|in|را به|به)\s*([a-zA-Z°]+)/i);
-  if (conv) {
-    const v = parseFloat(conv[1]);
-    const from = conv[2].toLowerCase().replace('°', '');
-    const to = conv[3].toLowerCase().replace('°', '');
-    const out = convertUnit(v, from, to);
-    if (out != null) return `${v} ${conv[2]} = ${round4(out)} ${conv[3]}`;
-  }
-
-  // Pure arithmetic: only digits, operators, parentheses, %, spaces, decimal.
-  const expr = raw.replace(/[،٫]/g, '.').replace(/x/gi, '*').replace(/÷/g, '/').replace(/×/g, '*').replace(/[=؟?]+$/,'').trim();
-  if (/^[-+*/%().\d\s^]+$/.test(expr) && /[-+*/%^]/.test(expr) && /\d/.test(expr)) {
-    try {
-      const js = expr.replace(/\^/g, '**');
-      // eslint-disable-next-line no-new-func
-      const val = Function('"use strict";return (' + js + ')')();
-      if (typeof val === 'number' && isFinite(val)) return `${expr.replace(/\*\*/g,'^')} = ${round4(val)}`;
-    } catch (e) {}
-  }
-  return null;
-}
-function round4(n) { return Math.round(n * 10000) / 10000; }
-function convertUnit(v, from, to) {
-  const L = { m: 1, km: 1000, cm: 0.01, mm: 0.001, mi: 1609.344, mile: 1609.344, miles: 1609.344, ft: 0.3048, foot: 0.3048, feet: 0.3048, in: 0.0254, inch: 0.0254, yd: 0.9144, yard: 0.9144 };
-  const W = { g: 1, kg: 1000, mg: 0.001, lb: 453.592, lbs: 453.592, pound: 453.592, oz: 28.3495, ton: 1e6, tonne: 1e6 };
-  if (L[from] && L[to]) return v * L[from] / L[to];
-  if (W[from] && W[to]) return v * W[from] / W[to];
-  const isC = s => s === 'c' || s === 'celsius'; const isF = s => s === 'f' || s === 'fahrenheit'; const isK = s => s === 'k' || s === 'kelvin';
-  if (isC(from) && isF(to)) return v * 9 / 5 + 32;
-  if (isF(from) && isC(to)) return (v - 32) * 5 / 9;
-  if (isC(from) && isK(to)) return v + 273.15;
-  if (isK(from) && isC(to)) return v - 273.15;
-  if (isF(from) && isK(to)) return (v - 32) * 5 / 9 + 273.15;
-  if (isK(from) && isF(to)) return (v - 273.15) * 9 / 5 + 32;
-  return null;
-}
+// tryCompute / convertUnit / round4 moved to mathutil.js (pure, unit-tested).
 
 // ---------------- Chat ----------------
 app.post('/api/chat', requireAuth, chatLimiter, upload.array('files', 8), async (req, res) => {

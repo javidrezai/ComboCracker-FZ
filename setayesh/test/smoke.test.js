@@ -1685,3 +1685,14 @@ test('intent: wantsImage / wantsSearch / wantsCouncil detect the right asks', ()
   assert.equal(it.wantsCouncil('با چند مدل مشورت کن'), true, 'multi-model → council');
   assert.equal(it.wantsCouncil('سلام'), false, 'greeting → no council');
 });
+
+// mathutil.js — exact arithmetic + unit conversions, so the model never guesses.
+test('mathutil: tryCompute does arithmetic and unit conversions exactly', () => {
+  const mu = require(path.join(ROOT, 'mathutil.js'));
+  assert.equal(mu.tryCompute('12*13'), '12*13 = 156', 'multiplication');
+  assert.equal(mu.tryCompute('2^10'), '2^10 = 1024', 'power');
+  assert.equal(mu.tryCompute('100 c to f'), '100 c = 212 f', 'celsius→fahrenheit');
+  assert.equal(mu.tryCompute('1 km to m'), '1 km = 1000 m', 'km→m');
+  assert.equal(mu.tryCompute('سلام حالت خوبه'), null, 'not a calculation → null');
+  assert.equal(mu.convertUnit(0, 'c', 'k'), 273.15, 'celsius→kelvin');
+});
