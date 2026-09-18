@@ -1697,6 +1697,23 @@ test('mathutil: tryCompute does arithmetic and unit conversions exactly', () => 
   assert.equal(mu.convertUnit(0, 'c', 'k'), 273.15, 'celsius→kelvin');
 });
 
+// mail.js — the IMAP client resolves host/config from the live cfg via getCfg.
+test('mail: mailConfigured + mailHost follow the config and presets', () => {
+  const { makeMail, MAIL_PRESETS } = require(path.join(ROOT, 'mail.js'));
+  assert.ok(MAIL_PRESETS.gmail && MAIL_PRESETS.gmail.host === 'imap.gmail.com', 'gmail preset present');
+  // Not configured until user+pass+ (a preset or explicit host) are all set.
+  let cfg = {};
+  let m = makeMail({ getCfg: () => cfg });
+  assert.equal(m.mailConfigured(), false, 'empty config → not configured');
+  cfg = { MAIL_USER: 'a@b.com', MAIL_PASS: 'x', MAIL_PROVIDER: 'gmail' };
+  assert.equal(m.mailConfigured(), true, 'user+pass+provider → configured');
+  assert.deepEqual(m.mailHost(), { host: 'imap.gmail.com', port: 993 }, 'preset host resolved');
+  // An explicit host/port overrides the preset.
+  cfg = { MAIL_USER: 'a@b.com', MAIL_PASS: 'x', MAIL_HOST: 'mail.example.org', MAIL_PORT: '1993' };
+  assert.deepEqual(m.mailHost(), { host: 'mail.example.org', port: 1993 }, 'explicit host wins');
+  assert.equal(m.mailConfigured(), true, 'explicit host also counts as configured');
+});
+
 // cryptobackup.js — the encrypted-backup envelope round-trips and rejects tampering.
 test('cryptobackup: encrypt→decrypt round-trips; wrong pass / bad marker throw', () => {
   const cb = require(path.join(ROOT, 'cryptobackup.js'));
