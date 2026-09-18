@@ -115,6 +115,7 @@ const { TUTORS, TONE_RULES, HUMAN_VOICE } = require('./personas');
 const { TOOLS_SPEC } = require('./toolspec');
 const { EDITABLE_SOURCES, READABLE_SOURCES, SELF_MAP } = require('./sourcemap');
 const { EDITABLE_KEYS } = require('./configkeys');
+const { PII_PATTERNS, HIGH_VALUE, SECRET_PATTERNS, KIND_LABEL } = require('./privacydata');
 const { xmlToText, htmlToText, textToPrintableHtml } = require('./htmltext');
 const selfsign = require('./selfsign');
 const helmet = require('helmet');
@@ -207,7 +208,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.143';
+const APP_VERSION = '9.9.144';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -1639,13 +1640,8 @@ function protectedTerms() {
 // Order matters for redaction: longer/more-specific formats first, so a
 // broad pattern (card) can't consume half of a longer one (IBAN) and leave
 // the rest visible.
-const PII_PATTERNS = [
-  { name: 'email', re: /[\w.+-]+@[\w-]+\.[\w.]{2,}/g },
-  { name: 'iban', re: /\b[A-Z]{2}\d{2}[A-Z0-9]{10,30}\b/g },
-  { name: 'phone', re: /(?:\+|00)\d[\d\s().-]{7,17}\d/g },
-  { name: 'card', re: /\b(?:\d[ -]?){13,19}\b/g },
-  { name: 'ip', re: /\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/g },
-];
+// PII_PATTERNS / SECRET_PATTERNS / KIND_LABEL / HIGH_VALUE (the privacy pattern
+// tables) are pure data and live in ./privacydata, required at the top.
 
 // Returns { clean, hits } — hits is what would leave the machine.
 function scanOutbound(text) {
@@ -1668,22 +1664,8 @@ function scanOutbound(text) {
 // sensitive fragment, sends everything else so the answer still arrives, and
 // tells the user exactly what it held back.
 //
-// What counts as "high value" — always stripped, never negotiable:
-const HIGH_VALUE = ['card', 'iban', 'ssn', 'apikey', 'password'];
-// Everything else (a name, an email, a phone) is stripped too but treated as a
-// softer notice, since those are often what the question is actually about.
-
-const SECRET_PATTERNS = [
-  { name: 'apikey',   re: /\b(?:sk-[A-Za-z0-9_-]{20,}|gsk_[A-Za-z0-9]{20,}|AIza[A-Za-z0-9_-]{20,}|ghp_[A-Za-z0-9]{20,}|xox[baprs]-[A-Za-z0-9-]{10,})\b/g },
-  { name: 'ssn',      re: /\b\d{3}-\d{2}-\d{4}\b/g },
-  { name: 'password', re: /(?:رمز(?:\s*عبور)?|پسورد|password|passwd)\s*(?:من|هست|است|is|=|:)\s*\S{4,}/gi },
-];
-
-const KIND_LABEL = {
-  name: 'نام اعضای خانواده', email: 'ایمیل', phone: 'شماره تلفن',
-  iban: 'شماره حساب بانکی', card: 'شماره کارت', ip: 'آدرس شبکه',
-  apikey: 'کلید API', ssn: 'کد ملی/تأمین اجتماعی', password: 'رمز عبور',
-};
+// HIGH_VALUE / SECRET_PATTERNS / KIND_LABEL now live in ./privacydata (a name,
+// email or phone is still stripped too, but treated as a softer notice).
 
 // Returns { text, removed:[kinds], blockedHighValue:bool }
 function shieldMessage(raw) {

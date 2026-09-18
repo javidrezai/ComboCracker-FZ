@@ -1697,6 +1697,20 @@ test('mathutil: tryCompute does arithmetic and unit conversions exactly', () => 
   assert.equal(mu.convertUnit(0, 'c', 'k'), 273.15, 'celsius→kelvin');
 });
 
+// privacydata.js — the outbound-privacy pattern tables detect the sensitive kinds.
+test('privacydata: PII/secret patterns match and labels/high-value are consistent', () => {
+  const pd = require(path.join(ROOT, 'privacydata.js'));
+  const hit = (patterns, s) => patterns.some((p) => new RegExp(p.re.source, p.re.flags).test(s));
+  assert.ok(hit(pd.PII_PATTERNS, 'reach me at ali@example.com'), 'email detected');
+  assert.ok(hit(pd.PII_PATTERNS, 'call +49 151 23456789'), 'phone detected');
+  assert.ok(hit(pd.PII_PATTERNS, 'server 192.168.1.42'), 'ip detected');
+  assert.ok(hit(pd.SECRET_PATTERNS, 'key sk-abcdefghijklmnopqrstuvwxyz'), 'api key detected');
+  assert.ok(hit(pd.SECRET_PATTERNS, 'رمز عبور من hunter2xyz'), 'password phrase detected');
+  // Every high-value kind and every pattern name must have a Persian label.
+  for (const k of pd.HIGH_VALUE) assert.ok(pd.KIND_LABEL[k], 'label for high-value kind ' + k);
+  for (const p of [...pd.PII_PATTERNS, ...pd.SECRET_PATTERNS]) assert.ok(pd.KIND_LABEL[p.name], 'label for ' + p.name);
+});
+
 // configkeys.js — the control-centre settings allowlist marks secrets correctly.
 test('configkeys: EDITABLE_KEYS lists known settings and flags secrets', () => {
   const { EDITABLE_KEYS } = require(path.join(ROOT, 'configkeys.js'));
