@@ -1697,6 +1697,23 @@ test('mathutil: tryCompute does arithmetic and unit conversions exactly', () => 
   assert.equal(mu.convertUnit(0, 'c', 'k'), 273.15, 'celsius→kelvin');
 });
 
+// ollama.js — probe/status helpers are pure over an injected fetch.
+test('ollama: probe parses tags, ensureUp reports down cleanly, hints are honest', async () => {
+  const o = require(path.join(ROOT, 'ollama.js'));
+  const up = async () => ({ json: async () => ({ models: [{ name: 'qwen2.5:7b' }, { name: 'llama3.2' }] }) });
+  const p = await o.probe('http://h:11434/v1', up);
+  assert.deepEqual(p, { running: true, models: ['qwen2.5:7b', 'llama3.2'] }, 'tags parsed, /v1 stripped');
+  const down = async () => { throw new Error('ECONNREFUSED'); };
+  assert.deepEqual(await o.probe('http://h:11434', down), { running: false, models: [] }, 'down → not running');
+  // ensureUp with a live service must NOT try to spawn — returns running fast.
+  assert.deepEqual(await o.ensureUp('http://h:11434/v1', up), { installed: true, running: true, started: false, models: ['qwen2.5:7b', 'llama3.2'] }, 'already running → no spawn');
+  // Honest, distinct hints for each state.
+  assert.match(o.statusHint({ installed: false, running: false, models: [] }, 'darwin'), /نصب نیست.*ollama\.com/);
+  assert.match(o.statusHint({ installed: true, running: false, models: [] }), /بالا نیامده/);
+  assert.match(o.statusHint({ installed: true, running: true, models: [] }), /مدلی نصب نیست/);
+  assert.match(o.statusHint({ installed: true, running: true, models: ['x'] }), /متصل/);
+});
+
 // obsidian.js — read-only vault reader driven by the live config.
 test('obsidian: vault resolves from cfg and lists only .md notes', () => {
   const { makeObsidian } = require(path.join(ROOT, 'obsidian.js'));

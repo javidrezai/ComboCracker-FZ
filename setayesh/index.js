@@ -212,7 +212,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.151';
+const APP_VERSION = '9.9.152';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -5263,18 +5263,22 @@ function applyLocalModels() {
   } catch (e) {}
 }
 applyLocalModels();
+// Ollama helpers (probe / auto-start / status hint) live in ./ollama.
+const ollama = require('./ollama');
+function ollamaBase() { return (baseUrlFor('local') || 'http://localhost:11434/v1'); }
 async function detectOllamaModels() {
-  try {
-    const base = (baseUrlFor('local') || 'http://localhost:11434/v1').replace(/\/v1\/?$/, '');
-    const r = await fetchWithTimeout(base + '/api/tags', { timeoutMs: 4000 });
-    const d = await r.json();
-    return (d.models || []).map((m) => m.name).filter(Boolean);
-  } catch (e) { return []; }
+  return (await ollama.probe(ollamaBase(), fetchWithTimeout)).models;
 }
 app.get('/api/admin/local-models', requireAuth, requireAdmin, async (req, res) => {
+  // Bring Ollama up on its own if it's installed but not running, then report
+  // an honest status (installed / running / models) plus a Persian hint.
+  const state = await ollama.ensureUp(ollamaBase(), fetchWithTimeout);
   res.json({
     active: (PROVIDERS.local.models || []).map((m) => m.id),
-    detected: await detectOllamaModels(),
+    detected: state.models,
+    installed: state.installed,
+    running: state.running,
+    hint: ollama.statusHint(state),
   });
 });
 app.post('/api/admin/local-models', requireAuth, requireAdmin, (req, res) => {
@@ -5306,7 +5310,9 @@ app.post('/api/admin/local-models', requireAuth, requireAdmin, (req, res) => {
 // model is found. If Ollama is off, we leave the list untouched.
 async function autoSyncLocalModels() {
   try {
-    const detected = await detectOllamaModels();
+    // If Ollama is installed but not running, start it first (once) — mirrors
+    // the Python brain, so the local engine comes up without a manual serve.
+    const detected = (await ollama.ensureUp(ollamaBase(), fetchWithTimeout)).models;
     if (!detected || !detected.length) return;
     const saved = loadJsonFile(LOCAL_MODELS_FILE, null);
     const savedList = (saved && Array.isArray(saved.models)) ? saved.models : [];

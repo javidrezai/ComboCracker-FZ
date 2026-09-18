@@ -1,4 +1,4 @@
-/* SETAYESH_BUILD 9.9.151 */
+/* SETAYESH_BUILD 9.9.152 */
 (function(){
 'use strict';
 
@@ -2745,7 +2745,7 @@ function loadCCLocalModels(){
           a.addEventListener('click',function(){ if(_localModels.indexOf(m)<0){_localModels.push(m);renderLocalModelChips();} });
           det.appendChild(a);
         });
-      } else det.textContent=(lang==='en'?'Ollama is not available or has no models (you can add one manually).':'Ollama در دسترس نیست یا مدلی ندارد (می‌توانی دستی اضافه کنی).');
+      } else det.textContent=(d&&d.hint) ? d.hint : (lang==='en'?'Ollama is not available or has no models (you can add one manually).':'Ollama در دسترس نیست یا مدلی ندارد (می‌توانی دستی اضافه کنی).');
     }
   }).catch(function(e){ var n=$('ccLocalModelsNote'); if(n){n.style.color='#fb7185';n.textContent=e.message;} });
 }
