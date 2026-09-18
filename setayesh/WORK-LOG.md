@@ -15,6 +15,17 @@
 
 ## نسخه‌ها و فیکس‌ها (این جلسه: ۹.۹.۱۱۹ → اکنون)
 
+### 9.9.147 — ماژول‌های cryptobackup.js + github.js (دو دور یک‌جا)
+- `cryptobackup.js`: `CLOUD_MARKER` + `encryptBuffer` + `decryptBuffer` (پاکتِ
+  رمزنگاریِ پشتیبان با AES-256-GCM و کلیدِ scrypt) — کاملاً خالص روی Node crypto.
+- `github.js`: `githubSearchRepos` + `githubGetFile` (خواندنِ گیت‌هاب) — خالص روی
+  وابستگی‌های تزریق‌شده (`fetchWithTimeout`, `clampText`)؛ index.js فقط دو
+  wrapperِ نازک نگه داشت.
+- تستِ واقعی برای هر دو: رمز→بازرمز رفت‌وبرگشت می‌کند، رمزِ غلط/مارکرِ خراب
+  خطا می‌دهد؛ جست‌وجو/خواندنِ گیت‌هاب با fetch ساختگی درست پارس می‌شود و ورودیِ
+  بد رد می‌شود. ۱۲۱ تست سبز.
+- **بدونِ افزودنِ قابلیت — فقط بیرون‌کشیدن.** خطوطِ index.js: **۸٬۱۴۰**.
+
 ### 9.9.146 — ماژولِ websearch.js (فِچرهای موتورهای جست‌وجو)
 - `SEARCH_LABELS` + `defaultSearchEngines(cfg)` + فِچرِ هر موتور (Brave/Tavily/
   DuckDuckGo) از index.js به `websearch.js` رفت. `searchOne(id,q,n,deps)` خالص

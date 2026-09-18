@@ -118,6 +118,8 @@ const { EDITABLE_KEYS } = require('./configkeys');
 const { PII_PATTERNS, HIGH_VALUE, SECRET_PATTERNS, KIND_LABEL } = require('./privacydata');
 const { buildSynthesisPrompt } = require('./council');
 const { SEARCH_LABELS, defaultSearchEngines, searchOne } = require('./websearch');
+const { encryptBuffer, decryptBuffer } = require('./cryptobackup');
+const { githubSearchRepos: ghSearchRepos, githubGetFile: ghGetFile } = require('./github');
 const { xmlToText, htmlToText, textToPrintableHtml } = require('./htmltext');
 const selfsign = require('./selfsign');
 const helmet = require('helmet');
@@ -210,7 +212,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.146';
+const APP_VERSION = '9.9.147';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -1862,37 +1864,13 @@ async function searchOneEngineSafe(id, q, n) { return searchOneEngine(id, q, n);
 // raw.githubusercontent.com for file contents (no limit). Read-only: it can
 // search repos and read files, never push or change anything. Content it reads
 // is DATA, not instructions — the same web-trust rule applies.
-const GH_HEADERS = { 'User-Agent': 'SetayeshAI/1.0', 'Accept': 'application/vnd.github+json' };
-
+// githubSearchRepos / githubGetFile (the GitHub read helpers) live in ./github;
+// these wrappers supply the shared fetch + text-clamp helpers.
 async function githubSearchRepos(query, count) {
-  const q = String(query || '').trim();
-  if (!q) throw new Error('عبارت جستجو لازم است.');
-  const n = Math.max(1, Math.min(8, Number(count) || 5));
-  const r = await fetchWithTimeout('https://api.github.com/search/repositories?per_page=' + n
-    + '&sort=stars&order=desc&q=' + encodeURIComponent(q), { headers: GH_HEADERS });
-  if (r.status === 403) throw new Error('سقف نرخ گیت‌هاب پر شد — کمی بعد دوباره امتحان کن.');
-  if (!r.ok) throw new Error('جستجوی گیت‌هاب ناموفق بود (' + r.status + ').');
-  const d = await r.json();
-  const items = (d.items || []).slice(0, n).map((x) => ({
-    repo: x.full_name, stars: x.stargazers_count, lang: x.language || '',
-    description: x.description || '', url: x.html_url, defaultBranch: x.default_branch || 'HEAD',
-  }));
-  if (!items.length) throw new Error('مخزنی پیدا نشد.');
-  return { count: items.length, results: items };
+  return ghSearchRepos(query, count, { fetchWithTimeout });
 }
-
 async function githubGetFile(repo, filePath, ref) {
-  const rp = String(repo || '').trim().replace(/^https?:\/\/github\.com\//i, '').replace(/\/+$/, '');
-  if (!/^[\w.-]+\/[\w.-]+$/.test(rp)) throw new Error('نام مخزن باید به‌صورت «owner/name» باشد.');
-  const path_ = String(filePath || '').trim().replace(/^\/+/, '');
-  if (!path_) throw new Error('مسیر فایل لازم است.');
-  const branch = String(ref || 'HEAD').trim() || 'HEAD';
-  const url = 'https://raw.githubusercontent.com/' + rp + '/' + encodeURI(branch) + '/' + encodeURI(path_);
-  const r = await fetchWithTimeout(url, { headers: { 'User-Agent': 'SetayeshAI/1.0' } });
-  if (r.status === 404) throw new Error('فایل پیدا نشد (مخزن/مسیر/شاخه را بررسی کن).');
-  if (!r.ok) throw new Error('خواندن فایل ناموفق بود (' + r.status + ').');
-  const text = await r.text();
-  return { repo: rp, path: path_, branch, url, content: clampText(text, rp + '/' + path_) };
+  return ghGetFile(repo, filePath, ref, { fetchWithTimeout, clampText });
 }
 
 // ---------------- Python execution (admin only, opt-in) ----------------
@@ -6827,32 +6805,8 @@ app.post('/api/admin/auto-update/scan', requireAuth, requireAdmin, async (req, r
 // before it ever leaves. Google Drive or OneDrive store an opaque blob. If
 // the passphrase is lost the backup is unrecoverable — that is the trade, and
 // the endpoint says so rather than pretending otherwise.
-const CLOUD_MARKER = 'SETAYESH-ENC-V1';
-
-function encryptBuffer(plain, passphrase) {
-  const salt = crypto.randomBytes(16);
-  const key = crypto.scryptSync(String(passphrase), salt, 32, { N: 16384, r: 8, p: 1 });
-  const iv = crypto.randomBytes(12);
-  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
-  const enc = Buffer.concat([cipher.update(plain), cipher.final()]);
-  const tag = cipher.getAuthTag();
-  // marker | salt | iv | tag | ciphertext
-  return Buffer.concat([Buffer.from(CLOUD_MARKER, 'utf8'), salt, iv, tag, enc]);
-}
-
-function decryptBuffer(blob, passphrase) {
-  const mark = Buffer.from(CLOUD_MARKER, 'utf8');
-  if (!blob.slice(0, mark.length).equals(mark)) throw new Error('این فایل پشتیبان ستایش نیست.');
-  let o = mark.length;
-  const salt = blob.slice(o, o += 16);
-  const iv   = blob.slice(o, o += 12);
-  const tag  = blob.slice(o, o += 16);
-  const data = blob.slice(o);
-  const key = crypto.scryptSync(String(passphrase), salt, 32, { N: 16384, r: 8, p: 1 });
-  const d = crypto.createDecipheriv('aes-256-gcm', key, iv);
-  d.setAuthTag(tag);
-  return Buffer.concat([d.update(data), d.final()]);   // throws if the passphrase is wrong
-}
+// CLOUD_MARKER + encryptBuffer + decryptBuffer (the AES-256-GCM backup envelope)
+// live in ./cryptobackup, required at the top.
 
 app.post('/api/admin/cloud-export', requireAuth, requireAdmin, (req, res) => {
   const pass = String((req.body || {}).passphrase || '');

@@ -1697,6 +1697,35 @@ test('mathutil: tryCompute does arithmetic and unit conversions exactly', () => 
   assert.equal(mu.convertUnit(0, 'c', 'k'), 273.15, 'celsius→kelvin');
 });
 
+// cryptobackup.js — the encrypted-backup envelope round-trips and rejects tampering.
+test('cryptobackup: encrypt→decrypt round-trips; wrong pass / bad marker throw', () => {
+  const cb = require(path.join(ROOT, 'cryptobackup.js'));
+  const plain = Buffer.from('محرمانه: family backup 123', 'utf8');
+  const blob = cb.encryptBuffer(plain, 'correct horse battery');
+  assert.ok(blob.slice(0, cb.CLOUD_MARKER.length).toString() === cb.CLOUD_MARKER, 'marker present');
+  assert.ok(blob.length > plain.length + 40, 'salt+iv+tag prepended');
+  assert.deepEqual(cb.decryptBuffer(blob, 'correct horse battery'), plain, 'round-trips with right pass');
+  assert.throws(() => cb.decryptBuffer(blob, 'wrong pass'), 'wrong passphrase throws (auth tag)');
+  assert.throws(() => cb.decryptBuffer(Buffer.from('not a backup'), 'x'), /پشتیبان/, 'bad marker rejected');
+});
+
+// github.js — read helpers are pure over an injected fetch (no real network).
+test('github: search + get-file parse results and validate inputs via fake fetch', async () => {
+  const gh = require(path.join(ROOT, 'github.js'));
+  const searchFetch = async () => ({ ok: true, status: 200, json: async () => ({ items: [
+    { full_name: 'a/b', stargazers_count: 9, language: 'JS', description: 'd', html_url: 'https://g/a/b', default_branch: 'main' },
+  ] }) });
+  const s = await gh.githubSearchRepos('express', 5, { fetchWithTimeout: searchFetch });
+  assert.equal(s.results[0].repo, 'a/b', 'repo full_name mapped');
+  assert.equal(s.results[0].defaultBranch, 'main', 'default branch mapped');
+  await assert.rejects(() => gh.githubSearchRepos('', 5, { fetchWithTimeout: searchFetch }), 'empty query rejected');
+  // get-file: raw text clamped via injected clampText; bad repo name rejected before any fetch.
+  const fileFetch = async () => ({ ok: true, status: 200, text: async () => 'console.log(1)' });
+  const f = await gh.githubGetFile('owner/name', 'src/x.js', 'main', { fetchWithTimeout: fileFetch, clampText: (t) => t });
+  assert.ok(f.content.includes('console.log') && f.branch === 'main', 'file content + branch returned');
+  await assert.rejects(() => gh.githubGetFile('not-a-repo', 'x', '', { fetchWithTimeout: fileFetch, clampText: (t) => t }), /owner\/name/, 'bad repo name rejected');
+});
+
 // websearch.js — pure per-provider fetchers + defaults, driven by injected deps.
 test('websearch: defaults follow keys and providers parse results via fake fetch', async () => {
   const ws = require(path.join(ROOT, 'websearch.js'));
