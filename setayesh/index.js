@@ -103,6 +103,7 @@ const { isUpdatablePath, checkJsSyntax } = require('./srcguard');
 const { sanitizeHistory, maskSecret } = require('./textutil');
 const { ALLOWED_IMAGE_TYPES, MAX_FILE_BYTES, MAX_TEXT_CHARS, TEXT_EXTENSIONS, OFFICE_EXTENSIONS, classifyFile, clampText } = require('./filekind');
 const { guessDueDate, detectCommitment, extractFacts } = require('./factextract');
+const { classifyQuestion, cooldownFor } = require('./engineselect');
 const { xmlToText, htmlToText } = require('./htmltext');
 const selfsign = require('./selfsign');
 const helmet = require('helmet');
@@ -195,7 +196,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.123';
+const APP_VERSION = '9.9.124';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -3657,22 +3658,7 @@ function saveEngineHealth() {
 }
 loadEngineHealth();
 
-// How long an engine sits out after a failure. Repeated failures of the SAME
-// kind double the wait (capped), so an engine that is genuinely down stops
-// costing the household a slow round-trip on every single message — this is
-// the "take the broken engines out of rotation by itself" behaviour.
-function cooldownFor(status, detail, streak) {
-  const noCredit = status === 402 || status === 401
-    || (status === 400 && /credit balance|insufficient|quota|billing|exceeded/i.test(String(detail || '')));
-  let base;
-  if (noCredit) base = 3600000;                       // an hour — needs the owner
-  else if (status === 404) base = 1800000;            // retired model — not coming back on its own
-  else if (status === 429 || status === 413) base = 60000;
-  else if (!status || status >= 500) base = 30000;
-  else base = 45000;
-  const grow = Math.min(8, Math.pow(2, Math.max(0, streak - 1)));
-  return { ms: Math.min(6 * 3600000, base * grow), noCredit };
-}
+// cooldownFor + classifyQuestion moved to engineselect.js (pure, unit-tested).
 
 function noteEngine(id, success, status, detail, elapsedMs) {
   const h = engineHealth[id] || (engineHealth[id] = { ok: 0, fail: 0, streak: 0, lastFail: 0, lastOk: 0, cooldownUntil: 0 });
@@ -3685,15 +3671,18 @@ function noteEngine(id, success, status, detail, elapsedMs) {
     saveEngineHealth();
     return;
   }
-  h.fail++; h.streak = (h.streak || 0) + 1; h.lastFail = Date.now();
-  const { ms, noCredit } = cooldownFor(status, detail, h.streak);
+  h.fail++; h.lastFail = Date.now();
+  const { ms, noCredit, rateLimited } = cooldownFor(status, detail, (h.streak || 0) + 1);
+  // A rate limit is not a "strike" — it must never build toward quarantine, or a
+  // burst of quick questions would park every engine for hours. Only real faults
+  // advance the streak.
+  if (!rateLimited) h.streak = (h.streak || 0) + 1;
   h.cooldownUntil = Date.now() + ms;
   h.lastStatus = status || 0;
   if (noCredit) h.needsAttention = 'اعتبار یا کلید این سرویس مشکل دارد — تا درست نشود کنار گذاشته می‌شود.';
   else if (status === 404) h.needsAttention = 'این مدل دیگر روی کلید شما نیست — مدل دیگری انتخاب کن.';
-  // Three strikes in a row and it is not a passing hiccup: park it for the
-  // rest of the day and say so in the engine panel.
-  if (h.streak >= 3) {
+  // Three REAL failures in a row (never rate limits): park it and say so.
+  if (!rateLimited && h.streak >= 3) {
     h.quarantined = true;
     h.cooldownUntil = Math.max(h.cooldownUntil, Date.now() + 6 * 3600000);
     if (!h.needsAttention) h.needsAttention = 'چند بار پشت سر هم جواب نداد — موقتاً از دور خارج شد.';
@@ -3710,21 +3699,6 @@ function engineUsable(id) {
 // A cheap, local look at what the message actually asks for. No model call,
 // no cost: just enough signal to stop sending a one-line "سلام" to the
 // slowest reasoning model and a 400-line refactor to the fastest chat model.
-function classifyQuestion(text, opts) {
-  opts = opts || {};
-  const s = String(text || '');
-  const tags = [];
-  if (opts.needsVision) tags.push('vision');
-  if (/```|\bfunction\b|\bclass\b|\bimport\b|\bconst \b|\bdef \b|<\/?[a-z]+>|\bnpm\b|\bgit\b|\bsql\b|\bregex\b|\bbug\b|\berror\b|کد|برنامه‌?نویس|اسکریپت|باگ|خطای|دیباگ/i.test(s)) tags.push('code');
-  if (/\bwhy\b|\bprove\b|\bdesign\b|\barchitect|\bcompare\b|\btrade-?off|\bstrategy\b|چرا|تحلیل|مقایسه|طراحی|استدلال|اثبات/i.test(s)) tags.push('reasoning');
-  if (/\btoday\b|\btomorrow\b|\bnews\b|\bprice\b|\blatest\b|\bweather\b|\bforecast\b|\b20\d\d\b|امروز|فردا|دیروز|اخبار|قیمت|جدیدترین|الان|هوا|آب.?و.?هوا|دما|هواشناسی|بارون|باران|برف|نرخ|دلار|بورس/i.test(s)) tags.push('current');
-  if (s.length > 4000) tags.push('long');
-  // Things only a tool can answer — mail, calendar, files, the house itself.
-  if (/\bemail\b|\bmail\b|\binbox\b|\bcalendar\b|ایمیل|میل|صندوق|تقویم|قرار|یادآور|فایل|زیپ|pdf/i.test(s)) tags.push('tools');
-  if (!tags.length && s.length < 220) tags.push('fast', 'chat');
-  if (!tags.length) tags.push('general');
-  return tags;
-}
 
 // Score every configured engine for this question and return them best-first.
 // Health always outranks talent: a brilliant engine that is rate-limited is
@@ -5573,12 +5547,20 @@ const RESEARCH_EXCLUDE = ['brain', 'local', 'gemini'];
 function bestResearchEngine() {
   const ranked = rankEngines(['reasoning', 'general', 'current'], { exclude: RESEARCH_EXCLUDE });
   const usableDefault = DEFAULT_PROVIDER && !RESEARCH_EXCLUDE.includes(DEFAULT_PROVIDER) && isConfigured(DEFAULT_PROVIDER);
-  const id = ranked.find((x) => isConfigured(x) && engineUsable(x))
-          || ranked.find((x) => isConfigured(x))
+  // Gemini is normally kept out of research to save its free quota for chat.
+  // BUT if it is the only engine that can actually answer right now (the others
+  // have bad keys or are cooling), background learning must NOT stall — better
+  // to spend a little Gemini quota than to never learn. So Gemini becomes an
+  // allowed fallback whenever no non-Gemini engine is USABLE, not only when none
+  // is configured. This is why "self-learning didn't work" on a Gemini-mainly
+  // setup: every other key was unusable and Gemini was excluded outright.
+  const geminiUsable = isConfigured('gemini') && engineUsable('gemini');
+  const id = ranked.find((x) => isConfigured(x) && engineUsable(x))     // a healthy non-Gemini cloud engine
+          || (usableDefault && engineUsable(DEFAULT_PROVIDER) ? DEFAULT_PROVIDER : null)
+          || (geminiUsable ? 'gemini' : null)                          // Gemini if it is the only one working
+          || ranked.find((x) => isConfigured(x))                       // a cooling non-Gemini engine
           || (usableDefault ? DEFAULT_PROVIDER : null)
           || Object.keys(PROVIDERS).filter((x) => !RESEARCH_EXCLUDE.includes(x)).find(isConfigured)
-          // Absolute last resort: only if NOTHING but Gemini exists do we allow it,
-          // so background learning still runs on a Gemini-only setup.
           || Object.keys(PROVIDERS).filter((x) => x !== 'brain' && x !== 'local').find(isConfigured);
   if (!id) return null;
   const models = PROVIDERS[id].models || [];

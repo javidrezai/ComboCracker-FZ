@@ -1621,3 +1621,32 @@ test('dev-library download plan rejects injection in package names', () => {
   assert.ok(!good.args.some((a) => /rm -rf|;/.test(a)), 'no shell metacharacters in the args');
   try { fs.rmSync(dir, { recursive: true, force: true }); } catch (e) {}
 });
+
+// engineselect.js — a 429 (rate limit) must never quarantine an engine, so a
+// short burst of quick questions can't park every engine for the day. Real
+// faults still escalate. This is the "why is it always full?" fix.
+test('engineselect: rate limits rest briefly and never grow like real faults', () => {
+  const es = require(path.join(ROOT, 'engineselect.js'));
+  // 429 is flagged as rate-limited, short cooldown, and does NOT grow with streak.
+  const r1 = es.cooldownFor(429, '', 1);
+  const r5 = es.cooldownFor(429, '', 5);
+  assert.equal(r1.rateLimited, true, '429 is a rate limit');
+  assert.ok(r1.ms <= 120000, '429 cooldown stays short (<= 2 min)');
+  assert.equal(r1.ms, r5.ms, '429 cooldown does not grow with the streak');
+  // A real fault (500) DOES grow with the streak and is not a rate limit.
+  const f1 = es.cooldownFor(500, '', 1);
+  const f4 = es.cooldownFor(500, '', 4);
+  assert.ok(!f1.rateLimited, '500 is not a rate limit');
+  assert.ok(f4.ms > f1.ms, 'a repeated real fault backs off longer');
+  // A bad key (401) is flagged noCredit so the panel can tell the owner.
+  assert.equal(es.cooldownFor(401, '', 1).noCredit, true, '401 needs the owner');
+});
+
+// engineselect.js — classifyQuestion tags weather as "current" (so it routes to
+// a web-searching engine) and code as "code".
+test('engineselect: classifyQuestion tags weather and code correctly', () => {
+  const es = require(path.join(ROOT, 'engineselect.js'));
+  assert.ok(es.classifyQuestion('وضعیت آب و هوای فردا').includes('current'), 'weather → current');
+  assert.ok(es.classifyQuestion('fix this python bug').includes('code'), 'code → code');
+  assert.ok(es.classifyQuestion('سلام').includes('chat'), 'small talk → chat');
+});
