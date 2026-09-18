@@ -24,13 +24,19 @@ if (!fs.existsSync(inPath)) die('File not found: ' + inPath);
 const outPath = process.argv[3] || inPath.replace(/\.enc$/i, '') + '.zip';
 
 const blob = fs.readFileSync(inPath);
-if (blob.length < 49 || blob.slice(0, 5).toString('ascii') !== 'STYS1') {
+// Two backup formats exist, with the same AES-256-GCM + scrypt body but a
+// different magic header: 'STYS1' (auto/Drive backups) and 'SETAYESH-ENC-V1'
+// (the "cloud export" download). Accept EITHER, skipping the right header.
+let hdr = 0;
+if (blob.slice(0, 5).toString('ascii') === 'STYS1') hdr = 5;
+else if (blob.slice(0, 15).toString('ascii') === 'SETAYESH-ENC-V1') hdr = 15;
+if (!hdr || blob.length < hdr + 44) {
   die('Not a Setayesh encrypted backup (bad header).');
 }
-const salt = blob.slice(5, 21);
-const iv = blob.slice(21, 33);
-const tag = blob.slice(33, 49);
-const ciphertext = blob.slice(49);
+const salt = blob.slice(hdr, hdr + 16);
+const iv = blob.slice(hdr + 16, hdr + 28);
+const tag = blob.slice(hdr + 28, hdr + 44);
+const ciphertext = blob.slice(hdr + 44);
 
 function withPass(pass) {
   if (!pass || pass.length < 1) die('No passphrase given.');

@@ -1707,6 +1707,16 @@ test('cryptobackup: encrypt→decrypt round-trips; wrong pass / bad marker throw
   assert.deepEqual(cb.decryptBuffer(blob, 'correct horse battery'), plain, 'round-trips with right pass');
   assert.throws(() => cb.decryptBuffer(blob, 'wrong pass'), 'wrong passphrase throws (auth tag)');
   assert.throws(() => cb.decryptBuffer(Buffer.from('not a backup'), 'x'), /پشتیبان/, 'bad marker rejected');
+  // Cross-format: a legacy 'STYS1' backup (same body, shorter magic, Node-default
+  // scrypt) must ALSO decrypt here, so a Drive backup and the standalone tool agree.
+  const crypto = require('crypto');
+  const salt = crypto.randomBytes(16), iv = crypto.randomBytes(12);
+  const key = crypto.scryptSync('legacy pass', salt, 32);
+  const c = crypto.createCipheriv('aes-256-gcm', key, iv);
+  const body = Buffer.from('old backup payload', 'utf8');
+  const enc = Buffer.concat([c.update(body), c.final()]);
+  const legacy = Buffer.concat([Buffer.from('STYS1', 'ascii'), salt, iv, c.getAuthTag(), enc]);
+  assert.deepEqual(cb.decryptBuffer(legacy, 'legacy pass'), body, 'legacy STYS1 backup also decrypts');
 });
 
 // github.js — read helpers are pure over an injected fetch (no real network).

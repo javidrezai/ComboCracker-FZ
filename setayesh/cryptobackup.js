@@ -7,6 +7,11 @@
 const crypto = require('crypto');
 
 const CLOUD_MARKER = 'SETAYESH-ENC-V1';
+// The auto/Drive backup path (runEncryptedBackup) writes the same body under a
+// shorter legacy magic. Same salt/iv/tag/cipher layout, so decryptBuffer accepts
+// either header — an exported backup and a Drive backup both open here and with
+// the standalone decrypt-backup.js.
+const LEGACY_MARKER = 'STYS1';
 
 function encryptBuffer(plain, passphrase) {
   const salt = crypto.randomBytes(16);
@@ -19,9 +24,10 @@ function encryptBuffer(plain, passphrase) {
 }
 
 function decryptBuffer(blob, passphrase) {
-  const mark = Buffer.from(CLOUD_MARKER, 'utf8');
-  if (!blob.slice(0, mark.length).equals(mark)) throw new Error('این فایل پشتیبان ستایش نیست.');
-  let o = mark.length;
+  let o;
+  if (blob.slice(0, CLOUD_MARKER.length).equals(Buffer.from(CLOUD_MARKER, 'utf8'))) o = CLOUD_MARKER.length;
+  else if (blob.slice(0, LEGACY_MARKER.length).equals(Buffer.from(LEGACY_MARKER, 'utf8'))) o = LEGACY_MARKER.length;
+  else throw new Error('این فایل پشتیبان ستایش نیست.');
   const salt = blob.slice(o, o += 16);
   const iv   = blob.slice(o, o += 12);
   const tag  = blob.slice(o, o += 16);
@@ -32,4 +38,4 @@ function decryptBuffer(blob, passphrase) {
   return Buffer.concat([d.update(data), d.final()]);   // throws if the passphrase is wrong
 }
 
-module.exports = { CLOUD_MARKER, encryptBuffer, decryptBuffer };
+module.exports = { CLOUD_MARKER, LEGACY_MARKER, encryptBuffer, decryptBuffer };
