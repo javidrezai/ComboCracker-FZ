@@ -1,4 +1,4 @@
-/* SETAYESH_BUILD 9.9.161 */
+/* SETAYESH_BUILD 9.9.162 */
 (function(){
 'use strict';
 
@@ -2469,6 +2469,29 @@ function loadCC(){
         inp.style.fontSize='12px';
         inp.addEventListener('input',function(){ CC.dirty[key]=inp.value.trim(); });
         row.appendChild(inp);
+      }
+      // Gemini can hold several keys — when one fills up (quota), Setayesh
+      // rotates to the next automatically. Show the extra slots under Gemini so
+      // the owner can add a 2nd / 3rd key, and say which one is active now.
+      if(p.id==='gemini'){
+        var gk=(d.live&&d.live.geminiKeys)||{total:0,active:0};
+        var note=el('div'); note.style.cssText='font-size:11px;color:var(--muted);margin-top:6px';
+        note.textContent=(lang==='en'
+          ? ('Gemini keys set: '+gk.total+(gk.total>1?(' · active now: #'+gk.active):''))
+          : ('کلیدهای Gemini: '+gk.total+(gk.total>1?(' · فعال الان: شمارهٔ '+gk.active):'')));
+        row.appendChild(note);
+        ['KEY_GEMINI2','KEY_GEMINI3'].forEach(function(gkey){
+          var gst=d.settings[gkey]; if(!gst)return;
+          var lab=el('div'); lab.style.cssText='font-size:11px;color:var(--muted);margin-top:8px';
+          lab.textContent=(lang==='en'?(gkey==='KEY_GEMINI2'?'Gemini — 2nd key':'Gemini — 3rd key (optional)'):(gkey==='KEY_GEMINI2'?'Gemini — کلید دوم':'Gemini — کلید سوم (اختیاری)'))+(gst.set?' ●':'');
+          row.appendChild(lab);
+          var gi=el('input','input'); gi.placeholder=gst.set?gst.value:(lang==='en'?'paste another key…':'یک کلید دیگر بگذار...');
+          gi.style.fontSize='12px';
+          gi.addEventListener('input',function(){ CC.dirty[gkey]=gi.value.trim(); });
+          row.appendChild(gi);
+          if(gst.set){ var gc=el('button','btn ghost'); gc.textContent=(lang==='en'?'🗑 Clear':'🗑 پاک'); gc.style.cssText='font-size:11px;padding:2px 8px;color:#fb7185;margin-top:4px';
+            gc.addEventListener('click',(function(kk,ll){return function(){ clearEngineKey(kk,ll); };})(gkey,'Gemini')); row.appendChild(gc); }
+        });
       }
       if(p.keyUrl){
         var a=el('a'); a.href=p.keyUrl; a.target='_blank'; a.rel='noopener';

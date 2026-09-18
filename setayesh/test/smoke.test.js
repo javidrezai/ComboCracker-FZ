@@ -1910,6 +1910,9 @@ test('privacydata: PII/secret patterns match and labels/high-value are consisten
 test('configkeys: EDITABLE_KEYS lists known settings and flags secrets', () => {
   const { EDITABLE_KEYS } = require(path.join(ROOT, 'configkeys.js'));
   assert.ok(EDITABLE_KEYS.KEY_ANTHROPIC && EDITABLE_KEYS.KEY_ANTHROPIC.secret === true, 'API keys are secret');
+  // Extra Gemini key slots exist so the owner can add a 2nd/3rd key (rotation on quota).
+  assert.ok(EDITABLE_KEYS.KEY_GEMINI2 && EDITABLE_KEYS.KEY_GEMINI2.secret === true, 'second Gemini key slot exists and is secret');
+  assert.ok(EDITABLE_KEYS.KEY_GEMINI3 && EDITABLE_KEYS.KEY_GEMINI3.secret === true, 'third Gemini key slot exists and is secret');
   assert.ok(EDITABLE_KEYS.TELEGRAM_BOT_TOKEN.secret === true, 'bot token is secret');
   assert.ok(EDITABLE_KEYS.PROVIDER && EDITABLE_KEYS.PROVIDER.secret === false, 'PROVIDER is not secret');
   for (const [k, m] of Object.entries(EDITABLE_KEYS)) {

@@ -11,6 +11,8 @@
 const EDITABLE_KEYS = {
   KEY_ANTHROPIC: { secret: true,  label: 'Claude (Anthropic)' },
   KEY_GEMINI:    { secret: true,  label: 'Google Gemini' },
+  KEY_GEMINI2:   { secret: true,  label: 'Google Gemini — کلید دوم (وقتی اولی پر شد، خودکار می‌رود روی این)' },
+  KEY_GEMINI3:   { secret: true,  label: 'Google Gemini — کلید سوم (اختیاری)' },
   KEY_GROQ:      { secret: true,  label: 'Groq' },
   KEY_OPENROUTER:{ secret: true,  label: 'OpenRouter' },
   KEY_CEREBRAS:  { secret: true,  label: 'Cerebras' },

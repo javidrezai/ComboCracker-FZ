@@ -212,7 +212,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.161';
+const APP_VERSION = '9.9.162';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -455,8 +455,37 @@ function reloadKeys() {
   }
   if (process.env.SETAYESH_ENABLE_LOCAL === '1' || cfg.ENABLE_LOCAL === '1') keys.local = keys.local || 'local';
   else delete keys.local;
+  rebuildGeminiPool();
   _geminiReady = null;   // re-discover the Gemini model against the new key
 }
+
+// Gemini can have several keys (KEY_GEMINI, KEY_GEMINI2, KEY_GEMINI3). The free
+// tier is small (~a few dozen calls/day), so when one hits its quota (429) we
+// rotate to the next automatically — more headroom, no "سقف پر". Built at boot
+// AND on every settings save.
+let geminiKeyPool = [];
+let geminiKeyIdx = 0;
+function rebuildGeminiPool() {
+  geminiKeyPool = [
+    process.env.SETAYESH_KEY_GEMINI || cfg.KEY_GEMINI,
+    cfg.KEY_GEMINI2, cfg.KEY_GEMINI3,
+  ].map((k) => String(k || '').trim()).filter(Boolean);
+  geminiKeyIdx = 0;
+  if (geminiKeyPool.length) keys.gemini = geminiKeyPool[0];
+}
+// Rotate to the next Gemini key in the pool (on a 429/quota). Returns true only
+// if it actually moved to a DIFFERENT key, so the caller can retry once per key.
+function rotateGeminiKey() {
+  if (geminiKeyPool.length < 2) return false;
+  geminiKeyIdx = (geminiKeyIdx + 1) % geminiKeyPool.length;
+  const next = geminiKeyPool[geminiKeyIdx];
+  if (!next || next === keys.gemini) return false;
+  keys.gemini = next;
+  _geminiReady = null;   // the new key may allow a different model
+  console.warn(`   Gemini key quota hit — rotated to key #${geminiKeyIdx + 1} of ${geminiKeyPool.length}`);
+  return true;
+}
+rebuildGeminiPool();   // build the pool at boot from the config keys
 
 // Google keeps rotating which Gemini models a *new* API key may use (older ones
 // return 404 "no longer available to new users"). So instead of hardcoding a
@@ -1521,6 +1550,16 @@ async function callOpenAiCompatible(providerId, model, systemPrompt, messages, _
     }, opts.steady ? { temperature: 0.3 } : {})),
   });
   if (!res.ok) {
+    // Gemini quota (429) with more than one key configured → rotate to the next
+    // key and retry, instead of parking Gemini and dropping to the slow local
+    // model. `opts._gemRot` bounds it to one try per key so it can't loop.
+    if (res.status === 429 && providerId === 'gemini') {
+      const rot = Number(opts._gemRot) || 0;
+      if (rot < geminiKeyPool.length - 1 && rotateGeminiKey()) {
+        return callOpenAiCompatible(providerId, model, systemPrompt, messages, _retried,
+          Object.assign({}, opts, { _gemRot: rot + 1 }));
+      }
+    }
     // A 413 means the request exceeded the model's per-minute token budget
     // (Groq's free tier is 8000 TPM, counting system prompt + history +
     // reply). Most of the time the history is what pushed it over, so drop
@@ -7179,6 +7218,9 @@ app.get('/api/admin/settings', requireAuth, requireAdmin, (req, res) => {
       defaultProvider: DEFAULT_PROVIDER,
       pythonEnabled: PYTHON_ENABLED,
       geminiModel: GEMINI_MODEL,
+      // How many Gemini keys are configured and which one is active right now,
+      // so the panel can show it transparently (rotation on quota).
+      geminiKeys: { total: geminiKeyPool.length, active: geminiKeyPool.length ? geminiKeyIdx + 1 : 0 },
       host: HOST, port: PORT,
       accounts: Array.from(users.keys()),
       privacyOn: privacy.enabled,

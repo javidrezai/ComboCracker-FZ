@@ -80,6 +80,10 @@ function stripLinks(content) {
        .replace(/\[([^\]]+)\]\((?:[^)]*)\)/g, '$1')           // [text](url) → text
        .replace(/\bhttps?:\/\/[^\s)]+/gi, ' ')                // bare URLs
        .replace(/\bwww\.[^\s)]+/gi, ' ')                      // bare www.… hosts
+       // A leftover "Links / لینک‌ها:" heading and its "- WebFetch: X" / "- web_fetch(…)"
+       // bullet lines — the model narrating a tool it wanted to use. Drop them.
+       .replace(/^\s*(?:🔗\s*)?(?:لینک‌ها|links)\s*(?:\/\s*(?:لینک‌ها|links))?\s*:.*$/gim, '')
+       .replace(/^\s*[-•]\s*(?:web[_ ]?fetch|web[_ ]?search)\b.*$/gim, '')
        .replace(/[ \t]{2,}/g, ' ')
        .replace(/[ \t]+([.,!؟?])/g, '$1')                     // tidy space left before punctuation
        .replace(/\(\s*\)/g, ' ')                              // empty () left by a removed url
