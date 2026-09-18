@@ -1697,6 +1697,19 @@ test('mathutil: tryCompute does arithmetic and unit conversions exactly', () => 
   assert.equal(mu.convertUnit(0, 'c', 'k'), 273.15, 'celsius→kelvin');
 });
 
+// htmltext.js — text → printable HTML (RTL auto-detected, markdown-ish inline).
+test('htmltext: textToPrintableHtml builds a page and detects direction', () => {
+  const ht = require(path.join(ROOT, 'htmltext.js'));
+  const fa = ht.textToPrintableHtml('# سلام\n**پررنگ**', 'گزارش');
+  assert.ok(fa.includes('dir="rtl"'), 'Persian → RTL');
+  assert.ok(fa.includes('<h1>سلام</h1>'), 'heading rendered');
+  assert.ok(fa.includes('<strong>پررنگ</strong>'), 'bold rendered');
+  assert.ok(fa.includes('<title>گزارش</title>'), 'title used');
+  const en = ht.textToPrintableHtml('hello <world> & co', 'doc');
+  assert.ok(en.includes('dir="ltr"'), 'English → LTR');
+  assert.ok(en.includes('&lt;world&gt;') && en.includes('&amp;'), 'HTML-escaped, no injection');
+});
+
 // doctext.js — office/ZIP → text. Round-trip a built ZIP and a minimal .docx.
 test('doctext: reads a plain ZIP listing and a .docx document', () => {
   const dt = require(path.join(ROOT, 'doctext.js'));

@@ -36,4 +36,25 @@ function htmlToText(html) {
     .trim();
 }
 
-module.exports = { xmlToText, htmlToText };
+// The reverse direction: a plain/Markdown-ish text → a self-contained printable
+// HTML page (so Ctrl+P yields a PDF with no PDF library). RTL is auto-detected
+// from Arabic-script characters.
+function textToPrintableHtml(text, title) {
+  const esc = (x) => String(x).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const body = esc(text)
+    .replace(/^### (.*)$/gm, '<h3>$1</h3>')
+    .replace(/^## (.*)$/gm, '<h2>$1</h2>')
+    .replace(/^# (.*)$/gm, '<h1>$1</h1>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\n{2,}/g, '</p><p>').replace(/\n/g, '<br>');
+  const rtl = /[؀-ۿ]/.test(text);
+  return `<!doctype html><html lang="${rtl ? 'fa' : 'en'}" dir="${rtl ? 'rtl' : 'ltr'}"><meta charset="utf-8">
+<title>${esc(title || 'document')}</title><style>
+body{font-family:"Segoe UI",Tahoma,sans-serif;line-height:1.9;max-width:800px;margin:40px auto;padding:0 24px;color:#111}
+h1,h2,h3{margin:1.4em 0 .5em} code{background:#f3f4f6;padding:2px 6px;border-radius:4px;font-family:Consolas,monospace}
+@media print{body{margin:0;max-width:none}} @page{margin:2cm}
+</style><body><p>${body}</p></body></html>`;
+}
+
+module.exports = { xmlToText, htmlToText, textToPrintableHtml };

@@ -110,7 +110,7 @@ const { tryCompute, convertUnit, round4 } = require('./mathutil');
 const { clampDirectives, directivesBlock } = require('./directives');
 const { THEME_DEFAULTS, sanitizeTheme, sanitizeProfileFields, safeScriptName } = require('./sanitize');
 const { officeToText, zipToText } = require('./doctext');
-const { xmlToText, htmlToText } = require('./htmltext');
+const { xmlToText, htmlToText, textToPrintableHtml } = require('./htmltext');
 const selfsign = require('./selfsign');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
@@ -202,7 +202,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.136';
+const APP_VERSION = '9.9.137';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -2656,25 +2656,8 @@ function newJobDir() {
 // code — the deflate buildZip declared later always won via hoisting — so it
 // was removed when the ZIP helpers moved to ziputil.js.)
 
-// Markdown/text -> a self-contained printable HTML file. Opening it and
-// pressing Ctrl+P gives a PDF, with no PDF library to install.
-function textToPrintableHtml(text, title) {
-  const esc = (x) => String(x).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  const body = esc(text)
-    .replace(/^### (.*)$/gm, '<h3>$1</h3>')
-    .replace(/^## (.*)$/gm, '<h2>$1</h2>')
-    .replace(/^# (.*)$/gm, '<h1>$1</h1>')
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/`([^`]+)`/g, '<code>$1</code>')
-    .replace(/\n{2,}/g, '</p><p>').replace(/\n/g, '<br>');
-  const rtl = /[\u0600-\u06FF]/.test(text);
-  return `<!doctype html><html lang="${rtl ? 'fa' : 'en'}" dir="${rtl ? 'rtl' : 'ltr'}"><meta charset="utf-8">
-<title>${esc(title || 'document')}</title><style>
-body{font-family:"Segoe UI",Tahoma,sans-serif;line-height:1.9;max-width:800px;margin:40px auto;padding:0 24px;color:#111}
-h1,h2,h3{margin:1.4em 0 .5em} code{background:#f3f4f6;padding:2px 6px;border-radius:4px;font-family:Consolas,monospace}
-@media print{body{margin:0;max-width:none}} @page{margin:2cm}
-</style><body><p>${body}</p></body></html>`;
-}
+// textToPrintableHtml (Markdown/text \u2192 a self-contained printable HTML file,
+// so Ctrl+P yields a PDF with no PDF library) now lives in ./htmltext.
 
 async function dispatchTool(name, input, ctx) {
   input = input || {};
