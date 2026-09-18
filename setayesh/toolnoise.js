@@ -98,4 +98,26 @@ function wantsLink(message) {
   return /لینک|نشانی|آدرس(?!\s*ایمیل)|سایت|وب\s*سایت|url|link|website/i.test(String(message || ''));
 }
 
-module.exports = { toPlainText, parseTextToolCalls, stripToolNoise, stripLinks, wantsLink };
+// Telegram brevity net. The owner's standing order: answers must be DIRECT and
+// CLEAN — "not GPT/Claude-style rambling". The prompt asks for it, but weak
+// models still open with a greeting/agreement throat-clear ("سلام! بله، البته…")
+// and close with a meta-offer ("اگر سؤال دیگری داری بپرس"، "در خدمتم"). This
+// removes ONLY those wrappers so the real answer stands on its own. Deliberately
+// conservative — it strips known filler phrases at the very start/end, never
+// touching the substance in between.
+function tidyTelegram(content) {
+  let t = toPlainText(content).trim();
+  if (!t) return t;
+  // Leading greeting / agreeable throat-clear, possibly a short run of them.
+  const OPENERS = /^\s*(?:سلام(?:\s+عزیزم)?|درود|بله|آره|البته|حتماً|حتما|خب|خوب|باشه|اوکی|اوکِی|عالیه|چه\s+سؤال\s+خوبی|چه\s+سوال\s+خوبی|سؤال\s+خوبی(?:ه|\s+است)|سوال\s+خوبی(?:ه|\s+است)|خواهش\s+می‌کنم)\s*[!،.:؛]+\s*/;
+  let prev;
+  do { prev = t; t = t.replace(OPENERS, ''); } while (t !== prev && t);
+  // Trailing GPT-style meta-offer sentence(s).
+  const TAIL = /(?:^|[\n.!؟?،])\s*(?:اگر\s+(?:سؤال|سوال|چیز|کمک|مورد)[^.!؟?\n]*|(?:سؤال|سوال|کمک|چیز)\s+دیگری[^.!؟?\n]*|می‌?(?:توانم|تونم)\s+(?:بیشتر|کمکِ|کمک)[^.!؟?\n]*|باز(?:م|\s+هم)\s+(?:بپرس|سؤال|سوال)[^.!؟?\n]*|هر\s+(?:سؤال|سوال|وقت)[^.!؟?\n]*بپرس[^.!؟?\n]*|در\s+خدمتم[^.!؟?\n]*|خوشحال\s+می‌?ش(?:وم|م)[^.!؟?\n]*)[.!؟?]?\s*$/;
+  do { prev = t; t = t.replace(TAIL, '').trim(); } while (t !== prev && t);
+  // "As an AI / assistant …" disclaimers anywhere.
+  t = t.replace(/به\s+عنوان\s+(?:یک\s+)?(?:هوش\s+مصنوعی|دستیار|مدلِ?\s+زبانی)[^.!؟?\n]*[.!؟?]?/g, '').trim();
+  return t.replace(/[ \t]{2,}/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+module.exports = { toPlainText, parseTextToolCalls, stripToolNoise, stripLinks, wantsLink, tidyTelegram };

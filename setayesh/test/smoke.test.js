@@ -1711,6 +1711,20 @@ test('toolnoise: stripLinks removes markdown/image/bare links; wantsLink detects
   assert.equal(tn.wantsLink('آدرس سایت هواشناسی چیه'), true, 'asking for a site/address counts');
 });
 
+// toolnoise.tidyTelegram — the brevity net: strip the greeting opener and the
+// GPT-style "anything else?" closer, keep the real answer intact.
+test('toolnoise: tidyTelegram strips filler opener/closer, keeps substance', () => {
+  const tn = require(path.join(ROOT, 'toolnoise.js'));
+  const out = tn.tidyTelegram('سلام! بله، پایتخت فرانسه پاریس است. اگر سؤال دیگری داری بپرس.');
+  assert.ok(out.includes('پاریس'), 'the real answer is kept');
+  assert.ok(!/^سلام/.test(out) && !/^بله/.test(out), 'the greeting opener is gone');
+  assert.ok(!/سؤال دیگری/.test(out), 'the trailing meta-offer is gone');
+  const dis = tn.tidyTelegram('به عنوان یک هوش مصنوعی نمی‌توانم احساس داشته باشم. اما جواب ۴ است.');
+  assert.ok(dis.includes('۴') && !/هوش مصنوعی/.test(dis), 'the AI disclaimer is stripped');
+  // A plain direct answer must pass through untouched.
+  assert.equal(tn.tidyTelegram('دو به‌علاوه دو می‌شود چهار.'), 'دو به‌علاوه دو می‌شود چهار.', 'a clean answer is unchanged');
+});
+
 // runners.js — the language-runner catalogue + ext routing + detection probe.
 test('runners: catalogue maps extensions and probe fills availability', () => {
   const r = require(path.join(ROOT, 'runners.js'));

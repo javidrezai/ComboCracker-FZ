@@ -212,7 +212,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.162';
+const APP_VERSION = '9.9.163';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -2666,7 +2666,7 @@ function openAiToolsFrom(ctx) {
 // Harmony models sometimes emit a tool call as plain text; these helpers parse
 // those out (so we run them for real) and strip any leftover tool-call/harmony
 // tokens so a reply is never raw JSON. See toolnoise.js for the details.
-const { toPlainText, parseTextToolCalls, stripToolNoise, stripLinks, wantsLink } = require('./toolnoise');
+const { toPlainText, parseTextToolCalls, stripToolNoise, stripLinks, wantsLink, tidyTelegram } = require('./toolnoise');
 async function callOpenAiWithTools(providerId, model, systemPrompt, messages, ctx, opts) {
   opts = opts || {};
   const tools = openAiToolsFrom(ctx);
@@ -2990,6 +2990,74 @@ app.post('/api/admin/engine-health/reset', requireAuth, requireAdmin, (req, res)
   }
   saveEngineHealth();
   res.json({ ok: true });
+});
+
+// LIVE KEY TEST — "کلید ها اصلا کار نمیکنن دقیق کار کن".
+// The health panel only shows PAST successes/failures; it can't tell the owner
+// whether a key he JUST typed actually works RIGHT NOW. This pings each
+// configured engine with a tiny real request and reports the exact verdict per
+// engine — and, for Gemini, per KEY in the pool — so he sees "works" / "quota
+// full (429)" / "key rejected (401)" / "model not found (404)" instead of a
+// vague "سقف پر". A pass here ALSO clears that engine's stale health so a
+// working key is put straight back into rotation.
+app.post('/api/admin/test-keys', requireAuth, requireAdmin, async (req, res) => {
+  const modelFor = (id) => {
+    const models = PROVIDERS[id].models || [];
+    return ((models.find((m) => m.best !== 'code') || models[0] || {}).id);
+  };
+  // One tiny real call. Returns a plain verdict the owner can act on.
+  const testCall = async (id, model) => {
+    const started = Date.now();
+    try {
+      const reply = await callProvider(id, model,
+        'Reply with exactly the single word: OK', [{ role: 'user', content: 'ping' }], { maxTokens: 8 });
+      const sample = String(reply || '').replace(/\s+/g, ' ').trim().slice(0, 40);
+      return { ok: true, status: 200, ms: Date.now() - started, sample };
+    } catch (e) {
+      const m = friendlyProviderError(e, PROVIDERS[id] ? PROVIDERS[id].label : id);
+      return { ok: false, status: e.status || m.status || 0, ms: Date.now() - started, error: m.error };
+    }
+  };
+
+  const results = [];
+  // Cloud engines (not gemini/brain) in parallel — bounded by the slowest.
+  const cloudIds = Object.keys(PROVIDERS).filter((id) =>
+    id !== 'gemini' && id !== 'brain' && isConfigured(id));
+  const cloud = await Promise.all(cloudIds.map(async (id) => {
+    const r = await testCall(id, modelFor(id));
+    if (r.ok && engineHealth[id]) Object.assign(engineHealth[id], { streak: 0, cooldownUntil: 0, quarantined: false, needsAttention: null });
+    return Object.assign({ id, label: PROVIDERS[id].label }, r);
+  }));
+  results.push(...cloud);
+
+  // Gemini: test EACH key in the pool so the owner knows which of his keys is
+  // good. Keys share global state (keys.gemini, GEMINI_MODEL, _geminiReady), so
+  // run them sequentially and restore the live pool position afterwards.
+  if (geminiKeyPool.length) {
+    const savedKey = keys.gemini, savedIdx = geminiKeyIdx, savedModel = GEMINI_MODEL, savedReady = _geminiReady;
+    let anyGood = false;
+    for (let i = 0; i < geminiKeyPool.length; i++) {
+      keys.gemini = geminiKeyPool[i];
+      _geminiReady = null;
+      try { await rediscoverGeminiModel(); } catch (e) {}
+      const r = await testCall('gemini', GEMINI_MODEL);
+      if (r.ok) anyGood = true;
+      results.push(Object.assign({
+        id: 'gemini', label: PROVIDERS.gemini.label + ` (کلید ${i + 1})`,
+        keyIndex: i + 1, keyTail: maskSecret(geminiKeyPool[i]), model: GEMINI_MODEL,
+      }, r));
+    }
+    // Restore the live position; if a good key exists, put Gemini back in play.
+    keys.gemini = savedKey; geminiKeyIdx = savedIdx; GEMINI_MODEL = savedModel; _geminiReady = savedReady;
+    if (anyGood && engineHealth.gemini) Object.assign(engineHealth.gemini, { streak: 0, cooldownUntil: 0, quarantined: false, needsAttention: null });
+  }
+
+  // Brain is keyless — report presence only (a 90s python spawn is too slow for
+  // a button), and note the local engine plainly if it isn't configured.
+  if (isConfigured('brain')) results.push({ id: 'brain', label: PROVIDERS.brain.label, ok: true, status: 200, ms: 0, sample: 'روی همین کامپیوتر (بدون کلید)' });
+
+  try { saveEngineHealth(); } catch (e) {}
+  res.json({ tested: results.length, results, at: Date.now() });
 });
 
 // Children reported getting two different answers to the same question. The
@@ -5717,11 +5785,14 @@ async function runTelegramTurn(text, chatId) {
   if (!order.length) return 'هیچ موتوری روی سرور تنظیم نشده — از مرکز کنترل یک کلید API اضافه کن.';
   // Telegram had replied in Chinese/Thai and dumped raw <tool_call> JSON. Lock
   // the output: Persian only, human sentences only, no tool/JSON/markup syntax.
-  let telegramRules = '\n\n=== قانون پاسخ در تلگرام ===\n'
+  let telegramRules = '\n\n=== قانون پاسخ در تلگرام (سخت‌گیرانه) ===\n'
     + '۱) فقط و فقط فارسی بنویس. هرگز چینی، تایلندی یا زبان دیگری به کار نبر مگر کاربر صریحاً بخواهد.\n'
     + '۲) هیچ‌وقت متنِ ابزار، JSON، یا برچسب‌هایی مثل <tool_call> ننویس. ابزارها را در پس‌زمینه استفاده کن و فقط جوابِ انسانیِ نهایی را بده.\n'
-    + '۳) کوتاه، روشن و خانوادگی جواب بده. مستقیم به همان چیزی که پرسیده جواب بده؛ حرفِ نامربوط، شاعرانه یا بی‌معنی نزن.\n'
-    + '۴) هرگز چیزی از خودت نساز. اگر واقعیت را نمی‌دانی، صادقانه بگو «نمی‌دانم» یا منبع را پیشنهاد بده — هرگز جوابِ الکی نده.';
+    + '۳) مستقیم برو سرِ جواب. با سلام، «بله»، «البته»، «حتماً»، «خب» یا هر مقدمه‌چینی شروع نکن. اولین جمله‌ات باید خودِ جواب باشد.\n'
+    + '۴) کوتاه و مفید: معمولاً ۱ تا ۳ جمله. فقط وقتی کاربر توضیح بیشتر یا کد خواست، بلندتر بنویس. حرفِ نامربوط، شاعرانه، تکراری یا پرحرفی ممنوع.\n'
+    + '۵) در پایان تعارف و پیشنهادِ اضافه نده: نه «اگر سؤال دیگری داری بپرس»، نه «در خدمتم»، نه «کمک دیگری لازم داری؟». وقتی جواب تمام شد، تمام کن.\n'
+    + '۶) درباره‌ی خودت یا مدل حرف نزن («به عنوان یک هوش مصنوعی…» ممنوع) و از کاربر لینک/نشانی نخواه؛ خودت مستقل جواب بده.\n'
+    + '۷) هرگز چیزی از خودت نساز. اگر واقعیت را نمی‌دانی، کوتاه بگو «نمی‌دانم» — هرگز جوابِ الکی نده.';
   if (tags.includes('current')) {
     telegramRules += '\n۵) این سؤال به اطلاعاتِ روز نیاز دارد (هوا، اخبار، قیمت…). '
       + 'اول ابزار web_search را صدا بزن، از نتایج واقعی جواب بده و اگر جستجو چیزی نداد، صادقانه بگو که اطلاعاتِ زنده در دسترس نیست — چیزی از خودت نساز.';
@@ -5762,6 +5833,10 @@ async function runTelegramTurn(text, chatId) {
       // one. Enforce it in code (the model kept ignoring the prompt and even
       // hallucinated a fake maps URL), so no stray/invented link ever ships.
       if (reply && !wantsLink(msg)) reply = stripLinks(reply);
+      // Brevity net: strip the greeting/agreement opener and the GPT-style
+      // "anything else?" closer the owner keeps rejecting, so the answer is
+      // direct and clean even when the model ignores the prompt rules.
+      if (reply) reply = tidyTelegram(reply);
       if (reply && isBrainDump(eid, reply)) { continue; }   // note-dump, not an answer
       if (reply) {
         try { noteEngine(eid, true); } catch (e) {}

@@ -1,4 +1,4 @@
-/* SETAYESH_BUILD 9.9.162 */
+/* SETAYESH_BUILD 9.9.163 */
 (function(){
 'use strict';
 
@@ -2614,6 +2614,36 @@ function loadEngineHealth(){
     adminFetch('/api/admin/engine-health/reset',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})
       .then(function(){ ccNote('همه‌ی موتورها دوباره در چرخه‌اند.'); loadEngineHealth(); })
       .catch(function(e){ ccNote(e.message,true); });
+  }); }
+  var tb=$('ccTestKeys');
+  if(tb&&!tb._wired){ tb._wired=true; tb.addEventListener('click',function(){
+    var out=$('ccKeyTest'); if(out)out.innerHTML='<div class="tk-hint">در حال آزمایش هر کلید با یک درخواست واقعی… چند لحظه صبر کن.</div>';
+    tb.disabled=true; var old=tb.textContent; tb.textContent='در حال آزمایش…';
+    adminFetch('/api/admin/test-keys',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})
+      .then(function(d){
+        if(out){
+          out.innerHTML='';
+          (d.results||[]).forEach(function(r){
+            var col=r.ok?'#34d399':'#fb7185';
+            var row=el('div','tk-card');
+            row.setAttribute('style','padding:8px 11px;margin-bottom:6px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;border-right:3px solid '+col);
+            var dot=el('span');dot.setAttribute('style','width:9px;height:9px;border-radius:50%;background:'+col+';flex:none');
+            var name=el('span');name.textContent=r.label;name.setAttribute('style','font-size:12.5px;flex:1;min-width:120px;font-weight:600');
+            var v=el('span');
+            v.textContent=r.ok?('کار می‌کند ✅'+(r.ms?(' · '+(r.ms/1000).toFixed(1)+'s'):'')):('کار نمی‌کند ✕'+(r.status?(' ('+r.status+')'):''));
+            v.setAttribute('style','font-size:11.5px;color:'+col);
+            row.appendChild(dot);row.appendChild(name);row.appendChild(v);
+            var detail=r.ok?(r.sample?('پاسخ نمونه: '+r.sample):''):(r.error||'');
+            if(r.keyTail)detail=('کلید: '+r.keyTail+(r.model?(' · مدل: '+r.model):'')+(detail?(' — '+detail):''));
+            if(detail){var w=el('div');w.textContent=detail;w.setAttribute('style','flex-basis:100%;font-size:11px;color:#94a3b8;margin-top:2px');row.appendChild(w);}
+            out.appendChild(row);
+          });
+          if(!(d.results||[]).length)out.innerHTML='<div class="tk-hint">هیچ کلیدی برای آزمایش تنظیم نشده — اول یک کلید بگذار.</div>';
+        }
+        loadEngineHealth();
+      })
+      .catch(function(e){ if(out)out.innerHTML='<div class="tk-hint" style="color:#fb7185">آزمایش انجام نشد: '+(e.message||'')+'</div>'; })
+      .then(function(){ tb.disabled=false; tb.textContent=old; });
   }); }
 }
 
