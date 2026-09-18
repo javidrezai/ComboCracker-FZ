@@ -212,7 +212,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.153';
+const APP_VERSION = '9.9.154';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -1425,6 +1425,11 @@ const REQUEST_TIMEOUT_MS = 120000;
 // own, longer leash.
 const PROVIDER_TIMEOUT_MS = Number(process.env.SETAYESH_PROVIDER_TIMEOUT_MS) || 60000;
 const LOCAL_PROVIDER_TIMEOUT_MS = Number(process.env.SETAYESH_LOCAL_TIMEOUT_MS) || 180000;
+// Ollama's OpenAI-compatible /v1 endpoint ignores num_ctx and defaults to a
+// 2048-token window that silently truncates the system prompt + history, so the
+// local model answers half-blind. The NATIVE /api/chat endpoint DOES honour
+// options.num_ctx, so the local engine uses that with a real window.
+const LOCAL_NUM_CTX = Number(process.env.SETAYESH_LOCAL_NUM_CTX) || 8192;
 function providerTimeout(providerId) {
   return (providerId === 'local' || providerId === 'brain') ? LOCAL_PROVIDER_TIMEOUT_MS : PROVIDER_TIMEOUT_MS;
 }
@@ -1470,8 +1475,33 @@ async function callAnthropic(providerId, model, systemPrompt, messages, opts) {
   return (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n');
 }
 
+// The local Ollama engine goes through Ollama's NATIVE /api/chat (not the /v1
+// shim) so it gets a real num_ctx window. Message content is flattened to plain
+// text (a small local model gets plain conversation, never multimodal parts).
+async function callOllamaNative(model, systemPrompt, messages, opts) {
+  opts = opts || {};
+  const base = (baseUrlFor('local') || 'http://localhost:11434/v1').replace(/\/v1\/?$/, '');
+  const flat = messages.map((m) => ({
+    role: m.role,
+    content: typeof m.content === 'string' ? m.content
+      : (Array.isArray(m.content) ? m.content.map((p) => (p && p.text) || '').join('\n') : String(m.content || '')),
+  }));
+  const options = { num_ctx: LOCAL_NUM_CTX };
+  if (opts.steady) options.temperature = 0.3;
+  const res = await fetchWithTimeout(base + '/api/chat', {
+    method: 'POST',
+    timeoutMs: providerTimeout('local'),
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model, stream: false, messages: [{ role: 'system', content: systemPrompt }, ...flat], options }),
+  });
+  if (!res.ok) throw Object.assign(new Error('provider error'), { status: res.status, detail: await res.text() });
+  const data = await res.json();
+  return (data.message && data.message.content) || '';
+}
+
 async function callOpenAiCompatible(providerId, model, systemPrompt, messages, _retried, opts) {
   opts = opts || {};
+  if (providerId === 'local') return callOllamaNative(model, systemPrompt, messages, opts);
   const headers = {
     'Content-Type': 'application/json',
     Authorization: `Bearer ${keys[providerId]}`,
