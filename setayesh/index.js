@@ -212,7 +212,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.159';
+const APP_VERSION = '9.9.160';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -6401,8 +6401,12 @@ function startLibInstall() {
   const { spawn } = require('child_process');
   const libsDir = path.join(BRAIN_DIR, 'libs');
   const reqFile = path.join(BRAIN_DIR, 'requirements-libs.txt');
-  const child = spawn(PYTHON_BIN, ['-m', 'pip', 'install', '--upgrade', '--target', libsDir, '-r', reqFile],
-    { cwd: BRAIN_DIR, windowsHide: true });
+  // `--no-user` + PIP_USER=0: some Pythons (Microsoft-Store Python on Windows)
+  // force `--user`, which pip refuses to combine with `--target` — the exact
+  // "Can not combine '--user' and '--target'" error the owner hit. Overriding it
+  // both ways makes the install work regardless of the machine's pip config.
+  const child = spawn(PYTHON_BIN, ['-m', 'pip', 'install', '--no-user', '--upgrade', '--target', libsDir, '-r', reqFile],
+    { cwd: BRAIN_DIR, windowsHide: true, env: Object.assign({}, process.env, { PIP_USER: '0' }) });
   const cap = (d) => { _libInstallLog = (_libInstallLog + d.toString('utf8')).slice(-4000); };
   child.stdout.on('data', cap); child.stderr.on('data', cap);
   const timer = setTimeout(() => { try { child.kill('SIGKILL'); } catch (e) {} }, 300000);
