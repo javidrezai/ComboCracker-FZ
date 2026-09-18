@@ -21,6 +21,12 @@ _WEB_HINTS = ("جست‌وجو وب", "جستجو وب", "سرچ وب", "توی 
 _KB_HINTS = ("چیست", "کیست", "یعنی چه", "توضیح", "درباره", "معرفی", "چطور", "چگونه", "what is", "who is", "explain")
 _NOTE_HINTS = ("یادداشت کن", "ذخیره کن", "نوت کن", "بنویس که", "ثبت کن", "save note", "note this", "remember that")
 _SUM_HINTS = ("خلاصه کن", "خلاصه‌ای", "خلاصه بده", "جمع‌بندی", "summarize", "summary of")
+# واژه‌های عددی فارسی ۰..۱۰ — فقط وقتی یک عملگر هم در جمله باشد به رقم تبدیل می‌شوند،
+# تا «دو به‌علاوه سه» هم مثل «۲ + ۳» محاسبه شود (نه فقط ارقام).
+_FA_NUM_WORDS = [
+    ("صفر", "0"), ("یک", "1"), ("دو", "2"), ("سه", "3"), ("چهار", "4"),
+    ("پنج", "5"), ("شش", "6"), ("هفت", "7"), ("هشت", "8"), ("نه", "9"), ("ده", "10"),
+]
 
 
 class LocalFallbackLLM:
@@ -64,8 +70,26 @@ class LocalFallbackLLM:
             return f"{title}: {body}"
         return ""
 
+    @staticmethod
+    def _relevant(q, kb):
+        # Only present a retrieved vault doc as the answer when it actually
+        # shares a meaningful word with the question — otherwise the fallback
+        # would dump an unrelated note ("پرت و پلا") for a greeting or a sum.
+        def toks(s):
+            s = s.translate(_FA_DIGITS).lower()
+            return set(w for w in re.split(r"[^0-9a-z؀-ۿ]+", s) if len(w) >= 3)
+        # Compare only the real question, not the retrieved-knowledge block that
+        # the loop appends after it (otherwise the question "overlaps" itself).
+        qonly = re.split(r"###|دانش مرتبط|دانش والت", q)[0]
+        return bool(toks(qonly) & toks(kb))
+
     def _math_expr(self, q):
         s = q.translate(_FA_DIGITS)
+        # Turn spelled-out Persian numbers into digits, but only when an operator
+        # (word or symbol) is present, so plain prose like «نه» (=no) is untouched.
+        if any(w in s for w, _ in _OP_WORDS) or re.search(r"[+\-*/×]", s):
+            for w, n in _FA_NUM_WORDS:
+                s = re.sub(r"(?<![؀-ۿ])" + re.escape(w) + r"(?![؀-ۿ])", f" {n} ", s)
         for w, op in _OP_WORDS:
             s = s.replace(w, f" {op} ")
         # عبارتی که حداقل یک عملگر بین اعداد دارد (با پرانتز اختیاری)
@@ -123,9 +147,10 @@ class LocalFallbackLLM:
         if any(h in ql for h in _KB_HINTS):
             return f"TOOL: search({q})"
 
-        # ۵) پاسخ از روی دانشِ بازیابی‌شده، یا معرفی پیش‌فرض
+        # ۵) پاسخ از روی دانشِ بازیابی‌شده — فقط اگر واقعاً به سؤال مربوط باشد،
+        # وگرنه معرفی پیش‌فرض (تا نوتِ بی‌ربط به‌عنوان جواب دامپ نشود).
         kb = self._first_knowledge(last)
-        if kb:
+        if kb and self._relevant(q, kb):
             return f"FINAL: بر اساس دانش والت — {kb}"
         return ("FINAL: من ستایش‌ام، مغز محلی و شفاف شما. الان روی موتور محلیِ جایگزین کار می‌کنم "
                 "(اولاما در دسترس نیست). می‌توانم محاسبه کنم، زمان بدهم، گراف دانش والت را جست‌وجو کنم "

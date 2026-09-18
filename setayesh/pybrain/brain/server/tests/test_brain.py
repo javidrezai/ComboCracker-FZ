@@ -297,6 +297,28 @@ class LocalFallbackTests(unittest.TestCase):
         out = self.llm.chat([{"role": "user", "content": "درخواست کاربر:\nساعت الان چند است؟"}])
         self.assertIn("now()", out)
 
+    def test_math_spelled_persian_words(self):
+        # واژه‌های عددی فارسی هم باید محاسبه شوند، نه فقط ارقام.
+        out = self.llm.chat([{"role": "user", "content": "درخواست کاربر:\nدو به‌علاوه سه چند می‌شود؟"}])
+        self.assertIn("TOOL: calc(", out)
+        self.assertIn("2+3", out.replace(" ", ""))
+
+    def test_irrelevant_knowledge_not_dumped(self):
+        # اگر دانشِ بازیابی‌شده بی‌ربط باشد، نباید به‌عنوان جواب دامپ شود.
+        msg = ("درخواست کاربر:\nسلام حالت خوبه؟\n\n"
+               "دانش مرتبط:\n### brain-architecture\nمعماری مغز و اجزای آن.")
+        out = self.llm.chat([{"role": "user", "content": msg}])
+        self.assertTrue(out.startswith("FINAL:"))
+        self.assertNotIn("brain-architecture", out)
+        self.assertNotIn("معماری مغز", out)
+
+    def test_relevant_knowledge_is_used(self):
+        # اگر دانش واقعاً مرتبط باشد (بدون واژه‌های راهنما)، از آن استفاده می‌شود.
+        msg = ("درخواست کاربر:\nمعماری مغز خیلی جالب است\n\n"
+               "دانش مرتبط:\n### معماری مغز\nمغز از چند بخش تشکیل شده است.")
+        out = self.llm.chat([{"role": "user", "content": msg}])
+        self.assertIn("بر اساس دانش والت", out)
+
     def test_knowledge_intent_routes_to_search(self):
         out = self.llm.chat([{"role": "user", "content": "درخواست کاربر:\nستایش چیست؟"}])
         self.assertIn("TOOL: search(", out)
