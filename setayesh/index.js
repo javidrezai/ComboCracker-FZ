@@ -116,6 +116,7 @@ const { TOOLS_SPEC } = require('./toolspec');
 const { EDITABLE_SOURCES, READABLE_SOURCES, SELF_MAP } = require('./sourcemap');
 const { EDITABLE_KEYS } = require('./configkeys');
 const { PII_PATTERNS, HIGH_VALUE, SECRET_PATTERNS, KIND_LABEL } = require('./privacydata');
+const { buildSynthesisPrompt } = require('./council');
 const { xmlToText, htmlToText, textToPrintableHtml } = require('./htmltext');
 const selfsign = require('./selfsign');
 const helmet = require('helmet');
@@ -208,7 +209,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.144';
+const APP_VERSION = '9.9.145';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -3617,22 +3618,9 @@ async function runCouncil(members, systemPrompt, messages) {
 }
 
 // Turn the raw multi-model answers into one prompt asking a model to merge them.
-function buildSynthesisPrompt(basePrompt, results, question) {
-  const answers = results
-    .filter((r) => r.reply)
-    .map((r, i) => `--- پاسخ مدل ${i + 1} (${PROVIDERS[r.id].label}) ---\n${r.reply}`)
-    .join('\n\n');
-  return `${basePrompt}
-
-*** حالت شورا (COUNCIL MODE) ***
-چند مدل هوش مصنوعی مختلف به‌طور مستقل به سوال زیرِ کاربر جواب داده‌اند:
-"${question}"
-
-پاسخ‌های آن‌ها:
-${answers}
-
-وظیفه‌ات: این پاسخ‌ها را بخوان، درست‌ترین و کامل‌ترین اطلاعات را از میانشان استخراج کن، اگر تناقض مهمی بین‌شان بود خیلی کوتاه اشاره کن (نه بیشتر از یکی دو جمله)، و یک پاسخ نهایی، روان و مستقیم برای کاربر بنویس. نگو "مدل ۱ گفت..."، "مدل ۲ گفت..." — مستقیم جواب نهایی خودت را بده، انگار خودت به‌تنهایی و با اطمینان بیشتر به این سوال جواب می‌دهی.`;
-}
+// buildSynthesisPrompt (council-mode prompt) lives in ./council; a labelFor
+// callback resolves provider ids to labels so the module stays state-free.
+const providerLabel = (id) => (PROVIDERS[id] ? PROVIDERS[id].label : id);
 
 // Run the full pipeline: consult members -> synthesize -> return one reply.
 async function runCouncilPipeline({ username, mode, codelib, message, history, preferredId, preferredModel, max }) {
@@ -3648,7 +3636,7 @@ async function runCouncilPipeline({ username, mode, codelib, message, history, p
   const usable = results.filter((r) => r.reply);
   if (!usable.length) throw Object.assign(new Error('هیچ‌کدام از مدل‌های شورا جواب ندادند.'), { councilResults: results });
 
-  const synthesisPrompt = buildSynthesisPrompt(basePrompt, usable, message);
+  const synthesisPrompt = buildSynthesisPrompt(basePrompt, usable, message, providerLabel);
   const finalReply = await callProvider(preferredId, preferredModel, synthesisPrompt, [
     { role: 'user', content: 'پاسخ نهایی و یکپارچه را بنویس.' },
   ]);
@@ -4712,7 +4700,7 @@ async function runResearchCycle(opts) {
       // the admin's extra attention even though it's still just "pending".
       const lens = usable.map((r) => r.reply.length);
       disagreed = usable.length > 1 && (Math.max(...lens) > Math.min(...lens) * 2.5);
-      const synth = buildSynthesisPrompt(researchSystemPrompt, usable, consultQuestion);
+      const synth = buildSynthesisPrompt(researchSystemPrompt, usable, consultQuestion, providerLabel);
       setActivity('در حال جمع‌بندی آموخته‌ها با مدل‌ها…');
       mergedContent = await callProvider(preferredId, preferredModel, synth, [{ role: 'user', content: 'خلاصه‌ی نهاییِ دقیق و کامل را بنویس (حدود ۲۵۰ کلمه)، با نکته‌های عملی.' }]);
       sources = usable.map((r) => PROVIDERS[r.id].label);

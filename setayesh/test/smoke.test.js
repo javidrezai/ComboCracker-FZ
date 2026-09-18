@@ -1697,6 +1697,23 @@ test('mathutil: tryCompute does arithmetic and unit conversions exactly', () => 
   assert.equal(mu.convertUnit(0, 'c', 'k'), 273.15, 'celsius→kelvin');
 });
 
+// council.js — synthesis prompt composes members' answers with a label callback.
+test('council: buildSynthesisPrompt folds answers in and resolves labels', () => {
+  const { buildSynthesisPrompt } = require(path.join(ROOT, 'council.js'));
+  const out = buildSynthesisPrompt('BASE', [
+    { id: 'gemini', reply: 'answer A' },
+    { id: 'groq', reply: 'answer B' },
+    { id: 'x', reply: '' },
+  ], 'why is the sky blue?', (id) => ({ gemini: 'Gemini', groq: 'Groq' }[id] || id));
+  assert.ok(out.startsWith('BASE'), 'base prompt kept at the top');
+  assert.ok(out.includes('why is the sky blue?'), 'question included');
+  assert.ok(out.includes('Gemini') && out.includes('Groq'), 'labels resolved via callback');
+  assert.ok(out.includes('answer A') && out.includes('answer B'), 'non-empty answers included');
+  assert.ok(!out.includes('مدل 3') , 'empty replies are filtered out');
+  // Without a labelFor it falls back to the id, never throwing.
+  assert.ok(buildSynthesisPrompt('B', [{ id: 'zzz', reply: 'r' }], 'q').includes('zzz'), 'id fallback');
+});
+
 // privacydata.js — the outbound-privacy pattern tables detect the sensitive kinds.
 test('privacydata: PII/secret patterns match and labels/high-value are consistent', () => {
   const pd = require(path.join(ROOT, 'privacydata.js'));
