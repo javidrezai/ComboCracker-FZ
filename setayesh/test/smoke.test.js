@@ -1,0 +1,2145 @@
+'use strict';
+
+// Setayesh AI — critical-path smoke tests.
+//
+// A safety net for refactoring: boots the real server on an ephemeral port
+// with all state redirected to a throwaway temp dir (so no real account,
+// memory, or config is touched), then exercises the flows that must never
+// silently break — auth, config gating, memory CRUD, connectors status, and
+// the SPA catch-all. Uses only Node's built-in test runner and fetch; no new
+// dependencies. Run with: npm test
+
+const { test, before, after } = require('node:test');
+const assert = require('node:assert/strict');
+const { spawn } = require('node:child_process');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+
+const ROOT = path.join(__dirname, '..');
+const PKG = require(path.join(ROOT, 'package.json'));
+const PORT = 3900 + Math.floor(Math.random() * 900);
+const BASE = `http://127.0.0.1:${PORT}`;
+const ADMIN = { username: 'admin', password: 'setayesh123' };
+
+let child;
+let tmp;
+
+function api(p, { method = 'GET', token, body } = {}) {
+  const headers = {};
+  if (token) headers.Authorization = 'Bearer ' + token;
+  if (body !== undefined) headers['Content-Type'] = 'application/json';
+  return fetch(BASE + p, { method, headers, body: body !== undefined ? JSON.stringify(body) : undefined });
+}
+
+async function waitForHealth(timeoutMs = 20000) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    try {
+      const r = await fetch(BASE + '/api/health');
+      if (r.ok) return;
+    } catch (e) { /* not up yet */ }
+    await new Promise((r) => setTimeout(r, 250));
+  }
+  throw new Error('server did not become healthy in time');
+}
+
+before(async () => {
+  tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'setayesh-test-'));
+  const env = Object.assign({}, process.env, {
+    PORT: String(PORT),
+    SETAYESH_HOST: '127.0.0.1',
+    // Redirect every piece of persistent state into the temp dir.
+    SETAYESH_USERS_FILE: path.join(tmp, 'users.json'),
+    SETAYESH_CONFIG_FILE: path.join(tmp, 'config'),
+    SETAYESH_BACKUP_DIR: path.join(tmp, 'backups'),
+    SETAYESH_NIGHT_FILE: path.join(tmp, 'night.json'),
+    SETAYESH_BOARD_FILE: path.join(tmp, 'board.json'),
+    SETAYESH_MEMORY_FILE: path.join(tmp, 'memory.json'),
+    SETAYESH_DEVICES_FILE: path.join(tmp, 'devices.json'),
+    SETAYESH_RAG_FILE: path.join(tmp, 'rag.json'),
+    SETAYESH_HOMEDEV_FILE: path.join(tmp, 'homedevices.json'),
+    SETAYESH_NOTIFY_FILE: path.join(tmp, 'notify.json'),
+    SETAYESH_SYNC_FILE: path.join(tmp, 'sync.json'),
+    SETAYESH_CHATS_DIR: path.join(tmp, 'chats'),
+    SETAYESH_HEALTH_FILE: path.join(tmp, 'engine-health.json'),
+    // Keep any generated TLS material inside the temp dir, never the repo.
+    SETAYESH_TLS_CERT: path.join(tmp, 'tls-cert.pem'),
+    SETAYESH_TLS_KEY: path.join(tmp, 'tls-key.pem'),
+  });
+  child = spawn(process.execPath, [path.join(ROOT, 'index.js')], { cwd: tmp, env, stdio: 'ignore' });
+  child.on('error', (e) => { throw e; });
+  await waitForHealth();
+});
+
+after(() => {
+  try { child && child.kill('SIGKILL'); } catch (e) {}
+  try { if (tmp) fs.rmSync(tmp, { recursive: true, force: true }); } catch (e) {}
+  // A couple of files have no env override and land next to index.js; tidy them.
+  for (const f of ['.setayesh-connectors.json', '.setayesh-sessions.json', '.setayesh-pending-verify.json',
+                   '.setayesh-engine-health.json']) {
+    try { fs.rmSync(path.join(ROOT, f), { force: true }); } catch (e) {}
+  }
+  try { fs.rmSync(path.join(ROOT, 'code-library'), { recursive: true, force: true }); } catch (e) {}
+  for (const f of ['tls-cert.pem', 'tls-key.pem']) {
+    try { fs.rmSync(path.join(ROOT, f), { force: true }); } catch (e) {}
+  }
+});
+
+test('health reports ok', async () => {
+  const d = await (await api('/api/health')).json();
+  assert.equal(d.ok, true);
+});
+
+test('version matches package.json', async () => {
+  const d = await (await api('/api/version')).json();
+  assert.equal(d.version, PKG.version);
+});
+
+// The frontend build markers are the single guard against a silent partial
+// install (index.html/index.js updating while app.js/brainmap.js stay old).
+// If these drift from the package version, the integrity check would false-
+// positive forever, so the tests refuse to let them fall out of sync.
+test('frontend build markers match the package version', () => {
+  const files = ['public/app.js', 'public/brainmap.js', 'public/index.html'];
+  for (const rel of files) {
+    const head = fs.readFileSync(path.join(ROOT, rel), 'utf8').slice(0, 600);
+    const m = head.match(/SETAYESH_BUILD\s+([0-9]+\.[0-9]+\.[0-9]+)/);
+    assert.ok(m, `missing SETAYESH_BUILD marker in ${rel}`);
+    assert.equal(m[1], PKG.version, `stale build marker in ${rel}`);
+  }
+});
+
+test('served shell injects the version into asset URLs (no __VER__ left)', async () => {
+  const html = await (await fetch(BASE + '/')).text();
+  assert.ok(!html.includes('__VER__'), 'shell still contains the __VER__ placeholder');
+  assert.ok(html.includes('?v=' + PKG.version), 'shell asset URLs are not stamped with the version');
+});
+
+test('integrity endpoint reports a healthy install', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  const d = await (await api('/api/admin/integrity', { token })).json();
+  assert.equal(d.ok, true, 'integrity should be ok: ' + JSON.stringify(d.stale || []));
+  assert.equal(d.version, PKG.version);
+});
+
+test('login rejects a wrong password with 401', async () => {
+  const r = await api('/api/login', { method: 'POST', body: { username: 'admin', password: 'wrong-pass' } });
+  assert.equal(r.status, 401);
+});
+
+test('login accepts the seeded admin and returns a token', async () => {
+  const r = await api('/api/login', { method: 'POST', body: ADMIN });
+  assert.equal(r.status, 200);
+  const d = await r.json();
+  assert.ok(d.token, 'expected a token');
+  assert.equal(d.username, 'admin');
+});
+
+test('config is gated behind auth', async () => {
+  const r = await api('/api/config');
+  assert.equal(r.status, 401);
+});
+
+test('config returns providers and admin flag for the admin', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  const d = await (await api('/api/config', { token })).json();
+  assert.ok(Array.isArray(d.providers) && d.providers.length > 0, 'expected providers list');
+  assert.equal(d.isAdmin, true);
+});
+
+test('memory add, list, and delete round-trip', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  const text = 'یادداشت تست ' + Date.now();
+
+  const created = await api('/api/memory', { method: 'POST', token, body: { text, kind: 'fact' } });
+  assert.equal(created.status, 201);
+  const id = (await created.json()).entry.id;
+  assert.ok(id, 'expected a new memory id');
+
+  const list1 = await (await api('/api/memory', { token })).json();
+  assert.ok(list1.memory.some((m) => m.id === id), 'new memory should appear in the list');
+
+  const del = await api('/api/memory/' + id, { method: 'DELETE', token });
+  assert.equal(del.status, 200);
+
+  const list2 = await (await api('/api/memory', { token })).json();
+  assert.ok(!list2.memory.some((m) => m.id === id), 'deleted memory should be gone');
+});
+
+test('connectors report a clean not-configured Google state', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  const d = await (await api('/api/connectors', { token })).json();
+  assert.equal(d.google.configured, false);
+  assert.equal(d.google.connected, false);
+  assert.match(d.redirectUri, /\/api\/oauth\/google\/callback$/);
+});
+
+test('unknown paths fall through to the SPA shell', async () => {
+  const r = await api('/some/unknown/deep/link');
+  assert.equal(r.status, 200);
+  assert.match(r.headers.get('content-type') || '', /text\/html/);
+});
+
+test('self-heal incidents endpoint starts empty', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  const d = await (await api('/api/admin/incidents', { token })).json();
+  assert.ok(Array.isArray(d.incidents), 'expected an incidents array');
+  assert.equal(d.count, 0);
+});
+
+// A download <a href> can't send the Authorization header, so a GET may present
+// the session token as ?auth=… instead — the fix that makes file/ZIP downloads
+// work (on the phone especially). A POST must NOT accept the query token.
+test('auth: GET accepts ?auth= token, POST does not', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  const okGet = await fetch(`${BASE}/api/chats?auth=${encodeURIComponent(token)}`); // no Authorization header
+  assert.equal(okGet.status, 200, 'GET with ?auth= is authorized');
+  const noHeader = await fetch(`${BASE}/api/chats`);
+  assert.equal(noHeader.status, 401, 'GET with neither header nor query is rejected');
+  const post = await fetch(`${BASE}/api/chats?auth=${encodeURIComponent(token)}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chats: [] }) });
+  assert.equal(post.status, 401, 'a state-changing PUT does NOT accept the query token');
+});
+
+test('encrypted backup encrypts and decrypts back to a valid zip', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  const pass = 'test-passphrase-123';
+  const made = await api('/api/admin/backups/encrypt', { method: 'POST', token, body: { passphrase: pass } });
+  assert.equal(made.status, 200);
+  const name = (await made.json()).backup.file;
+  assert.match(name, /^backup-.*\.enc$/);
+
+  // The encrypted file lands in the temp backup dir this test configured.
+  const encPath = path.join(tmp, 'backups', name);
+  assert.ok(fs.existsSync(encPath), 'encrypted backup should exist on disk');
+  assert.equal(fs.readFileSync(encPath).slice(0, 5).toString('ascii'), 'STYS1');
+
+  // Decrypt it with the shipped standalone tool (built-ins only) and confirm
+  // we get a real zip back.
+  const outZip = path.join(tmp, 'restored.zip');
+  const dec = require('node:child_process').spawnSync(
+    process.execPath, [path.join(ROOT, 'decrypt-backup.js'), encPath, outZip],
+    { env: Object.assign({}, process.env, { SETAYESH_BACKUP_PASSPHRASE: pass }), encoding: 'utf8' });
+  assert.equal(dec.status, 0, 'decrypt tool should succeed: ' + (dec.stderr || ''));
+  assert.ok(fs.existsSync(outZip), 'decrypted zip should exist');
+  assert.equal(fs.readFileSync(outZip).slice(0, 2).toString('ascii'), 'PK', 'output should be a zip');
+
+  // Wrong passphrase must fail (authenticated encryption).
+  const bad = require('node:child_process').spawnSync(
+    process.execPath, [path.join(ROOT, 'decrypt-backup.js'), encPath, path.join(tmp, 'nope.zip')],
+    { env: Object.assign({}, process.env, { SETAYESH_BACKUP_PASSPHRASE: 'wrong-pass' }), encoding: 'utf8' });
+  assert.notEqual(bad.status, 0, 'wrong passphrase must not decrypt');
+});
+
+test('drive upload is refused until Google is connected', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  const r = await api('/api/admin/backups/encrypt-upload', { method: 'POST', token, body: { passphrase: 'test-passphrase-123' } });
+  assert.equal(r.status, 400);
+  assert.match((await r.json()).error, /گوگل|کانکتور/);
+});
+
+test('telegram reports a clean not-configured state', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  const d = await (await api('/api/admin/telegram', { token })).json();
+  assert.equal(d.configured, false);
+  assert.equal(d.polling, false);
+});
+
+test('family board post, list, and delete round-trip', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  const text = 'پیام تابلو تست ' + Date.now();
+
+  const created = await api('/api/board', { method: 'POST', token, body: { text } });
+  assert.equal(created.status, 201);
+  const id = (await created.json()).message.id;
+  assert.ok(id, 'expected a new board message id');
+
+  const list1 = await (await api('/api/board', { token })).json();
+  assert.ok(list1.messages.some((m) => m.id === id), 'new message should appear on the board');
+
+  const del = await api('/api/board/' + id, { method: 'DELETE', token });
+  assert.equal(del.status, 200);
+
+  const list2 = await (await api('/api/board', { token })).json();
+  assert.ok(!list2.messages.some((m) => m.id === id), 'deleted message should be gone');
+});
+
+test('code library create, list, read, and delete round-trip', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  const name = 'smoketest-' + Date.now();
+  const text = 'print("hello from a smoke test")';
+
+  const made = await api('/api/codelib', { method: 'POST', token, body: { name, text } });
+  assert.equal(made.status, 200);
+  const libs = (await made.json()).libs;
+  assert.ok(libs.some((l) => l.name === name), 'new library should appear in the list');
+
+  const read = await (await api('/api/codelib?name=' + encodeURIComponent(name), { token })).json();
+  assert.equal(read.text, text);
+
+  const del = await api('/api/codelib?name=' + encodeURIComponent(name), { method: 'DELETE', token });
+  assert.equal(del.status, 200);
+  const after = (await del.json()).libs;
+  assert.ok(!after.some((l) => l.name === name), 'deleted library should be gone');
+});
+
+test('devices: register (phone layout), set prefs, list, and revoke', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  const id = 'testdev-' + Date.now();
+
+  const reg = await api('/api/device', { method: 'POST', token, body: { id, screenW: 400, screenH: 800, touch: true, platform: 'TestOS' } });
+  assert.equal(reg.status, 200);
+  const d = await reg.json();
+  assert.equal(d.kind, 'phone');
+  assert.equal(d.layout.compact, true);
+  assert.equal(d.known, false);
+
+  const prefs = await api('/api/device/prefs', { method: 'POST', token, body: { id, prefs: { engine: 'anthropic' } } });
+  assert.equal(prefs.status, 200);
+  assert.equal((await prefs.json()).prefs.engine, 'anthropic');
+
+  const list = await (await api('/api/admin/devices', { token })).json();
+  assert.ok(list.devices.some((x) => x.id === id), 'registered device should be listed');
+
+  const del = await api('/api/admin/devices/' + id, { method: 'DELETE', token });
+  assert.equal(del.status, 200);
+  const list2 = await (await api('/api/admin/devices', { token })).json();
+  assert.ok(!list2.devices.some((x) => x.id === id), 'revoked device should be gone');
+});
+
+test('sync: status, exchange refused when off, and settings update', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+
+  const st = await (await api('/api/admin/sync', { token })).json();
+  assert.equal(st.enabled, false);
+  assert.equal(st.keySet, false);
+  assert.ok(Array.isArray(st.myAddresses), 'expected myAddresses');
+
+  // The peer endpoint refuses everyone while sync is off (no shared key).
+  const off = await api('/api/sync/exchange', { method: 'POST', body: { payload: 'x' } });
+  assert.equal(off.status, 403);
+
+  const upd = await api('/api/admin/sync/settings', { method: 'POST', token, body: { enabled: true, role: 'peer', sharedKey: 'test-shared-key' } });
+  assert.equal(upd.status, 200);
+  const s2 = await upd.json();
+  assert.equal(s2.enabled, true);
+  assert.equal(s2.keySet, true);
+
+  // A wrong-key payload now fails to decrypt -> 401, proving the key gates it.
+  const bad = await api('/api/sync/exchange', { method: 'POST', body: { payload: 'not-valid-base64-cipher' } });
+  assert.equal(bad.status, 401);
+});
+
+test('night: read settings, update window, add and delete a task', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+
+  const st = await (await api('/api/admin/night', { token })).json();
+  assert.ok(st.settings && typeof st.settings.enabled === 'boolean', 'expected night settings');
+  assert.equal(typeof st.inQuietHours, 'boolean');
+
+  const upd = await api('/api/admin/night/settings', { method: 'POST', token, body: { startHour: 1, endHour: 6 } });
+  assert.equal(upd.status, 200);
+  const s2 = (await upd.json()).settings;
+  assert.equal(s2.startHour, 1);
+  assert.equal(s2.endHour, 6);
+
+  const add = await api('/api/admin/night/tasks', { method: 'POST', token, body: { text: 'کار شب تست' } });
+  assert.equal(add.status, 200);
+  const tasks = (await add.json()).tasks;
+  const id = tasks[tasks.length - 1].id;
+  assert.ok(id, 'expected a task id');
+
+  const del = await api('/api/admin/night/tasks/' + id, { method: 'DELETE', token });
+  assert.equal(del.status, 200);
+  assert.ok(!(await del.json()).tasks.some((t) => t.id === id), 'task should be gone');
+});
+
+test('notifications: clean list, notify-status, and mark-seen work', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+
+  const list = await (await api('/api/notifications', { token })).json();
+  assert.ok(Array.isArray(list.items), 'expected an items array');
+  assert.equal(typeof list.unseen, 'number');
+
+  const status = await (await api('/api/admin/notify-status', { token })).json();
+  assert.equal(status.emailConfigured, false);
+
+  const seen = await api('/api/notifications/seen', { method: 'POST', token });
+  assert.equal(seen.status, 200);
+  assert.equal((await seen.json()).ok, true);
+});
+
+test('home devices: drivers, scan state, empty registry, and step-up guard', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+
+  // Registry starts empty for the admin.
+  const list = await (await api('/api/home/devices', { token })).json();
+  assert.ok(Array.isArray(list.devices), 'expected a devices array');
+  assert.equal(list.admin, true);
+
+  // Drivers are enumerable (Samsung TV, Canon printer, Tuya, Xiaomi, ...).
+  const drv = await (await api('/api/home/drivers', { token })).json();
+  assert.ok(Array.isArray(drv.drivers) && drv.drivers.length > 0, 'expected a drivers list');
+  assert.ok(drv.drivers.every((d) => d.id && d.label), 'each driver has an id and label');
+
+  // Scanner reports an idle state before any scan.
+  const scan = await (await api('/api/home/scan', { token })).json();
+  assert.equal(scan.running, false);
+  assert.ok('found' in scan, 'scan state exposes a found array');
+
+  // The permission matrix and the log are readable.
+  const perms = await (await api('/api/home/permissions', { token })).json();
+  assert.ok(perms.perms && Array.isArray(perms.grants), 'expected perms and grants');
+  const log = await (await api('/api/home/log', { token })).json();
+  assert.ok(Array.isArray(log.log), 'expected a log array');
+
+  // Deleting a device is a sensitive action — refused without a step-up token.
+  const del = await api('/api/home/devices/anything', { method: 'DELETE', token });
+  assert.equal(del.status, 401);
+  assert.equal((await del.json()).stepUpRequired, true);
+});
+
+test('step-up re-auth issues a token and guards sensitive routes', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+
+  // Wrong password is refused.
+  const bad = await api('/api/reauth', { method: 'POST', token, body: { password: 'nope' } });
+  assert.equal(bad.status, 401);
+
+  // Correct password mints a short-lived step-up token.
+  const good = await api('/api/reauth', { method: 'POST', token, body: { password: ADMIN.password } });
+  assert.equal(good.status, 200);
+  assert.ok((await good.json()).stepUp, 'expected a step-up token');
+
+  // A step-up-guarded route rejects a normal session with a clear signal.
+  const guarded = await api('/api/admin/delete', { method: 'POST', token, body: { username: 'nobody' } });
+  assert.equal(guarded.status, 401);
+  assert.equal((await guarded.json()).stepUpRequired, true);
+});
+
+test('plugins endpoint reports a clean list and reloads', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+
+  const d = await (await api('/api/plugins', { token })).json();
+  assert.ok(Array.isArray(d.plugins), 'expected a plugins array');
+  assert.equal(d.version, PKG.version);
+
+  const reloaded = await api('/api/plugins/reload', { method: 'POST', token });
+  assert.equal(reloaded.status, 200);
+  assert.ok(Array.isArray((await reloaded.json()).plugins), 'reload should return a plugins array');
+
+  const missing = await api('/api/plugin/run', { method: 'POST', token, body: { id: 'does-not-exist', input: 'x' } });
+  assert.equal(missing.status, 404);
+});
+
+test('utility tool routes: interfaces list and hashing work', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+
+  const ifaces = await (await api('/api/tool/interfaces', { token })).json();
+  assert.ok(Array.isArray(ifaces.interfaces), 'expected an interfaces array');
+
+  const hashed = await api('/api/tool/hash', { method: 'POST', token, body: { value: 'setayesh', action: 'hash' } });
+  assert.equal(hashed.status, 200);
+  const d = await hashed.json();
+  assert.ok(d.hashes && typeof d.hashes === 'object', 'expected a hashes object');
+  assert.ok(Object.keys(d.hashes).length > 0, 'expected at least one hash algorithm');
+});
+
+test('local RAG indexes a memory and finds it by search', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  const needle = 'قرار دندانپزشکی سه‌شنبه با دکتر رضایی ' + Date.now();
+  const created = await api('/api/memory', { method: 'POST', token, body: { text: needle, kind: 'deadline' } });
+  assert.equal(created.status, 201);
+
+  const res = await (await api('/api/rag/search?q=' + encodeURIComponent('دندانپزشک دکتر') + '&limit=5', { token })).json();
+  assert.ok(Array.isArray(res.results) && res.results.length > 0, 'expected a RAG hit');
+  assert.match(res.results[0].snippet, /دندانپزشک/);
+  assert.ok(res.results[0].score > 0, 'expected a positive relevance score');
+});
+
+// ---- Chat memory ----
+// The rule the owner set: a conversation is kept until HE deletes it. The bug
+// this guards is the old replace-the-whole-file sync, where a device holding
+// only the newest conversations silently deleted every older one on its next
+// save. Merge semantics are what make "keep them all" true, so they are tested.
+test('chats are merged, never replaced — an old device cannot wipe the archive', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+
+  const first = { id: 'chat-old', title: 'قدیمی', updated: 1000, messages: [{ role: 'user', text: 'یک' }] };
+  await api('/api/chats', { method: 'PUT', token, body: { t: 1000, chats: [first] } });
+
+  // A second device pushes only its own newer conversation — it must not
+  // delete the one it has never seen.
+  const second = { id: 'chat-new', title: 'تازه', updated: 2000, messages: [{ role: 'user', text: 'دو' }] };
+  await api('/api/chats', { method: 'PUT', token, body: { t: 2000, chats: [second] } });
+
+  const after = await (await api('/api/chats', { token })).json();
+  const ids = after.chats.map((c) => c.id).sort();
+  assert.deepEqual(ids, ['chat-new', 'chat-old'], 'both conversations must survive the merge');
+});
+
+test('an older copy of a chat never overwrites a newer one', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  await api('/api/chats', { method: 'PUT', token, body: { t: 5000, chats: [{ id: 'c-race', title: 'جدید', updated: 5000 }] } });
+  await api('/api/chats', { method: 'PUT', token, body: { t: 5001, chats: [{ id: 'c-race', title: 'کهنه', updated: 100 }] } });
+  const d = await (await api('/api/chats', { token })).json();
+  const row = d.chats.find((c) => c.id === 'c-race');
+  assert.equal(row.title, 'جدید', 'a stale device copy must not clobber the newer one');
+});
+
+test('deleting a chat removes it for good and it cannot come back on the next sync', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  await api('/api/chats', { method: 'PUT', token, body: { t: 7000, chats: [{ id: 'c-gone', title: 'حذفی', updated: 7000 }] } });
+
+  const del = await api('/api/chats/c-gone', { method: 'DELETE', token });
+  assert.equal(del.status, 200);
+
+  // Another device that still has the chat re-pushes it — the tombstone wins.
+  await api('/api/chats', { method: 'PUT', token, body: { t: 8000, chats: [{ id: 'c-gone', title: 'حذفی', updated: 8000 }] } });
+  const d = await (await api('/api/chats', { token })).json();
+  assert.equal(d.chats.filter((c) => c.id === 'c-gone').length, 0, 'a deleted chat must stay deleted');
+});
+
+// ---- Engine routing & health ----
+test('engine health reports what each engine is good at, and can be reset', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  const d = await (await api('/api/admin/engine-health', { token })).json();
+  assert.ok(Array.isArray(d.engines), 'expected an engines array');
+  for (const e of d.engines) {
+    assert.ok(Array.isArray(e.strong), 'every engine must carry routing hints');
+    assert.equal(typeof e.quarantined, 'boolean');
+  }
+  const reset = await api('/api/admin/engine-health/reset', { method: 'POST', token, body: {} });
+  assert.equal(reset.status, 200);
+  const bad = await api('/api/admin/engine-health/reset', { method: 'POST', token, body: { id: 'nope' } });
+  assert.equal(bad.status, 400);
+});
+
+test('every engine carries the routing metadata the router needs', () => {
+  const { PROVIDERS } = require(path.join(ROOT, 'providers.js'));
+  for (const [id, p] of Object.entries(PROVIDERS)) {
+    assert.ok(Number.isFinite(p.speed), `${id} is missing a speed hint`);
+    assert.ok(Array.isArray(p.strong) && p.strong.length, `${id} is missing its strengths`);
+  }
+});
+
+// ---- Automatic failover ----
+// The regression this guards is subtle and was live for a long time: the
+// failover in /api/chat referenced a `const` declared INSIDE the try block it
+// was catching for, so every substitute engine threw ReferenceError before it
+// ever reached the network. The failover looked implemented, marked each
+// engine as broken, and always showed the first engine's error. This test
+// stands up two fake engines — one that always rate-limits, one that answers —
+// and insists the answer comes back from the healthy one.
+test('a rate-limited engine fails over to a healthy one and still answers', async (t) => {
+  const http = require('node:http');
+  const stub = http.createServer((req, res) => {
+    let body = '';
+    req.on('data', (c) => { body += c; });
+    req.on('end', () => {
+      if (req.url.startsWith('/bad/')) {
+        res.writeHead(429, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ error: { message: 'rate limit exceeded' } }));
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(req.url.endsWith('/chat/completions')
+        ? { choices: [{ message: { content: 'پاسخ از موتور سالم' } }] }
+        : { data: [] }));
+    });
+  });
+  await new Promise((r) => stub.listen(0, '127.0.0.1', r));
+  const sp = stub.address().port;
+  t.after(() => stub.close());
+
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  for (const [id, label, url] of [
+    ['failtest', 'Always Rate Limited', `http://127.0.0.1:${sp}/bad/v1`],
+    ['worktest', 'Always Works', `http://127.0.0.1:${sp}/good/v1`],
+  ]) {
+    const r = await api('/api/admin/providers/custom', { method: 'POST', token, body: { id, label, baseUrl: url, models: 'm1', key: 'k' } });
+    assert.equal(r.status, 200, `could not register ${id}`);
+  }
+
+  const r = await api('/api/chat', { method: 'POST', token, body: { message: 'سلام', provider: 'failtest', model: 'm1', auto: 'false' } });
+  assert.equal(r.status, 200, 'a rate-limited engine must not surface as an HTTP error');
+  const d = await r.json();
+  assert.ok(!d.error, 'the user must not be shown a provider error: ' + d.error);
+  assert.ok(d.reply, 'expected an actual answer');
+  assert.notEqual(d.provider, 'failtest', 'the answer must come from a different engine');
+  assert.ok(d.failedOver, 'the response must say which engine was substituted');
+
+  // Clean up so the fakes do not linger in the engine list for other tests.
+  for (const id of ['failtest', 'worktest']) {
+    await api('/api/admin/providers/custom/' + id, { method: 'DELETE', token });
+  }
+});
+
+// ---- Formats and the converter ----
+test('the format registry is served and every entry is well formed', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  const d = await (await api('/api/formats', { token })).json();
+  assert.ok(d.count > 80, 'expected a real registry, got ' + d.count);
+  for (const f of d.formats) {
+    assert.ok(f.ext && f.family && f.mime, 'incomplete entry: ' + JSON.stringify(f));
+    assert.ok(!f.convertsTo.includes(f.ext), f.ext + ' lists itself as a conversion target');
+  }
+});
+
+test('CSV converts to a real .xlsx and reads back with the same cells', async () => {
+  const formats = require(path.join(ROOT, 'formats.js'));
+  const csv = 'name,age,city\nJavid,44,Berlin\n"Setayesh, S",12,Berlin\nفردین,8,برلین\n';
+  const out = await formats.convert(Buffer.from(csv), 'people.csv', 'xlsx');
+  assert.equal(out.data.slice(0, 2).toString('latin1'), 'PK', 'not a zip');
+  const back = formats.read(out.data, 'people.xlsx');
+  assert.deepEqual(back.columns, ['name', 'age', 'city']);
+  assert.deepEqual(back.rows[1], ['Setayesh, S', '12', 'Berlin'], 'a quoted comma must survive the round trip');
+  assert.deepEqual(back.rows[2], ['فردین', '8', 'برلین'], 'Persian must survive the round trip');
+});
+
+test('Markdown converts to a real .docx and reads back with its structure', async () => {
+  const formats = require(path.join(ROOT, 'formats.js'));
+  const out = await formats.convert(Buffer.from('# عنوان\n\nیک پاراگراف.\n\n- یک\n- دو\n'), 'n.md', 'docx');
+  const back = formats.read(out.data, 'n.docx');
+  const kinds = back.blocks.map((b) => b.type);
+  assert.ok(kinds.includes('h1'), 'heading lost');
+  assert.ok(kinds.includes('li'), 'list item lost');
+  // A bullet must not accumulate on every round trip.
+  assert.ok(!back.blocks.some((b) => /^[•·]/.test(b.text)), 'bullet character leaked into the text');
+});
+
+test('.env values are masked when the file is read', () => {
+  const formats = require(path.join(ROOT, 'formats.js'));
+  const r = formats.read(Buffer.from('API_KEY=supersecretvalue123\nPORT=3000\n'), '.env');
+  const joined = JSON.stringify(r);
+  assert.ok(!joined.includes('supersecretvalue123'), 'a secret leaked out of the .env reader');
+  assert.ok(r.warning, 'the masking must be stated');
+});
+
+// ---- Big files ----
+test('a file is analysed by path, and secrets are refused', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  const ok = await api('/api/files/analyze', { method: 'POST', token, body: { path: path.join(ROOT, 'package.json') } });
+  assert.equal(ok.status, 200);
+  const d = await ok.json();
+  assert.equal(d.file.ext, 'json');
+  assert.ok(d.file.lines > 0);
+
+  // The accounts file holds password hashes; it must never be readable here,
+  // because a chat answer can be produced by a cloud engine.
+  const bad = await api('/api/files/analyze', { method: 'POST', token, body: { path: path.join(tmp, 'users.json') } });
+  assert.equal(bad.status, 400, 'the users file must be refused');
+  assert.match((await bad.json()).error, /محرمانه/);
+});
+
+test('search finds a line in the middle of a file with correct context', async () => {
+  const bigfile = require(path.join(ROOT, 'bigfile.js'));
+  const p = path.join(tmp, 'lines.txt');
+  const lines = [];
+  for (let i = 1; i <= 5000; i++) lines.push(i === 3200 ? 'here is the NEEDLE we want' : 'filler line ' + i);
+  fs.writeFileSync(p, lines.join('\n') + '\n');
+  const r = await bigfile.search(p, 'NEEDLE', { context: 2 });
+  assert.equal(r.matches, 1);
+  assert.equal(r.hits[0].line, 3200, 'wrong line number');
+  assert.match(r.hits[0].before[1], /^3199: /);
+  assert.match(r.hits[0].after[0], /^3201: /);
+  const sl = await bigfile.slice(p, 3200, 3200);
+  assert.match(sl.text, /^3200: here is the NEEDLE/);
+});
+
+// ---- Language ----
+test('grammar check fixes Persian half-spaces and Arabic letters', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  const r = await (await api('/api/language/check', { method: 'POST', token,
+    body: { text: 'من می روم و کتاب ها را مي خرم' } })).json();
+  assert.equal(r.lang, 'fa');
+  assert.equal(r.corrected, 'من می‌روم و کتاب‌ها را می‌خرم');
+});
+
+test('grammar check tells German from English and fixes each one', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  const de = await (await api('/api/language/check', { method: 'POST', token,
+    body: { text: 'Seit ihr schon da? Die strasse ist lang.', apply: 'likely' } })).json();
+  assert.equal(de.lang, 'de');
+  assert.match(de.corrected, /Seid ihr/, 'seit/seid not corrected, or capital lost');
+  assert.match(de.corrected, /Straße/);
+
+  const en = await (await api('/api/language/check', { method: 'POST', token,
+    body: { text: 'i recieve teh letter and they should of told me .' } })).json();
+  assert.equal(en.lang, 'en');
+  assert.match(en.corrected, /^I receive the letter/);
+  assert.match(en.corrected, /should have told me\./);
+});
+
+test('letter conventions are language-specific, not translated English', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  const de = await (await api('/api/language/letter?language=de&formality=formal&authority=1', { token })).json();
+  assert.match(de.salutation, /Sehr geehrte/);
+  assert.match(de.closing, /Mit freundlichen Grüßen/);
+  assert.ok(de.rules.some((r) => /Aktenzeichen/.test(r)), 'the authority rule is missing');
+  const fa = await (await api('/api/language/letter?language=fa&formality=formal', { token })).json();
+  assert.match(fa.closing, /با تشکر/);
+});
+
+// ---- Devices and the network ----
+test('device discovery returns a structured answer even with no hardware', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  const r = await api('/api/devices/scan?transports=usb,drive', { token });
+  assert.equal(r.status, 200);
+  const d = await r.json();
+  assert.ok(d.counts && typeof d.counts.usb === 'number');
+  assert.ok(Array.isArray(d.devices));
+  assert.ok(d.safety && Array.isArray(d.safety.findings));
+});
+
+test('a device cannot be commanded until the owner allows it', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  const r = await api('/api/devices/command', { method: 'POST', token, body: { id: 'ssdp:whatever', action: 'play' } });
+  assert.equal(r.status, 403, 'an unallowed device must be refused');
+  assert.equal((await r.json()).needsPermission, true);
+});
+
+test('network status is visible to every member, not just the admin', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  const d = await (await api('/api/network/status?deep=0', { token })).json();
+  assert.equal(typeof d.online, 'boolean');
+  assert.ok(['ok', 'caution', 'untrusted'].includes(d.trust));
+  assert.ok(Array.isArray(d.interfaces));
+});
+
+test('joining a network needs the owner to name the network he approves', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  const netguard = require(path.join(ROOT, 'netguard.js'));
+  const no = await netguard.connectWifi('SomeCafe', {});
+  assert.equal(no.ok, false);
+  assert.equal(no.needsApproval, true, 'must refuse without an explicit approval for that ssid');
+  const wrong = await netguard.connectWifi('SomeCafe', { approvedSsid: 'OtherNetwork' });
+  assert.equal(wrong.needsApproval, true, 'approving one network must not approve another');
+});
+
+test('the file threat scanner catches a program disguised as a document', () => {
+  const netguard = require(path.join(ROOT, 'netguard.js'));
+  const p = path.join(tmp, 'invoice.pdf');
+  fs.writeFileSync(p, Buffer.concat([Buffer.from([0x4d, 0x5a]), Buffer.alloc(2048)]));
+  const r = netguard.scanFile(p);
+  assert.equal(r.level, 'high');
+  assert.ok(r.findings.some((f) => /نوع واقعی/.test(f.text)), 'the type mismatch was not reported');
+  assert.ok(r.limitation, 'the scanner must always state that it is not an antivirus');
+
+  const clean = path.join(tmp, 'note.txt');
+  fs.writeFileSync(clean, 'خرید نان و شیر برای فردا\n');
+  assert.equal(netguard.scanFile(clean).level, 'ok');
+});
+
+test('the encrypted envelope round-trips and rejects tampering', () => {
+  const netguard = require(path.join(ROOT, 'netguard.js'));
+  const me = netguard.newKeypair();
+  const secret = 'شماره حساب و رمز — روی شبکه‌ی عمومی';
+  const env = netguard.seal(secret, me.publicKey, 'test');
+  assert.ok(!JSON.stringify(env).includes('حساب'), 'the plaintext must not be in the envelope');
+  assert.equal(netguard.unseal(env, me.privateKey).toString('utf8'), secret);
+
+  const tampered = Object.assign({}, env, { data: Buffer.from('x'.repeat(32)).toString('base64') });
+  assert.throws(() => netguard.unseal(tampered, me.privateKey), 'tampering must fail loudly');
+  const other = netguard.newKeypair();
+  assert.throws(() => netguard.unseal(env, other.privateKey), 'the wrong key must fail');
+});
+
+// ---- Device identification ----
+// The complaint this answers: the home scan listed five devices as
+// "دستگاه ناشناس" with nothing but a MAC next to them. Four of those five were
+// phones using a privacy address and one was a Xiaomi — all knowable.
+test('the full IEEE registry names real manufacturers', () => {
+  const identify = require(path.join(ROOT, 'identify.js'));
+  assert.ok(identify.loadOui().size > 50000, 'the OUI registry did not load');
+  const cases = [
+    ['cc:4d:75:78:6a:11', /Xiaomi/i],     // the one real device in the screenshot
+    ['5c:49:7d:aa:bb:cc', /Samsung/i],
+    ['b8:27:eb:11:22:33', /Raspberry/i],
+    ['a4:83:e7:00:00:01', /Apple/i],
+    ['00:1f:3f:11:22:33', /AVM|FRITZ/i],
+  ];
+  for (const [mac, re] of cases) {
+    assert.match(identify.vendorOf(mac), re, mac + ' was not identified');
+  }
+});
+
+test('a randomised MAC is explained as a phone, not reported as unknown', () => {
+  const identify = require(path.join(ROOT, 'identify.js'));
+  for (const mac of ['0e:ab:c3:d9:95:5b', '16:47:6a:23:43:3e', 'e2:43:78:2b:89:d1']) {
+    const k = identify.macKind(mac);
+    assert.equal(k.local, true, mac + ' should be locally administered');
+    const d = identify.describe({ mac });
+    assert.equal(d.randomised, true);
+    assert.equal(d.confident, true, 'a privacy address is a conclusion, not a shrug');
+    assert.ok(!/ناشناس/.test(d.label), 'still labelled unknown: ' + d.label);
+    assert.ok(d.why.join(' ').includes('حریم خصوصی'), 'the reason must be explained');
+  }
+  // A factory MAC is NOT a privacy address.
+  assert.equal(identify.macKind('cc:4d:75:78:6a:11').local, false);
+});
+
+test("a device's own name wins over every guess", () => {
+  const identify = require(path.join(ROOT, 'identify.js'));
+  const d = identify.describe({ mac: '0e:ab:c3:d9:95:5b', hostname: 'Javid-iPhone' });
+  assert.equal(d.label, 'Javid-iPhone');
+  assert.ok(d.roles.includes('دستگاه اپل'), 'the name should also settle what kind of thing it is');
+});
+
+test('the ARP table parses on Linux and macOS, not only Windows', () => {
+  // The old pattern excluded a-f from the separator, so it could not cross the
+  // word "at" and returned NOTHING on Linux/macOS — the bug this locks down.
+  const re = /(\d+\.\d+\.\d+\.\d+)\D{1,12}?([0-9a-f]{1,2}[:-][0-9a-f]{1,2}[:-][0-9a-f]{1,2}[:-][0-9a-f]{1,2}[:-][0-9a-f]{1,2}[:-][0-9a-f]{1,2})/gi;
+  const parse = (txt) => {
+    const map = {}; let m; re.lastIndex = 0;
+    while ((m = re.exec(txt))) {
+      map[m[1]] = m[2].replace(/-/g, ':').toLowerCase()
+        .split(':').map((o) => (o.length === 1 ? '0' + o : o)).join(':');
+    }
+    return map;
+  };
+  assert.equal(parse('? (192.168.2.31) at cc:4d:75:78:6a:11 [ether] on wlan0')['192.168.2.31'],
+    'cc:4d:75:78:6a:11', 'Linux arp output');
+  assert.equal(parse('  192.168.2.31          cc-4d-75-78-6a-11     dynamic')['192.168.2.31'],
+    'cc:4d:75:78:6a:11', 'Windows arp output');
+  // macOS drops leading zeros in each octet.
+  assert.equal(parse('router (192.168.2.1) at e0:28:6d:a:b:c on en0')['192.168.2.1'],
+    'e0:28:6d:0a:0b:0c', 'macOS arp output');
+});
+
+// ---- Hardware access levels ----
+// The owner asked for two grades besides his own account. The whole point is
+// that the SERVER decides, so these tests go through HTTP as each user rather
+// than checking the interface.
+async function mkUser(token, username, password) {
+  await api('/api/admin/users', { method: 'POST', token, body: { username, password } });
+  const r = await (await api('/api/login', { method: 'POST', body: { username, password } })).json();
+  return r.token;
+}
+
+test('a new account starts with no hardware access at all', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  const kid = await mkUser(token, 'lvltest0', 'pass12345');
+  assert.ok(kid, 'could not create the test account');
+
+  for (const p of ['/api/hw/all', '/api/hw/serial', '/api/hw/usb', '/api/hw/bluetooth', '/api/hw/watch']) {
+    const r = await api(p, { token: kid });
+    assert.equal(r.status, 403, p + ' should be closed by default');
+  }
+  const cfg = await (await api('/api/config', { token: kid })).json();
+  assert.equal(cfg.deviceLevel, 0);
+});
+
+test('level 1 may look but never touch', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  const u = await mkUser(token, 'lvltest1', 'pass12345');
+  const set = await api('/api/admin/device-level', { method: 'POST', token, body: { username: 'lvltest1', level: 1 } });
+  assert.equal(set.status, 200);
+
+  // Looking works.
+  assert.equal((await api('/api/hw/serial', { token: u })).status, 200);
+  assert.equal((await api('/api/hw/usb', { token: u })).status, 200);
+  assert.equal((await api('/api/hw/bluetooth', { token: u })).status, 200);
+
+  // Touching does not.
+  const pair = await api('/api/hw/bluetooth/action', { method: 'POST', token: u,
+    body: { mac: 'aa:bb:cc:dd:ee:ff', action: 'pair' } });
+  assert.equal(pair.status, 403, 'level 1 must not be able to pair');
+  assert.match((await pair.json()).error, /درجه/);
+
+  const talk = await api('/api/hw/serial/talk', { method: 'POST', token: u, body: { port: 'COM1', send: 'AT' } });
+  assert.equal(talk.status, 403, 'level 1 must not be able to send down a cable');
+});
+
+test('level 2 may touch, and the level is what decides — not the admin flag', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  const u = await mkUser(token, 'lvltest2', 'pass12345');
+  await api('/api/admin/device-level', { method: 'POST', token, body: { username: 'lvltest2', level: 2 } });
+
+  const cfg = await (await api('/api/config', { token: u })).json();
+  assert.equal(cfg.deviceLevel, 2);
+  assert.equal(cfg.isAdmin, false, 'granting hardware access must NOT make someone an admin');
+
+  // It gets past the permission gate; what comes back then depends on the
+  // hardware, so anything except 403 proves the gate opened.
+  const talk = await api('/api/hw/serial/talk', { method: 'POST', token: u, body: { port: 'COM-nope', send: 'AT' } });
+  assert.notEqual(talk.status, 403, 'level 2 should get past the gate');
+
+  // And it is still not an admin of anything else.
+  assert.equal((await api('/api/admin/users', { token: u })).status, 403);
+});
+
+test('the father cannot be demoted out of his own permission system', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  const r = await api('/api/admin/device-level', { method: 'POST', token, body: { username: 'admin', level: 0 } });
+  assert.equal(r.status, 400);
+  const cfg = await (await api('/api/config', { token })).json();
+  assert.equal(cfg.deviceLevel, 2, 'the admin must stay at level 2');
+});
+
+test('only the father may hand out levels', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  const u = await mkUser(token, 'lvltest3', 'pass12345');
+  await api('/api/admin/device-level', { method: 'POST', token, body: { username: 'lvltest3', level: 2 } });
+  // Even at the highest hardware level, a member cannot promote anyone.
+  const r = await api('/api/admin/device-level', { method: 'POST', token: u,
+    body: { username: 'lvltest3', level: 2 } });
+  assert.equal(r.status, 403);
+});
+
+test('an invalid level is refused', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  await mkUser(token, 'lvltest4', 'pass12345');
+  for (const level of [3, -1, 'two', null]) {
+    const r = await api('/api/admin/device-level', { method: 'POST', token, body: { username: 'lvltest4', level } });
+    assert.equal(r.status, 400, 'level ' + level + ' should be refused');
+  }
+});
+
+// ---- Bluetooth and serial parsing ----
+test('bluetoothctl output is parsed into a full device picture', () => {
+  const hw = require(path.join(ROOT, 'hwlink.js'));
+  const list = hw.parseBtDevices('Device AC:BC:32:11:22:33 JBL Flip 5\nDevice 5C:49:7D:AA:BB:CC Soundbar\nnoise');
+  assert.equal(list.length, 2);
+  assert.equal(list[0].mac, 'ac:bc:32:11:22:33');
+
+  const info = hw.parseBtInfo([
+    '        Name: JBL Flip 5', '        Icon: audio-card', '        Paired: yes',
+    '        Connected: yes', '        RSSI: -52',
+    '        UUID: Audio Sink                (0000110b-0000-1000-8000-00805f9b34fb)',
+  ].join('\n'));
+  assert.equal(info.paired, true);
+  assert.equal(info.connected, true);
+  assert.equal(info.rssi, -52);
+  assert.equal(info.kind, 'اسپیکر یا هدفون');
+  assert.equal(info.uuids.length, 1);
+});
+
+test('GATT attributes get a readable label, and values decode', () => {
+  const hw = require(path.join(ROOT, 'hwlink.js'));
+  const attrs = hw.parseGattAttributes([
+    'Primary Service', '/org/bluez/hci0/dev_AA/service000a',
+    '0000180a-0000-1000-8000-00805f9b34fb',
+    'Characteristic', '/org/bluez/hci0/dev_AA/service000a/char000b',
+    '00002a29-0000-1000-8000-00805f9b34fb',
+  ].join('\n'));
+  assert.equal(attrs.length, 2);
+  assert.equal(attrs[1].kind, 'characteristic');
+  assert.equal(attrs[1].label, 'سازنده');
+
+  const v = hw.parseGattValue('  00: 4a 42 4c    JBL');
+  assert.equal(v.text, 'JBL');
+  assert.equal(v.hex, '4a424c');
+});
+
+test('a serial port must be one the system actually reported', async () => {
+  const hw = require(path.join(ROOT, 'hwlink.js'));
+  await assert.rejects(() => hw.assertKnownPort('/etc/passwd'),
+    /فهرست پورت/, 'an arbitrary path must never be opened as a serial port');
+  await assert.rejects(() => hw.serialTalk('../../etc/shadow', { send: 'x' }), /فهرست پورت/);
+});
+
+test('Windows COM ports are parsed, and non-ports ignored', () => {
+  const hw = require(path.join(ROOT, 'hwlink.js'));
+  const ports = hw.parseWinSerial(JSON.stringify([
+    { Name: 'USB-SERIAL CH340 (COM3)', Manufacturer: 'wch.cn', PNPDeviceID: 'USB\\VID_1A86&PID_7523\\5' },
+    { Name: 'Some other device' },
+  ]));
+  assert.equal(ports.length, 1);
+  assert.equal(ports[0].port, 'COM3');
+  assert.equal(ports[0].vendor, 'wch.cn');
+});
+
+// ---- Windows Bluetooth: one device, not one row per profile ----
+// The screenshot showed 70 "Bluetooth devices" on a machine that has three.
+// Windows lists one PnP entry per PROFILE, and they all carry the same
+// address, so grouping by address puts each device back together.
+test('Windows Bluetooth profile rows group into real devices', () => {
+  const discover = require(path.join(ROOT, 'discover.js'));
+  const rows = [
+    { FriendlyName: 'Andrew Hands-Free HF Audio', Service: 'BthHFEnum', Status: 'OK',
+      InstanceId: 'BTHENUM\\{0000111e-0000-1000-8000-00805f9b34fb}_LOCALMFG&000a\\7&2a4e&0&C0288D4A5B6C_C00000000' },
+    { FriendlyName: 'Andrew Avrcp Transport', Service: 'BthAvrcpTg', Status: 'OK',
+      InstanceId: 'BTHENUM\\{0000110c-0000-1000-8000-00805f9b34fb}_LOCALMFG&000a\\7&2a4e&0&C0288D4A5B6C_C00000000' },
+    { FriendlyName: 'Standard Serial over Bluetooth link (COM4)', Service: 'BthModem', Status: 'OK',
+      InstanceId: 'BTHENUM\\{00001101-0000-1000-8000-00805f9b34fb}_LOCALMFG&0000\\7&2a4e&0&C0288D4A5B6C_C00000000' },
+    { FriendlyName: 'Generic Attribute Profile', Status: 'OK',
+      InstanceId: 'BTHLEDEVICE\\{00001801-0000-1000-8000-00805f9b34fb}_DEV_AABBCCDDEEFF\\9&abc&0&0001' },
+    { FriendlyName: 'Xbox Wireless Controller', Status: 'OK',
+      InstanceId: 'BTHLE\\DEV_AABBCCDDEEFF\\8&31b2&0&AABBCCDDEEFF' },
+    { FriendlyName: 'Bluetooth Device (Personal Area Network)', Status: 'OK',
+      InstanceId: 'BTH\\MS_BTHPAN\\6&1a2b&0&2' },
+  ];
+  const g = discover.groupWindowsBluetooth(rows);
+  assert.equal(g.devices.length, 2, 'six rows are two devices, not six');
+
+  const andrew = g.devices.find((d) => d.mac === 'c0:28:8d:4a:5b:6c');
+  assert.ok(andrew, 'the address was not extracted from the BTHENUM shape');
+  assert.equal(andrew.name, 'Andrew', 'the profile suffix should be stripped off the name');
+  assert.equal(andrew.profiles.length, 3);
+  // A Bluetooth device that exposes a COM port is a real serial link to it.
+  assert.deepEqual(andrew.serialPorts, ['COM4']);
+  assert.ok(andrew.roles.includes('پخش صدا'));
+  assert.ok(andrew.capabilities.list.includes('serial'));
+
+  const xbox = g.devices.find((d) => d.mac === 'aa:bb:cc:dd:ee:ff');
+  assert.ok(xbox, 'the address was not extracted from the DEV_ shape');
+  assert.ok(xbox.capabilities.list.includes('gatt'));
+});
+
+test('everything under the Bluetooth bus counts as Bluetooth, not USB', () => {
+  const discover = require(path.join(ROOT, 'discover.js'));
+  // The USB card used to show more devices than the USB scan found, because
+  // BTH\\... rows that are not BTHENUM/BTHLE landed in the USB bucket.
+  const rows = discover.parseWindowsPnp(JSON.stringify([
+    { FriendlyName: 'PAN', InstanceId: 'BTH\\MS_BTHPAN\\6&1a&0&2' },
+    { FriendlyName: 'LE dev', InstanceId: 'BTHLE\\DEV_AABBCCDDEEFF\\8&31&0&AA' },
+    { FriendlyName: 'Intel Wireless Bluetooth', InstanceId: 'USB\\VID_8087&PID_0026\\5&1e&0&10' },
+  ]));
+  assert.equal(rows[0].transport, 'bluetooth');
+  assert.equal(rows[1].transport, 'bluetooth');
+  assert.equal(rows[2].transport, 'usb', 'the radio itself really is a USB device');
+});
+
+test('hubs are marked as plumbing so they do not bury the real devices', () => {
+  const hwlink = require(path.join(ROOT, 'hwlink.js'));
+  const marked = hwlink.markPlumbing([
+    { name: 'Generic SuperSpeed USB Hub' },
+    { name: 'USB Root Hub (USB 3.0)' },
+    { name: 'USB Input Device' },
+    { name: 'Xbox Wireless Adapter for Windows' },
+    { name: 'SanDisk Ultra', usbClass: '08' },
+  ]);
+  assert.deepEqual(marked.map((m) => !!m.plumbing), [true, true, true, false, false]);
+});
+
+// ---- Going into a device ----
+test('every device can be opened, and the actions match what it is', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  const all = await (await api('/api/hw/all', { token })).json();
+
+  // Whatever this machine has, each listed thing must open.
+  const keys = []
+    .concat((all.serial || []).map((x) => x.key))
+    .concat((all.drives || []).map((x) => x.key))
+    .concat((all.usb || []).map((x) => x.key))
+    .filter(Boolean).slice(0, 6);
+  assert.ok(keys.length, 'nothing at all was listed to open');
+
+  for (const key of keys) {
+    const r = await api('/api/hw/device?key=' + encodeURIComponent(key), { token });
+    assert.equal(r.status, 200, 'could not open ' + key);
+    const d = await r.json();
+    assert.ok(d.title, 'no title for ' + key);
+    assert.ok(Array.isArray(d.properties) && d.properties.length, 'no properties for ' + key);
+    for (const a of d.actions || []) assert.equal(typeof a.allowed, 'boolean');
+  }
+
+  // A serial port offers a console; a drive does not pretend to.
+  if ((all.serial || []).length) {
+    const d = await (await api('/api/hw/device?key=' + encodeURIComponent(all.serial[0].key), { token })).json();
+    assert.ok((d.actions || []).some((a) => a.id.startsWith('serial:')), 'a serial port must offer its console');
+  }
+  const unknown = await api('/api/hw/device?key=usb:dead:beef:nothing', { token });
+  assert.equal(unknown.status, 404);
+});
+
+test('a device can be renamed and the name comes back with it', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  const all = await (await api('/api/hw/all', { token })).json();
+  const key = ((all.drives || [])[0] || (all.serial || [])[0] || {}).key;
+  assert.ok(key, 'no device to rename');
+
+  const saved = await api('/api/hw/device/note', { method: 'POST', token,
+    body: { key, label: 'هارد بابا', owner: 'javid', note: 'پشتیبان هفتگی' } });
+  assert.equal(saved.status, 200);
+
+  const opened = await (await api('/api/hw/device?key=' + encodeURIComponent(key), { token })).json();
+  assert.equal(opened.givenName, 'هارد بابا');
+  assert.equal(opened.title, 'هارد بابا', 'the name we gave it must win over the manufacturer name');
+  assert.equal(opened.note.owner, 'javid');
+  assert.equal(opened.note.updatedBy, 'admin', 'who wrote it is recorded');
+
+  // Clearing every field removes the record rather than leaving an empty one.
+  await api('/api/hw/device/note', { method: 'POST', token,
+    body: { key, label: '', owner: '', note: '', favourite: false } });
+  const notes = await (await api('/api/hw/notes', { token })).json();
+  assert.ok(!notes.notes[key], 'an emptied note should be deleted, not kept');
+});
+
+test('opening a device still obeys the access levels', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  const closed = await mkUser(token, 'openlvl0', 'pass12345');
+  assert.equal((await api('/api/hw/device?key=drive:whatever', { token: closed })).status, 403);
+  assert.equal((await api('/api/hw/device/note', { method: 'POST', token: closed,
+    body: { key: 'x', label: 'y' } })).status, 403);
+
+  const looker = await mkUser(token, 'openlvl1', 'pass12345');
+  await api('/api/admin/device-level', { method: 'POST', token, body: { username: 'openlvl1', level: 1 } });
+  const all = await (await api('/api/hw/all', { token: looker })).json();
+  const key = ((all.serial || [])[0] || (all.drives || [])[0] || {}).key;
+  if (key) {
+    const d = await (await api('/api/hw/device?key=' + encodeURIComponent(key), { token: looker })).json();
+    assert.equal(d.yourLevel, 1);
+    // It may look, so level-2 actions come back marked as not allowed rather
+    // than being offered as buttons that would be refused.
+    for (const a of d.actions || []) {
+      if ((a.level || 1) >= 2) assert.equal(a.allowed, false, a.id + ' should be closed at level 1');
+    }
+  }
+});
+
+// ---- The real device names from the household's own machine ----
+// These are the exact strings Windows showed on Javid's Surface. The earlier
+// suffix list handled "Avrcp Transport" but not the short profile names his
+// devices actually use, so "Andrew A2DP SNK" and "BT Receiver Hands-Free AG"
+// kept their profile stuck to the name.
+test('every real Bluetooth name from the screenshots resolves correctly', () => {
+  const discover = require(path.join(ROOT, 'discover.js'));
+  const cases = [
+    ['Andrew A2DP SNK', 'Andrew'],
+    ['Andrew Hands-Free HF Audio', 'Andrew'],
+    ['Andrew Avrcp Transport', 'Andrew'],
+    ['BT Receiver Hands-Free AG', 'BT Receiver'],
+    ['ROCKSTER GO 2 Avrcp Transport', 'ROCKSTER GO 2'],
+    ['Surface Pen', 'Surface Pen'],
+    ['Javid', 'Javid'],
+    // These are pure profile descriptions with no device name in them. They
+    // must resolve to nothing, or the shortest-name rule would call his phone
+    // "GATT" instead of "Javid".
+    ['GATT', ''],
+    ['Generic Attribute Profile', ''],
+    ['Service Discovery Service', ''],
+    ['Device Information Service', ''],
+    ['Bluetooth LE Generic Attribute Service', ''],
+    ['Personal Area Network NAP Service', ''],
+    ['Bluetooth Low Energy GATT compliant HID device', ''],
+    ['Standard Serial over Bluetooth link (COM4)', ''],
+  ];
+  for (const [input, expected] of cases) {
+    assert.equal(discover.winBtBaseName(input), expected, JSON.stringify(input));
+  }
+});
+
+test('a device whose rows are all generic profiles is never named "GATT"', () => {
+  const discover = require(path.join(ROOT, 'discover.js'));
+  const addr = '\\7&2a4e&0&C0288D4A5B6C_C00000000';
+  const g = discover.groupWindowsBluetooth([
+    { FriendlyName: 'GATT', InstanceId: 'BTHENUM\\{1}_LOCALMFG&0002' + addr },
+    { FriendlyName: 'Generic Attribute Profile', InstanceId: 'BTHENUM\\{2}_LOCALMFG&0002' + addr },
+    { FriendlyName: 'Javid', InstanceId: 'BTHENUM\\{3}_LOCALMFG&0002' + addr },
+    { FriendlyName: 'Device Information Service', InstanceId: 'BTHENUM\\{4}_LOCALMFG&0002' + addr },
+  ]);
+  assert.equal(g.devices.length, 1);
+  assert.equal(g.devices[0].name, 'Javid', 'the real name must beat the shorter profile names');
+  assert.equal(g.devices[0].profiles.length, 4);
+});
+
+// ---- Hosts on the network get named, not just listed ----
+test('an open lockdown port identifies an iPhone even with a privacy MAC', () => {
+  const identify = require(path.join(ROOT, 'identify.js'));
+  // Both hosts in the scan had a randomised MAC (so no manufacturer at all)
+  // and port 62078 open — iOS lockdownd, which essentially nothing else uses.
+  const d = identify.describe({ mac: '0e:ab:c3:d9:95:5b', ports: [62078] });
+  assert.equal(d.label, 'آیفون یا آیپد');
+  assert.equal(d.confident, true);
+  assert.ok(d.why.some((w) => /62078/.test(w)), 'the reason should name the port it used');
+
+  // A MAC that IS in the registry still wins on the manufacturer.
+  const x = identify.describe({ mac: 'cc:4d:75:78:6a:11', ports: [] });
+  assert.match(x.label, /Xiaomi/i);
+});
+
+test('the ARP table is parsed the same way everywhere', () => {
+  const identify = require(path.join(ROOT, 'identify.js'));
+  assert.equal(identify.parseArp('? (192.168.2.31) at cc:4d:75:78:6a:11 [ether] on wlan0')['192.168.2.31'],
+    'cc:4d:75:78:6a:11');
+  assert.equal(identify.parseArp('  192.168.2.31   cc-4d-75-78-6a-11  dynamic')['192.168.2.31'],
+    'cc:4d:75:78:6a:11');
+  assert.equal(identify.parseArp('r (192.168.2.1) at e0:28:6d:a:b:c on en0')['192.168.2.1'],
+    'e0:28:6d:0a:0b:0c', 'macOS drops leading zeros');
+});
+
+test('a network scan says what each host is, not only where', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  const r = await api('/api/tool/netscan', { method: 'POST', token, body: { cidr: '127.0.0.0/30', timeout: 150 } });
+  // The subnet may legitimately have nothing in it; what matters is the shape.
+  if (r.status === 200) {
+    const d = await r.json();
+    assert.ok(Array.isArray(d.hosts));
+    for (const h of d.hosts) {
+      assert.equal(typeof h.label, 'string', 'every host must carry a label field');
+      assert.ok('mac' in h, 'every host must carry a mac field, even an empty one');
+    }
+  } else {
+    assert.equal(r.status, 400, 'a refused scan must be a clean 400');
+  }
+});
+
+// ---- Dev library shelf ----
+test('the dev-library catalog is well formed and comprehensive', () => {
+  const devlibs = require(path.join(ROOT, 'devlibs.js'));
+  const langs = Object.keys(devlibs.CATALOG);
+  assert.ok(langs.length >= 10, 'expected a shelf for many languages, got ' + langs.length);
+  let total = 0;
+  for (const [lang, e] of Object.entries(devlibs.CATALOG)) {
+    assert.ok(e.label && e.manager && e.ecosystem, 'incomplete language entry: ' + lang);
+    assert.ok(Array.isArray(e.libs) && e.libs.length, lang + ' has no libraries');
+    for (const l of e.libs) {
+      assert.ok(l.name, lang + ' has a nameless library');
+      assert.ok(l.use, l.name + ' has no description');
+    }
+    total += e.libs.length;
+  }
+  assert.ok(total >= 80, 'expected a real shelf, got ' + total + ' libraries');
+  // The staples must be there.
+  assert.ok(devlibs.CATALOG.python.libs.some((l) => l.name === 'numpy'));
+  assert.ok(devlibs.CATALOG.javascript.libs.some((l) => l.name === 'express'));
+  assert.ok(devlibs.CATALOG.frontend.libs.some((l) => l.name === 'tailwindcss'));
+});
+
+test('the shelf is served with which managers are installed here', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  const d = await (await api('/api/admin/devlibs', { token })).json();
+  assert.ok(Array.isArray(d.catalog) && d.catalog.length >= 10);
+  for (const c of d.catalog) {
+    assert.ok(c.id && c.label && c.manager);
+    assert.equal(typeof c.ready, 'boolean', c.id + ' must say whether its manager is installed');
+  }
+  assert.ok(d.tools && 'node' in d.tools, 'the toolchain probe must report node');
+});
+
+test('the download planner never runs an install script', () => {
+  const devlibs = require(path.join(ROOT, 'devlibs.js'));
+  // npm goes through `npm pack` (no scripts), pip through `pip download`
+  // (no install). Assert the commands are the download-only ones.
+  const npm = devlibs.plan('javascript', '/tmp/x', ['express']);
+  assert.equal(npm.cmd, 'npm');
+  assert.equal(npm.args[0], 'pack', 'npm must use pack, never install');
+  const pip = devlibs.plan('python', '/tmp/x', ['requests']);
+  assert.equal(pip.args[0], '-m');
+  assert.deepEqual(pip.args.slice(1, 3), ['pip', 'download'], 'pip must download, never install');
+  assert.ok(!pip.args.includes('install'));
+});
+
+test('an unknown language is refused, not guessed', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  const r = await api('/api/admin/devlibs/download', { method: 'POST', token, body: { lang: 'cobol' } });
+  assert.equal(r.status, 400);
+});
+
+test('the shelf is admin-only', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  const kid = await mkUser(token, 'shelfkid', 'pass12345');
+  assert.equal((await api('/api/admin/devlibs', { token: kid })).status, 403);
+  assert.equal((await api('/api/admin/devlibs/download', { method: 'POST', token: kid, body: { lang: 'python' } })).status, 403);
+});
+
+// ---- Local HTTPS: the self-signed certificate (selfsign.js) ----
+// The phone's Web Bluetooth / Web Serial need a "secure context" (https or
+// localhost). Over http://192.168.x.x they are simply absent. selfsign.js makes
+// a certificate with pure Node so HTTPS can turn on without OpenSSL or any new
+// dependency. These assert the cert is real: Node parses it, it self-verifies,
+// the key matches, and the LAN IPs are in the SAN.
+test('selfsign builds a cert Node can parse, that self-verifies and matches its key', () => {
+  const crypto = require('node:crypto');
+  const selfsign = require(path.join(ROOT, 'selfsign.js'));
+  const g = selfsign.generate({ hostnames: ['setayesh.local'], ips: ['192.168.1.50'], days: 825 });
+  const x = new crypto.X509Certificate(g.certPem);
+  assert.match(x.subject, /CN=Setayesh/);
+  assert.equal(x.subject, x.issuer, 'self-signed: subject must equal issuer');
+  assert.equal(x.verify(x.publicKey), true, 'the cert must verify against its own key');
+  assert.equal(x.checkPrivateKey(crypto.createPrivateKey(g.keyPem)), true, 'the private key must match the cert');
+  // SANs cover localhost, loopback and the real LAN IP.
+  assert.match(x.subjectAltName, /192\.168\.1\.50/);
+  assert.match(x.subjectAltName, /127\.0\.0\.1/);
+  assert.match(x.subjectAltName, /localhost/);
+  assert.ok(new Date(x.validTo).getTime() > Date.now(), 'cert must not be pre-expired');
+});
+
+test('selfsign.ensure writes files once, then leaves a valid cert alone but renews for a new LAN IP', () => {
+  const crypto = require('node:crypto');
+  const selfsign = require(path.join(ROOT, 'selfsign.js'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'setayesh-tls-'));
+  const certPath = path.join(dir, 'tls-cert.pem');
+  const keyPath = path.join(dir, 'tls-key.pem');
+  try {
+    // first call creates the files
+    const first = selfsign.ensure({ certPath, keyPath, ips: ['10.0.0.5'] });
+    assert.ok(first && first.created, 'first call must generate');
+    assert.equal(first.reason, 'missing');
+    assert.ok(fs.existsSync(certPath) && fs.existsSync(keyPath));
+    const serial1 = new crypto.X509Certificate(fs.readFileSync(certPath)).serialNumber;
+    // second call with the same IPs must NOT regenerate (no churn on every boot)
+    const second = selfsign.ensure({ certPath, keyPath, ips: ['10.0.0.5'] });
+    assert.equal(second, null, 'a still-valid cert that covers the IPs is left untouched');
+    const serial2 = new crypto.X509Certificate(fs.readFileSync(certPath)).serialNumber;
+    assert.equal(serial1, serial2, 'the cert file must be unchanged');
+    // a NEW real LAN ip must trigger a fresh cert that covers it
+    const third = selfsign.ensure({ certPath, keyPath, ips: ['10.0.0.5', '192.168.8.8'] });
+    assert.ok(third && third.created, 'a new address must renew the cert');
+    assert.match(new crypto.X509Certificate(fs.readFileSync(certPath)).subjectAltName, /192\.168\.8\.8/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('selfsign rejects a bogus IP but still emits a usable cert', () => {
+  const crypto = require('node:crypto');
+  const selfsign = require(path.join(ROOT, 'selfsign.js'));
+  const g = selfsign.generate({ ips: ['999.1.1.1', '192.168.2.2'] });
+  const x = new crypto.X509Certificate(g.certPem);
+  assert.doesNotMatch(x.subjectAltName, /999\.1\.1\.1/, 'an invalid IP must not land in the SAN');
+  assert.match(x.subjectAltName, /192\.168\.2\.2/);
+});
+
+test('secure-link: admin can read state and turn on HTTPS, family cannot', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  // admin reads current state
+  const st = await (await api('/api/admin/secure-link', { token })).json();
+  assert.equal(typeof st.on, 'boolean');
+  assert.ok(Array.isArray(st.urls));
+  // family account is refused on both verbs
+  const kid = await mkUser(token, 'securekid', 'pass12345');
+  assert.equal((await api('/api/admin/secure-link', { token: kid })).status, 403);
+  assert.equal((await api('/api/admin/secure-link', { method: 'POST', token: kid, body: { on: true } })).status, 403);
+  // admin turns it on — the cert is generated on the spot, into the temp dir
+  const on = await (await api('/api/admin/secure-link', { method: 'POST', token, body: { on: true } })).json();
+  assert.equal(on.ok, true);
+  assert.equal(on.on, true);
+  assert.equal(on.generated, true, 'enabling must generate the cert immediately');
+  assert.equal(on.needsRestart, false, 'the secure link now applies live — no restart');
+  const crypto = require('node:crypto');
+  const x = new crypto.X509Certificate(fs.readFileSync(path.join(tmp, 'tls-cert.pem')));
+  assert.match(x.subject, /CN=Setayesh/);
+  // the ON choice is persisted and reflected by a fresh read
+  const st2 = await (await api('/api/admin/secure-link', { token })).json();
+  assert.equal(st2.on, true, 'ON must persist');
+  assert.equal(st2.running, true, 'the https handler must actually be running');
+  assert.ok((st2.urls || []).every((u) => u.startsWith('https://') && u.endsWith(':' + st2.port)),
+    'https runs on the SAME smart port, not a companion port');
+  // With the secure link ON, a PHONE opening the plain-http LAN address is
+  // redirected to https on the SAME port — one address for everyone. localhost
+  // stays on http (already secure) so the desktop never dead-ends. Use a RAW
+  // http request: fetch/undici silently drops a spoofed Host header.
+  const rawGet = (headers) => new Promise((resolve, reject) => {
+    const req = require('node:http').request(
+      { host: '127.0.0.1', port: PORT, path: '/', method: 'GET', headers },
+      (r) => { resolve({ status: r.statusCode, location: r.headers.location }); r.resume(); });
+    req.on('error', reject); req.end();
+  });
+  const red = await rawGet({ Host: '10.0.0.5:' + PORT });
+  assert.equal(red.status, 301, 'a LAN http request must redirect to https');
+  assert.match(red.location || '', new RegExp('^https://10\\.0\\.0\\.5:' + PORT + '/'));
+  // localhost stays on http (already a secure context) — served, no redirect.
+  const local = await rawGet({ Host: '127.0.0.1:' + PORT });
+  assert.equal(local.status, 200, 'the desktop localhost address must never be redirected away');
+  // turning it back off must not throw, and must STICK (stored as an explicit
+  // value, not dropped) so a LAN host can actually stay on http when asked.
+  const off = await (await api('/api/admin/secure-link', { method: 'POST', token, body: { on: false } })).json();
+  assert.equal(off.ok, true);
+  assert.equal(off.on, false);
+  assert.equal((await (await api('/api/admin/secure-link', { token })).json()).on, false, 'OFF must persist, not revert');
+});
+
+// ---- App icon = the owner's face (v9.9.91) ----
+// The shell referenced /manifest.webmanifest and /icon-*.png but the files
+// never existed, so the phone's "add to home screen" fell back to a generic
+// "S". These assert the manifest and icon endpoints answer, and that the
+// bundled default star tiles are real PNGs (the fallback when no face is set).
+test('the web manifest is served with icons', async () => {
+  const r = await fetch(BASE + '/manifest.webmanifest');
+  assert.equal(r.ok, true);
+  const m = await r.json();
+  assert.equal(m.name, 'Setayesh AI');
+  assert.ok(Array.isArray(m.icons) && m.icons.length >= 2);
+  assert.ok(m.icons.some((i) => i.src === '/icon-192.png'));
+  assert.ok(m.icons.some((i) => i.src === '/icon-512.png'));
+});
+
+test('the app icon endpoints serve a PNG (the star default when no face is set)', async () => {
+  for (const size of ['192', '512']) {
+    const r = await fetch(BASE + `/icon-${size}.png`);
+    assert.equal(r.ok, true, `icon-${size} must be served`);
+    assert.match(r.headers.get('content-type') || '', /image\/png/);
+    const buf = Buffer.from(await r.arrayBuffer());
+    // PNG magic number
+    assert.deepEqual(buf.slice(0, 4), Buffer.from([0x89, 0x50, 0x4e, 0x47]), `icon-${size} must be a real PNG`);
+  }
+});
+
+test('the bundled default icon files exist on disk and are PNGs', () => {
+  for (const f of ['public/icon-192.png', 'public/icon-512.png']) {
+    const p = path.join(ROOT, f);
+    assert.ok(fs.existsSync(p), `${f} must be committed`);
+    const head = fs.readFileSync(p).slice(0, 4);
+    assert.deepEqual(head, Buffer.from([0x89, 0x50, 0x4e, 0x47]), `${f} must be a PNG`);
+  }
+});
+
+// ---- Routing: chat must not be forced onto the code-completion model ----
+// Mistral's first-listed model is Codestral (code-only); sending Persian chat
+// there produced English, tool-refusing answers. The fix picks the engine's
+// GENERAL model for non-code questions, so the provider must actually offer one.
+test('the Mistral engine offers a general (non-code) model for chat', () => {
+  const providers = require(path.join(ROOT, 'providers.js')).PROVIDERS;
+  const mistral = providers.mistral;
+  assert.ok(mistral, 'mistral provider must exist');
+  const general = (mistral.models || []).find((m) => m.best !== 'code');
+  assert.ok(general, 'mistral must list a non-code model so chat is not stuck on Codestral');
+});
+
+// ---- Internal search engine (insight.js): Setayesh's memory/repos search ----
+// جاوید asked for a strong internal search engine fully at the brain's disposal,
+// with short- and long-term memory. These assert BM25 ranking finds the right
+// item and that privacy scoping holds (one member never sees another's private
+// notes; shared repo/knowledge is visible to all; admin sees everything).
+test('insight ranks the on-topic document first (BM25)', () => {
+  const { makeInsight } = require(path.join(ROOT, 'insight.js'));
+  const ix = makeInsight();
+  ix.register('docs', () => ([
+    { id: 'a', user: '', source: 'knowledge', title: 'خرید نان', text: 'یادداشت درباره خرید نان و شیر از مغازه' },
+    { id: 'b', user: '', source: 'knowledge', title: 'قرار دندانپزشک', text: 'قرار ملاقات دندانپزشکی برای پنجشنبه' },
+    { id: 'c', user: '', source: 'docs', title: 'راهنما', text: 'متن بی‌ربط درباره چیز دیگری' },
+  ]));
+  ix.reindex();
+  const hits = ix.search('دندانپزشک پنجشنبه', { limit: 3 });
+  assert.ok(hits.length >= 1);
+  assert.equal(hits[0].id, 'b', 'the dentist note must rank first');
+});
+
+test('insight keeps private docs private but shares repo/knowledge', () => {
+  const { makeInsight } = require(path.join(ROOT, 'insight.js'));
+  const ix = makeInsight();
+  ix.register('mem', () => ([
+    { id: 'ja', user: 'javid', source: 'memory', title: '', text: 'راز مالیات جاوید' },
+    { id: 'sa', user: 'sara',  source: 'memory', title: '', text: 'راز مدرسه سارا' },
+    { id: 'sh', user: '',      source: 'knowledge', title: 'راز', text: 'دانش مشترک خانواده راز' },
+  ]));
+  ix.reindex();
+  // sara searching "راز": sees her own + the shared one, never javid's
+  const sara = ix.search('راز', { user: 'sara', limit: 10 }).map((h) => h.id);
+  assert.ok(sara.includes('sa') && sara.includes('sh'), 'sara sees her own + shared');
+  assert.ok(!sara.includes('ja'), 'sara must NOT see javid\'s private memory');
+  // admin (all) sees everything
+  const admin = ix.search('راز', { all: true, limit: 10 }).map((h) => h.id);
+  assert.ok(admin.includes('ja') && admin.includes('sa') && admin.includes('sh'), 'admin sees all');
+});
+
+test('insight can filter by source and reindexes live changes', () => {
+  const { makeInsight } = require(path.join(ROOT, 'insight.js'));
+  const ix = makeInsight();
+  let extra = [];
+  ix.register('self', () => ([{ id: 's1', user: '', source: 'self', title: 'index.js', text: 'سرور اصلی و مسیرها' }]));
+  ix.register('mem', () => extra);
+  ix.reindex();
+  assert.equal(ix.search('سرور', { sources: ['self'], limit: 5 })[0].source, 'self');
+  assert.equal(ix.search('سرور', { sources: ['mem'], limit: 5 }).length, 0, 'source filter excludes other sources');
+  // a newly added memory becomes searchable after reindex
+  extra = [{ id: 'm9', user: 'javid', source: 'memory', title: '', text: 'قرار مهم فردا ساعت ده' }];
+  ix.reindex();
+  assert.ok(ix.search('قرار فردا', { user: 'javid', limit: 5 }).some((h) => h.id === 'm9'));
+});
+
+// ---- Local models: add a name → local engine auto-connects (v9.9.95) ----
+// جاوید wanted to just type his Ollama model name and have it work with no
+// other settings. Saving a model must flip the local engine ON by itself.
+test('adding a local model name auto-enables the local engine', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  // before: local not configured
+  let cfg = await (await api('/api/config', { token })).json();
+  const localBefore = (cfg.providers || []).find((p) => p.id === 'local');
+  assert.ok(localBefore && !localBefore.configured, 'local starts not configured');
+  // add a model name (as the UI does)
+  const r = await (await api('/api/admin/local-models', { method: 'POST', token, body: { models: ['qwen2.5'] } })).json();
+  assert.equal(r.ok, true);
+  assert.deepEqual(r.active, ['qwen2.5']);
+  assert.equal(r.localEnabled, true, 'saving a model must auto-enable local');
+  // after: /api/config now shows local configured, with the model listed
+  cfg = await (await api('/api/config', { token })).json();
+  const localAfter = (cfg.providers || []).find((p) => p.id === 'local');
+  assert.ok(localAfter && localAfter.configured, 'local must be configured now');
+  assert.ok((localAfter.models || []).some((m) => m.id === 'qwen2.5'), 'the model must be listed');
+});
+
+// ---- Full-app audit fix (v9.9.97): connector precondition status ----
+// A "Google isn't connected yet" call must read as a clean precondition (409),
+// not a scary upstream failure (502) or a crash (500). Found in the route sweep.
+test('gmail/calendar endpoints answer 409 (not 502/500) when Google is not connected', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  for (const p of ['/api/connectors/gmail', '/api/connectors/calendar']) {
+    const r = await api(p, { token });
+    assert.equal(r.status, 409, `${p} must be 409 when not connected`);
+    const d = await r.json();
+    assert.equal(d.connected, false);
+  }
+});
+
+// ---- Automatic self-learning (v9.9.98): grow from conversation ----
+// A message that clearly states something durable should be filed in long-term
+// memory on its own — no tool call, no engine needed (it runs before the engine
+// and survives even the no-engine degraded path). This is the "grows every
+// moment" behaviour جاوید asked for.
+test('an explicit "remember ..." message is auto-learned into memory', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  const before = (await (await api('/api/memory', { token })).json()).memory || [];
+  // no engine configured in tests → chat returns a graceful 200; autoLearn still runs.
+  // Use multipart (FormData), exactly like the real client, so req.body.message is read.
+  const form = new FormData();
+  form.set('message', 'یادت باشه قرار مهم من پنجشنبه ساعت ده است');
+  form.set('history', '[]'); form.set('mode', 'chat');
+  await fetch(BASE + '/api/chat', { method: 'POST', headers: { Authorization: 'Bearer ' + token }, body: form });
+  // give the setImmediate hook a moment, then read memory back
+  await new Promise((r) => setTimeout(r, 400));
+  const after = (await (await api('/api/memory', { token })).json()).memory || [];
+  assert.ok(after.length > before.length, 'a new memory should have been learned automatically');
+  assert.ok(after.some((m) => /پنجشنبه|قرار مهم/.test(m.text)), 'the learned fact should be the stated commitment');
+});
+
+// ---- Always-learning (v9.9.99): auto-research on by default ----
+// جاوید asked that automatic research/learning be always on so she keeps
+// growing. It must report enabled without anyone turning it on.
+test('automatic research is ON by default (always-growing)', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  const d = await (await api('/api/admin/research', { token })).json();
+  assert.equal(d.settings.enabled, true, 'research should be enabled by default');
+});
+
+// ---- Modularization: netutil.js pure helpers (v9.9.111) ----
+// Part of the ongoing "break the monolith into modules" work — pure helpers
+// split out of index.js. Testing them here proves the split kept them correct.
+test('netutil.versionGreater and localLanIps behave', () => {
+  const nu = require(path.join(ROOT, 'netutil.js'));
+  assert.equal(nu.versionGreater('9.9.110', '9.9.108'), true);
+  assert.equal(nu.versionGreater('9.9.108', '9.9.108'), false);
+  assert.equal(nu.versionGreater('9.9.9', '9.10.0'), false, '10 > 9 per component, not lexically');
+  assert.equal(nu.versionGreater('10.0.0', '9.9.999'), true);
+  const ips = nu.localLanIps();
+  assert.ok(Array.isArray(ips), 'localLanIps returns an array');
+  assert.ok(ips.every((ip) => /^\d+\.\d+\.\d+\.\d+$/.test(ip)), 'entries are IPv4 strings');
+});
+
+// ---- Modularization round 2: ziputil / srcguard / textutil (v9.9.116) ----
+test('ziputil round-trips a zip and rejects garbage', () => {
+  const zu = require(path.join(ROOT, 'ziputil.js'));
+  const zip = zu.buildZip([
+    { name: 'a.txt', data: Buffer.from('hello جهان') },
+    { name: 'dir/b.js', data: Buffer.from('const x = 1;\n') },
+  ]);
+  assert.ok(Buffer.isBuffer(zip) && zip.length > 0);
+  const back = zu.readZip(zip);
+  assert.equal(back['a.txt'].toString('utf8'), 'hello جهان');
+  assert.equal(back['dir/b.js'].toString('utf8'), 'const x = 1;\n');
+  assert.equal(typeof zu.crc32(Buffer.from('abc')), 'number');
+  assert.throws(() => zu.readZip(Buffer.from('not a zip')), /ZIP/);
+});
+
+test('srcguard blocks unsafe update paths and catches bad JS', async () => {
+  const sg = require(path.join(ROOT, 'srcguard.js'));
+  assert.equal(sg.isUpdatablePath('index.js'), true);
+  assert.equal(sg.isUpdatablePath('public/app.js'), true);
+  assert.equal(sg.isUpdatablePath('../etc/passwd'), false, 'traversal blocked');
+  assert.equal(sg.isUpdatablePath('/abs/path'), false, 'absolute blocked');
+  assert.equal(sg.isUpdatablePath('node_modules/x/index.js'), false, 'node_modules blocked');
+  assert.equal(sg.isUpdatablePath('.setayesh-config'), false, 'runtime state blocked');
+  assert.equal(await sg.checkJsSyntax('const a = 1;', 'ok.js'), null, 'valid JS passes');
+  assert.match(await sg.checkJsSyntax('const = ;', 'bad.js'), /bad\.js/, 'broken JS is reported');
+});
+
+test('textutil sanitizeHistory and maskSecret behave', () => {
+  const tu = require(path.join(ROOT, 'textutil.js'));
+  const h = tu.sanitizeHistory('[{"role":"user","content":"hi"},{"role":"system","content":"x"},{"role":"assistant","content":"yo"}]');
+  assert.deepEqual(h, [{ role: 'user', content: 'hi' }, { role: 'assistant', content: 'yo' }], 'only user/assistant string turns kept');
+  assert.equal(tu.sanitizeHistory('not json').length, 0);
+  assert.equal(tu.maskSecret('sk-1234567890abcd'), 'sk-1••••••abcd');
+  assert.equal(tu.maskSecret('short'), '••••');
+  assert.equal(tu.maskSecret(''), '');
+});
+
+// ---- UI language purity: fa and en dictionaries stay in sync (v9.9.111) ----
+// جاوید: «انگلیسی فقط انگلیسی، فارسی فقط فارسی». The sidebar buttons leaked a
+// mix (an English label over a Persian sub-label) because they were hard-coded
+// and half of them had no translation. Every UI key must exist in BOTH fa and
+// en, so switching the app language flips the WHOLE button, never half of it.
+test('every UI string is translated in both fa and en (no half-translated buttons)', () => {
+  const vm = require('node:vm');
+  const code = fs.readFileSync(path.join(ROOT, 'public', 'app-i18n.js'), 'utf8');
+  const sandbox = { window: {} };
+  vm.runInNewContext(code, sandbox);
+  const L = sandbox.window.__LANG;
+  assert.ok(L && L.fa && L.en, 'both fa and en dictionaries must exist');
+  const missingEn = Object.keys(L.fa).filter((k) => !(k in L.en));
+  const missingFa = Object.keys(L.en).filter((k) => !(k in L.fa));
+  assert.deepEqual(missingEn, [], 'keys in fa but missing in en: ' + missingEn.join(', '));
+  assert.deepEqual(missingFa, [], 'keys in en but missing in fa: ' + missingFa.join(', '));
+  // The sidebar + reply-action keys this release added must all resolve.
+  ['sb_chats', 'sb_cc', 'sb_lang', 'sb_lang_s', 'sb_logout', 'toFamily'].forEach((k) => {
+    assert.ok(L.fa[k] && L.en[k], 'missing translation for ' + k);
+  });
+  // Every sidebar (sb_*) key referenced in index.html must resolve — those are
+  // the buttons that were leaking a language mix. (Other i18n keys live in
+  // app.js's own dictionaries, so only the sidebar set is checked here.)
+  const html = fs.readFileSync(path.join(ROOT, 'public', 'index.html'), 'utf8');
+  const used = new Set();
+  const re = /data-i18n(?:-placeholder|-arialabel)?="([^"]+)"/g;
+  let m; while ((m = re.exec(html))) used.add(m[1]);
+  const unknownSidebar = [...used].filter((k) => k.startsWith('sb_') && !(k in L.fa));
+  assert.deepEqual(unknownSidebar, [], 'index.html sidebar keys with no translation: ' + unknownSidebar.join(', '));
+});
+
+// ---- Telegram/chat: harmony tool-call noise never reaches a person (v9.9.108) ----
+// gpt-oss and friends sometimes write a tool call as PLAIN TEXT instead of the
+// structured tool_calls field; on Telegram that leaked as gibberish
+// ("茏 {"name":"web_search"…}"). parseTextToolCalls must recover it so it can be
+// run for real, and stripToolNoise must guarantee no reply ships raw JSON/tags.
+test('harmony tool-call text is parsed out and never leaks to the user', () => {
+  const tn = require(path.join(ROOT, 'toolnoise.js'));
+  // A wrapped <tool_call> block → recovered as a real call, stripped to nothing.
+  const wrapped = '<tool_call>\n{"name": "web_search", "arguments": {"query": "طلا", "count": 5}}\n</tool_call>';
+  const calls = tn.parseTextToolCalls(wrapped);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].name, 'web_search');
+  assert.equal(calls[0].arguments.query, 'طلا');
+  assert.equal(tn.stripToolNoise(wrapped), '', 'a pure tool-call block must strip to empty, never leak JSON');
+  // A bare JSON tool object (no wrapper) is still recovered.
+  const bare = '{"name":"web_search","arguments":{"query":"x"}}';
+  assert.equal(tn.parseTextToolCalls(bare).length, 1);
+  // Real prose is preserved; only the tool block + harmony tokens are removed.
+  const mixed = 'قیمت‌ها را می‌گیرم. <|channel|>\n<tool_call>{"name":"web_search","arguments":{"query":"x"}}</tool_call>';
+  assert.equal(tn.parseTextToolCalls(mixed).length, 1);
+  assert.equal(tn.stripToolNoise(mixed), 'قیمت‌ها را می‌گیرم.', 'the human sentence must survive, the noise must not');
+  // Plain text is left untouched.
+  assert.equal(tn.stripToolNoise('سلام جاوید'), 'سلام جاوید');
+  // A reply that is ONLY a bare tool name (a weak model emitting the tool it
+  // meant to call) is noise → dropped so the caller fails over.
+  assert.equal(tn.stripToolNoise('web_fetch'), '', 'a bare tool name is not an answer');
+  assert.equal(tn.stripToolNoise('web_search()'), '', 'a bare tool call is not an answer');
+  // But a real one-word human reply survives (no underscore, not a call).
+  assert.equal(tn.stripToolNoise('بله'), 'بله', 'a real short answer must survive');
+  assert.equal(tn.stripToolNoise('yes'), 'yes', 'a real one-word answer must survive');
+  // A bare tool-call JSON object (with a stray garbage char) must NOT leak.
+  assert.equal(tn.stripToolNoise('诓 {"name": "web_search", "arguments": {"query": "اخبار امروز فولدا", "count": 5}}'), '', 'raw tool-call JSON must never reach the user');
+  assert.equal(tn.stripToolNoise('{"name":"web_search","arguments":{"query":"x"}}'), '', 'bare tool-call JSON strips to empty');
+  // But a real sentence that merely mentions a brace is kept.
+  assert.equal(tn.stripToolNoise('نتیجه: هوا آفتابی است.'), 'نتیجه: هوا آفتابی است.', 'a real sentence survives');
+});
+
+// ---- Dev libraries: download plan is injection-safe (v9.9.105) ----
+// On Windows the package managers are .cmd/.bat shims, so downloads must run
+// through a shell. shell:true means a crafted package name could inject
+// commands, so plan() must reject anything outside the safe charset and keep
+// well-formed custom names. (The Windows-detection fix itself is exercised by
+// whichever managers are installed on the host at runtime.)
+test('dev-library download plan rejects injection in package names', () => {
+  const devlibs = require(path.join(ROOT, 'devlibs.js'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'setayesh-shelf-'));
+  // A catalog language with the npm manager.
+  const lang = Object.keys(devlibs.CATALOG).find((k) => devlibs.CATALOG[k].manager === 'npm');
+  assert.ok(lang, 'expected at least one npm-managed language in the catalog');
+  // A malicious name must not survive into the command args.
+  const evil = devlibs.plan(lang, dir, ['lodash; rm -rf /']);
+  assert.ok(evil.error, 'an all-bad custom name list should be rejected');
+  // A legitimate scoped/plain name passes through untouched.
+  const good = devlibs.plan(lang, dir, ['@scope/pkg', 'left-pad']);
+  assert.ok(!good.error, 'valid names should be accepted');
+  assert.ok(good.args.includes('@scope/pkg') && good.args.includes('left-pad'),
+    'valid names should reach the download command');
+  assert.ok(!good.args.some((a) => /rm -rf|;/.test(a)), 'no shell metacharacters in the args');
+  try { fs.rmSync(dir, { recursive: true, force: true }); } catch (e) {}
+});
+
+// engineselect.js — a 429 (rate limit) must never quarantine an engine, so a
+// short burst of quick questions can't park every engine for the day. Real
+// faults still escalate. This is the "why is it always full?" fix.
+test('engineselect: rate limits rest briefly and never grow like real faults', () => {
+  const es = require(path.join(ROOT, 'engineselect.js'));
+  // 429 is flagged as rate-limited, short cooldown, and does NOT grow with streak.
+  const r1 = es.cooldownFor(429, '', 1);
+  const r5 = es.cooldownFor(429, '', 5);
+  assert.equal(r1.rateLimited, true, '429 is a rate limit');
+  assert.ok(r1.ms <= 120000, '429 cooldown stays short (<= 2 min)');
+  assert.equal(r1.ms, r5.ms, '429 cooldown does not grow with the streak');
+  // A real fault (500) DOES grow with the streak and is not a rate limit.
+  const f1 = es.cooldownFor(500, '', 1);
+  const f4 = es.cooldownFor(500, '', 4);
+  assert.ok(!f1.rateLimited, '500 is not a rate limit');
+  assert.ok(f4.ms > f1.ms, 'a repeated real fault backs off longer');
+  // A bad key (401) is flagged noCredit so the panel can tell the owner.
+  assert.equal(es.cooldownFor(401, '', 1).noCredit, true, '401 needs the owner');
+});
+
+// engineselect.js — classifyQuestion tags weather as "current" (so it routes to
+// a web-searching engine) and code as "code".
+test('engineselect: classifyQuestion tags weather and code correctly', () => {
+  const es = require(path.join(ROOT, 'engineselect.js'));
+  assert.ok(es.classifyQuestion('وضعیت آب و هوای فردا').includes('current'), 'weather → current');
+  assert.ok(es.classifyQuestion('fix this python bug').includes('code'), 'code → code');
+  assert.ok(es.classifyQuestion('سلام').includes('chat'), 'small talk → chat');
+});
+
+// providererror.js — a raw provider/network error becomes a family-readable
+// message with a sensible HTTP status, never a bare errno or red box.
+test('providererror: maps statuses and network errors to friendly messages', () => {
+  const pe = require(path.join(ROOT, 'providererror.js'));
+  assert.equal(pe.friendlyProviderError({ status: 429 }, 'Gemini').status, 429, '429 stays 429');
+  assert.equal(pe.friendlyProviderError({ status: 401 }, 'Gemini').status, 502, 'bad key → 502');
+  assert.equal(pe.friendlyProviderError({ name: 'AbortError' }, 'Gemini').status, 504, 'timeout → 504');
+  const conn = pe.friendlyProviderError({ cause: { code: 'ECONNREFUSED' } }, 'Gemini');
+  assert.equal(conn.status, 503, 'connection refused → 503');
+  assert.ok(/[؀-ۿ]/.test(conn.error), 'the message is Persian, human-readable');
+});
+
+// intent.js — pure detectors for draw-an-image, live-web-search, and council.
+test('intent: wantsImage / wantsSearch / wantsCouncil detect the right asks', () => {
+  const it = require(path.join(ROOT, 'intent.js'));
+  assert.equal(it.wantsImage('یک تصویر از یک گربه بساز'), true, 'draw request → image');
+  assert.equal(it.wantsImage('این عکس چیست؟'), false, 'asking ABOUT an image is vision, not draw');
+  assert.equal(it.wantsSearch('اخبار امروز فولدا'), true, 'today\'s news → search');
+  assert.equal(it.wantsSearch('سلام حالت خوبه'), false, 'small talk → no search');
+  assert.equal(it.wantsCouncil('با چند مدل مشورت کن'), true, 'multi-model → council');
+  assert.equal(it.wantsCouncil('سلام'), false, 'greeting → no council');
+});
+
+// mathutil.js — exact arithmetic + unit conversions, so the model never guesses.
+test('mathutil: tryCompute does arithmetic and unit conversions exactly', () => {
+  const mu = require(path.join(ROOT, 'mathutil.js'));
+  assert.equal(mu.tryCompute('12*13'), '12*13 = 156', 'multiplication');
+  assert.equal(mu.tryCompute('2^10'), '2^10 = 1024', 'power');
+  assert.equal(mu.tryCompute('100 c to f'), '100 c = 212 f', 'celsius→fahrenheit');
+  assert.equal(mu.tryCompute('1 km to m'), '1 km = 1000 m', 'km→m');
+  assert.equal(mu.tryCompute('سلام حالت خوبه'), null, 'not a calculation → null');
+  assert.equal(mu.convertUnit(0, 'c', 'k'), 273.15, 'celsius→kelvin');
+});
+
+// toolnoise.stripLinks — Telegram "no links unless asked" rule, enforced in code.
+test('toolnoise: stripLinks removes markdown/image/bare links; wantsLink detects intent', () => {
+  const tn = require(path.join(ROOT, 'toolnoise.js'));
+  const t = 'هوا خوبه\n![](https://maps.example/staticmap?key=AIzaFAKE)\n- [آب‌وهوا](https://wetter.de/fulda) و www.foo.com';
+  const out = tn.stripLinks(t);
+  assert.ok(!/https?:\/\//.test(out), 'no bare/embedded URLs remain');
+  assert.ok(!/\]\(/.test(out) && !/!\[/.test(out), 'no markdown link/image syntax remains');
+  assert.ok(out.includes('آب‌وهوا') && out.includes('هوا خوبه'), 'the link TEXT and prose are kept');
+  assert.ok(!out.includes('AIzaFAKE'), 'the hallucinated key is gone');
+  assert.equal(tn.wantsLink('وضعیت آب هوا'), false, 'a weather question does not ask for a link');
+  assert.equal(tn.wantsLink('یه لینک بده'), true, 'an explicit link request is honored');
+  assert.equal(tn.wantsLink('آدرس سایت هواشناسی چیه'), true, 'asking for a site/address counts');
+});
+
+// toolnoise.tidyTelegram — the brevity net: strip the greeting opener and the
+// GPT-style "anything else?" closer, keep the real answer intact.
+test('toolnoise: tidyTelegram strips filler opener/closer, keeps substance', () => {
+  const tn = require(path.join(ROOT, 'toolnoise.js'));
+  const out = tn.tidyTelegram('سلام! بله، پایتخت فرانسه پاریس است. اگر سؤال دیگری داری بپرس.');
+  assert.ok(out.includes('پاریس'), 'the real answer is kept');
+  assert.ok(!/^سلام/.test(out) && !/^بله/.test(out), 'the greeting opener is gone');
+  assert.ok(!/سؤال دیگری/.test(out), 'the trailing meta-offer is gone');
+  const dis = tn.tidyTelegram('به عنوان یک هوش مصنوعی نمی‌توانم احساس داشته باشم. اما جواب ۴ است.');
+  assert.ok(dis.includes('۴') && !/هوش مصنوعی/.test(dis), 'the AI disclaimer is stripped');
+  // A plain direct answer must pass through untouched.
+  assert.equal(tn.tidyTelegram('دو به‌علاوه دو می‌شود چهار.'), 'دو به‌علاوه دو می‌شود چهار.', 'a clean answer is unchanged');
+  // The "آیا نیازی به توضیحات بیشتری داری؟" filler the owner flagged is stripped…
+  const q = tn.tidyTelegram('امروز ۱۹ سپتامبر ۲۰۲۶ است. آیا نیازی به توضیحات بیشتری داری؟');
+  assert.ok(q.includes('۱۹ سپتامبر') && !/توضیحات بیشتری/.test(q), 'the آیا-filler tail is removed');
+  // …but a GENUINE trailing "آیا …؟" question is preserved.
+  const legit = tn.tidyTelegram('جلسه دوشنبه ساعت ۱۰:۳۰ است. آیا این زمان مناسب است؟');
+  assert.ok(/آیا این زمان مناسب است/.test(legit), 'a real trailing question is kept');
+});
+
+// toolnoise.stripMarkdown — Telegram is plain text, so markup must go but the
+// words stay (the literal "**صبح:**" جاوید saw).
+test('toolnoise: stripMarkdown removes markup, keeps the words', () => {
+  const tn = require(path.join(ROOT, 'toolnoise.js'));
+  const out = tn.stripMarkdown('**صبح:** ۹ تا ۱۱ درجه\n## عصر\n- آفتابی\n- بادی');
+  assert.ok(!/\*\*/.test(out) && !/^#/m.test(out), 'no ** or ## remain');
+  assert.ok(out.includes('صبح:') && out.includes('۹ تا ۱۱ درجه') && out.includes('آفتابی'), 'the words stay');
+  assert.ok(/•/.test(out), 'bullets become • not -*');
+});
+
+// runners.js — the language-runner catalogue + ext routing + detection probe.
+test('runners: catalogue maps extensions and probe fills availability', () => {
+  const r = require(path.join(ROOT, 'runners.js'));
+  assert.ok(r.RUNNERS.python && r.RUNNERS.python.exts.includes('.py'), 'python runs .py');
+  assert.equal(r.runnerForExt('.py'), 'python', '.py → python');
+  assert.equal(r.runnerForExt('.JS'), 'node', 'case-insensitive .js → node');
+  assert.equal(r.runnerForExt('.xyz'), null, 'unknown ext → null');
+  // probe writes a key for every runner (value is a version string or null).
+  const avail = {};
+  r.probeRunners(avail);
+  for (const k of Object.keys(r.RUNNERS)) {
+    assert.ok(k in avail, 'availability recorded for ' + k);
+    assert.ok(avail[k] === null || typeof avail[k] === 'string', k + ' is version-or-null');
+  }
+});
+
+// projectpaths.js — safe paths under the workspace/script dirs, no escape.
+test('projectpaths: names are sanitized and paths cannot escape their base', () => {
+  const { makeProjectPaths } = require(path.join(ROOT, 'projectpaths.js'));
+  const PROJECTS_DIR = '/data/projects', SCRIPTS_DIR = '/data/scripts';
+  const safeScriptName = require(path.join(ROOT, 'sanitize.js')).safeScriptName;
+  const pp = makeProjectPaths({ PROJECTS_DIR, SCRIPTS_DIR, safeScriptName });
+  assert.equal(pp.safeProjectName('../evil'), 'evil', 'traversal chars stripped from name');
+  assert.equal(pp.safeProjectName('my app 1'), 'my app 1', 'normal name kept');
+  assert.equal(pp.safeProjectName('///'), null, 'all-illegal → null');
+  assert.equal(pp.projectDir('site'), path.resolve(PROJECTS_DIR, 'site'), 'project dir under base');
+  const inside = pp.safeInProject('site', 'src/app.js');
+  assert.ok(inside && inside.startsWith(path.resolve(PROJECTS_DIR, 'site') + path.sep), 'file stays inside project');
+  // ".." segments are stripped (neutralized), so the result still stays inside.
+  const esc = pp.safeInProject('site', '../../etc/passwd');
+  assert.ok(esc && esc.startsWith(path.resolve(PROJECTS_DIR, 'site') + path.sep), 'traversal neutralized, stays inside project');
+  const sp = pp.scriptPath('run');
+  assert.ok(sp && sp.startsWith(path.resolve(SCRIPTS_DIR) + path.sep) && sp.endsWith('run.py'), 'script under scripts dir, .py added');
+});
+
+// ollama.js — probe/status helpers are pure over an injected fetch.
+test('ollama: probe parses tags, ensureUp reports down cleanly, hints are honest', async () => {
+  const o = require(path.join(ROOT, 'ollama.js'));
+  const up = async () => ({ json: async () => ({ models: [{ name: 'qwen2.5:7b' }, { name: 'llama3.2' }] }) });
+  const p = await o.probe('http://h:11434/v1', up);
+  assert.deepEqual(p, { running: true, models: ['qwen2.5:7b', 'llama3.2'] }, 'tags parsed, /v1 stripped');
+  const down = async () => { throw new Error('ECONNREFUSED'); };
+  assert.deepEqual(await o.probe('http://h:11434', down), { running: false, models: [] }, 'down → not running');
+  // ensureUp with a live service must NOT try to spawn — returns running fast.
+  assert.deepEqual(await o.ensureUp('http://h:11434/v1', up), { installed: true, running: true, started: false, models: ['qwen2.5:7b', 'llama3.2'] }, 'already running → no spawn');
+  // Honest, distinct hints for each state.
+  assert.match(o.statusHint({ installed: false, running: false, models: [] }, 'darwin'), /نصب نیست.*ollama\.com/);
+  assert.match(o.statusHint({ installed: true, running: false, models: [] }), /بالا نیامده/);
+  assert.match(o.statusHint({ installed: true, running: true, models: [] }), /مدلی نصب نیست/);
+  assert.match(o.statusHint({ installed: true, running: true, models: ['x'] }), /متصل/);
+});
+
+// obsidian.js — read-only vault reader driven by the live config.
+test('obsidian: vault resolves from cfg and lists only .md notes', () => {
+  const { makeObsidian } = require(path.join(ROOT, 'obsidian.js'));
+  const fs = require('fs'), os = require('os');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'obs-'));
+  fs.mkdirSync(path.join(dir, '.obsidian'), { recursive: true });
+  fs.mkdirSync(path.join(dir, 'sub'), { recursive: true });
+  fs.writeFileSync(path.join(dir, 'a.md'), '# note a');
+  fs.writeFileSync(path.join(dir, 'sub', 'b.md'), '# note b');
+  fs.writeFileSync(path.join(dir, 'ignore.txt'), 'not markdown');
+  let cfg = {};
+  const o = makeObsidian({ getCfg: () => cfg });
+  assert.equal(o.obsidianVault(), '', 'no vault until configured');
+  assert.deepEqual(o.obsidianNotes(), [], 'no notes without a vault');
+  cfg = { OBSIDIAN_VAULT: dir };
+  const notes = o.obsidianNotes(500);
+  assert.equal(notes.length, 2, 'both .md files found (recursively)');
+  assert.ok(notes.every((f) => f.endsWith('.md')), 'only markdown listed');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// github.js verifyToken — one shared PAT check for both connect routes.
+test('github: verifyToken parses /user, flags empty, reports bad status', async () => {
+  const gh = require(path.join(ROOT, 'github.js'));
+  assert.deepEqual(await gh.verifyToken('', {}), { ok: false, status: 0, empty: true }, 'empty token short-circuits');
+  const good = async () => ({ ok: true, status: 200, json: async () => ({ login: 'javid', name: 'J', public_repos: 7 }) });
+  const v = await gh.verifyToken('ghp_x', { fetchWithTimeout: good });
+  assert.ok(v.ok && v.login === 'javid' && v.publicRepos === 7, 'valid token → login + repo count');
+  const bad = async () => ({ ok: false, status: 401 });
+  const b = await gh.verifyToken('ghp_bad', { fetchWithTimeout: bad });
+  assert.deepEqual(b, { ok: false, status: 401 }, 'rejected token reports its status');
+});
+
+// mail.js — the IMAP client resolves host/config from the live cfg via getCfg.
+test('mail: mailConfigured + mailHost follow the config and presets', () => {
+  const { makeMail, MAIL_PRESETS } = require(path.join(ROOT, 'mail.js'));
+  assert.ok(MAIL_PRESETS.gmail && MAIL_PRESETS.gmail.host === 'imap.gmail.com', 'gmail preset present');
+  // Not configured until user+pass+ (a preset or explicit host) are all set.
+  let cfg = {};
+  let m = makeMail({ getCfg: () => cfg });
+  assert.equal(m.mailConfigured(), false, 'empty config → not configured');
+  cfg = { MAIL_USER: 'a@b.com', MAIL_PASS: 'x', MAIL_PROVIDER: 'gmail' };
+  assert.equal(m.mailConfigured(), true, 'user+pass+provider → configured');
+  assert.deepEqual(m.mailHost(), { host: 'imap.gmail.com', port: 993 }, 'preset host resolved');
+  // An explicit host/port overrides the preset.
+  cfg = { MAIL_USER: 'a@b.com', MAIL_PASS: 'x', MAIL_HOST: 'mail.example.org', MAIL_PORT: '1993' };
+  assert.deepEqual(m.mailHost(), { host: 'mail.example.org', port: 1993 }, 'explicit host wins');
+  assert.equal(m.mailConfigured(), true, 'explicit host also counts as configured');
+});
+
+// cryptobackup.js — the encrypted-backup envelope round-trips and rejects tampering.
+test('cryptobackup: encrypt→decrypt round-trips; wrong pass / bad marker throw', () => {
+  const cb = require(path.join(ROOT, 'cryptobackup.js'));
+  const plain = Buffer.from('محرمانه: family backup 123', 'utf8');
+  const blob = cb.encryptBuffer(plain, 'correct horse battery');
+  assert.ok(blob.slice(0, cb.CLOUD_MARKER.length).toString() === cb.CLOUD_MARKER, 'marker present');
+  assert.ok(blob.length > plain.length + 40, 'salt+iv+tag prepended');
+  assert.deepEqual(cb.decryptBuffer(blob, 'correct horse battery'), plain, 'round-trips with right pass');
+  assert.throws(() => cb.decryptBuffer(blob, 'wrong pass'), 'wrong passphrase throws (auth tag)');
+  assert.throws(() => cb.decryptBuffer(Buffer.from('not a backup'), 'x'), /پشتیبان/, 'bad marker rejected');
+  // Cross-format: a legacy 'STYS1' backup (same body, shorter magic, Node-default
+  // scrypt) must ALSO decrypt here, so a Drive backup and the standalone tool agree.
+  const crypto = require('crypto');
+  const salt = crypto.randomBytes(16), iv = crypto.randomBytes(12);
+  const key = crypto.scryptSync('legacy pass', salt, 32);
+  const c = crypto.createCipheriv('aes-256-gcm', key, iv);
+  const body = Buffer.from('old backup payload', 'utf8');
+  const enc = Buffer.concat([c.update(body), c.final()]);
+  const legacy = Buffer.concat([Buffer.from('STYS1', 'ascii'), salt, iv, c.getAuthTag(), enc]);
+  assert.deepEqual(cb.decryptBuffer(legacy, 'legacy pass'), body, 'legacy STYS1 backup also decrypts');
+});
+
+// github.js — read helpers are pure over an injected fetch (no real network).
+test('github: search + get-file parse results and validate inputs via fake fetch', async () => {
+  const gh = require(path.join(ROOT, 'github.js'));
+  const searchFetch = async () => ({ ok: true, status: 200, json: async () => ({ items: [
+    { full_name: 'a/b', stargazers_count: 9, language: 'JS', description: 'd', html_url: 'https://g/a/b', default_branch: 'main' },
+  ] }) });
+  const s = await gh.githubSearchRepos('express', 5, { fetchWithTimeout: searchFetch });
+  assert.equal(s.results[0].repo, 'a/b', 'repo full_name mapped');
+  assert.equal(s.results[0].defaultBranch, 'main', 'default branch mapped');
+  await assert.rejects(() => gh.githubSearchRepos('', 5, { fetchWithTimeout: searchFetch }), 'empty query rejected');
+  // get-file: raw text clamped via injected clampText; bad repo name rejected before any fetch.
+  const fileFetch = async () => ({ ok: true, status: 200, text: async () => 'console.log(1)' });
+  const f = await gh.githubGetFile('owner/name', 'src/x.js', 'main', { fetchWithTimeout: fileFetch, clampText: (t) => t });
+  assert.ok(f.content.includes('console.log') && f.branch === 'main', 'file content + branch returned');
+  await assert.rejects(() => gh.githubGetFile('not-a-repo', 'x', '', { fetchWithTimeout: fileFetch, clampText: (t) => t }), /owner\/name/, 'bad repo name rejected');
+});
+
+// websearch.js — pure per-provider fetchers + defaults, driven by injected deps.
+test('websearch: defaults follow keys and providers parse results via fake fetch', async () => {
+  const ws = require(path.join(ROOT, 'websearch.js'));
+  // defaultSearchEngines reflects which keys are present in cfg.
+  const eng = ws.defaultSearchEngines({ KEY_BRAVE: 'x' });
+  const brave = eng.find((e) => e.id === 'brave');
+  const tavily = eng.find((e) => e.id === 'tavily');
+  assert.ok(brave.enabled === true && tavily.enabled === false, 'enabled tracks the key');
+  assert.ok(eng.find((e) => e.id === 'duckduckgo').enabled, 'duckduckgo always on');
+  // Brave: a fake fetch returns JSON; searchOne maps it to {title,url,snippet}.
+  const braveFetch = async () => ({ ok: true, json: async () => ({ web: { results: [{ title: 'T', url: 'https://a', description: 'D' }] } }) });
+  const r1 = await ws.searchOne('brave', 'q', 3, { key: 'k', fetchWithTimeout: braveFetch });
+  assert.deepEqual(r1, [{ title: 'T', url: 'https://a', snippet: 'D' }], 'brave parsed');
+  // No key → null without any fetch.
+  assert.equal(await ws.searchOne('brave', 'q', 3, { key: '', fetchWithTimeout: braveFetch }), null, 'no key → null');
+  // DuckDuckGo: HTML scraped, uddg-wrapped link decoded, htmlToText applied.
+  const ddHtml = '<a class="result__a" href="/l/?uddg=https%3A%2F%2Fex.com%2Fp">Hello <b>World</b></a>';
+  const ddFetch = async () => ({ ok: true, text: async () => ddHtml });
+  const r2 = await ws.searchOne('duckduckgo', 'q', 3, { fetchWithTimeout: ddFetch, htmlToText: (s) => s.replace(/<[^>]+>/g, '') });
+  assert.equal(r2[0].url, 'https://ex.com/p', 'uddg link decoded');
+  assert.ok(r2[0].title.includes('Hello'), 'title extracted via htmlToText');
+});
+
+// council.js — synthesis prompt composes members' answers with a label callback.
+test('council: buildSynthesisPrompt folds answers in and resolves labels', () => {
+  const { buildSynthesisPrompt } = require(path.join(ROOT, 'council.js'));
+  const out = buildSynthesisPrompt('BASE', [
+    { id: 'gemini', reply: 'answer A' },
+    { id: 'groq', reply: 'answer B' },
+    { id: 'x', reply: '' },
+  ], 'why is the sky blue?', (id) => ({ gemini: 'Gemini', groq: 'Groq' }[id] || id));
+  assert.ok(out.startsWith('BASE'), 'base prompt kept at the top');
+  assert.ok(out.includes('why is the sky blue?'), 'question included');
+  assert.ok(out.includes('Gemini') && out.includes('Groq'), 'labels resolved via callback');
+  assert.ok(out.includes('answer A') && out.includes('answer B'), 'non-empty answers included');
+  assert.ok(!out.includes('مدل 3') , 'empty replies are filtered out');
+  // Without a labelFor it falls back to the id, never throwing.
+  assert.ok(buildSynthesisPrompt('B', [{ id: 'zzz', reply: 'r' }], 'q').includes('zzz'), 'id fallback');
+});
+
+// privacydata.js — the outbound-privacy pattern tables detect the sensitive kinds.
+test('privacydata: PII/secret patterns match and labels/high-value are consistent', () => {
+  const pd = require(path.join(ROOT, 'privacydata.js'));
+  const hit = (patterns, s) => patterns.some((p) => new RegExp(p.re.source, p.re.flags).test(s));
+  assert.ok(hit(pd.PII_PATTERNS, 'reach me at ali@example.com'), 'email detected');
+  assert.ok(hit(pd.PII_PATTERNS, 'call +49 151 23456789'), 'phone detected');
+  assert.ok(hit(pd.PII_PATTERNS, 'server 192.168.1.42'), 'ip detected');
+  assert.ok(hit(pd.SECRET_PATTERNS, 'key sk-abcdefghijklmnopqrstuvwxyz'), 'api key detected');
+  assert.ok(hit(pd.SECRET_PATTERNS, 'رمز عبور من hunter2xyz'), 'password phrase detected');
+  // Every high-value kind and every pattern name must have a Persian label.
+  for (const k of pd.HIGH_VALUE) assert.ok(pd.KIND_LABEL[k], 'label for high-value kind ' + k);
+  for (const p of [...pd.PII_PATTERNS, ...pd.SECRET_PATTERNS]) assert.ok(pd.KIND_LABEL[p.name], 'label for ' + p.name);
+});
+
+// configkeys.js — the control-centre settings allowlist marks secrets correctly.
+test('configkeys: EDITABLE_KEYS lists known settings and flags secrets', () => {
+  const { EDITABLE_KEYS } = require(path.join(ROOT, 'configkeys.js'));
+  assert.ok(EDITABLE_KEYS.KEY_ANTHROPIC && EDITABLE_KEYS.KEY_ANTHROPIC.secret === true, 'API keys are secret');
+  // Extra Gemini key slots exist so the owner can add a 2nd/3rd key (rotation on quota).
+  assert.ok(EDITABLE_KEYS.KEY_GEMINI2 && EDITABLE_KEYS.KEY_GEMINI2.secret === true, 'second Gemini key slot exists and is secret');
+  assert.ok(EDITABLE_KEYS.KEY_GEMINI3 && EDITABLE_KEYS.KEY_GEMINI3.secret === true, 'third Gemini key slot exists and is secret');
+  assert.ok(EDITABLE_KEYS.TELEGRAM_BOT_TOKEN.secret === true, 'bot token is secret');
+  assert.ok(EDITABLE_KEYS.PROVIDER && EDITABLE_KEYS.PROVIDER.secret === false, 'PROVIDER is not secret');
+  for (const [k, m] of Object.entries(EDITABLE_KEYS)) {
+    assert.equal(typeof m.secret, 'boolean', k + ' has a boolean secret flag');
+    assert.ok(m.label && typeof m.label === 'string', k + ' has a label');
+  }
+});
+
+// sourcemap.js — self-edit allowlists + the project map are consistent static data.
+test('sourcemap: readable is a superset of editable and the map is described', () => {
+  const sm = require(path.join(ROOT, 'sourcemap.js'));
+  assert.ok(Array.isArray(sm.EDITABLE_SOURCES) && sm.EDITABLE_SOURCES.includes('index.js'), 'editable lists index.js');
+  for (const f of sm.EDITABLE_SOURCES) assert.ok(sm.READABLE_SOURCES.includes(f), 'readable superset of editable: ' + f);
+  assert.ok(sm.READABLE_SOURCES.includes('public/app.css'), 'readable adds the stylesheet');
+  assert.ok(sm.SELF_MAP && typeof sm.SELF_MAP['index.js'] === 'string', 'SELF_MAP describes index.js');
+  // Every editable file should have a description in the map (so self_map is complete).
+  for (const f of sm.EDITABLE_SOURCES) assert.ok(sm.SELF_MAP[f], 'SELF_MAP covers ' + f);
+});
+
+// toolspec.js — the AI tool catalogue (JSON schemas) is well-formed static data.
+test('toolspec: every tool has a name/description/schema and names are unique', () => {
+  const { TOOLS_SPEC } = require(path.join(ROOT, 'toolspec.js'));
+  assert.ok(Array.isArray(TOOLS_SPEC) && TOOLS_SPEC.length > 20, 'a full catalogue of tools');
+  const seen = new Set();
+  for (const t of TOOLS_SPEC) {
+    assert.equal(typeof t.name, 'string', 'tool has a name');
+    assert.ok(t.name && !seen.has(t.name), 'name is present and unique: ' + t.name);
+    seen.add(t.name);
+    assert.ok(t.description && typeof t.description === 'string', t.name + ' has a description');
+    assert.ok(t.input_schema && t.input_schema.type === 'object', t.name + ' has an object schema');
+  }
+  // A few well-known tools must still be in the catalogue.
+  for (const n of ['build_project', 'run_python', 'web_search', 'read_own_source']) {
+    assert.ok(seen.has(n), 'catalogue includes ' + n);
+  }
+});
+
+// personas.js — the hand-written per-account persona prompts, keyed by username.
+test('personas: TUTORS exposes non-empty persona text for known accounts', () => {
+  const { TUTORS } = require(path.join(ROOT, 'personas.js'));
+  assert.ok(TUTORS && typeof TUTORS === 'object', 'TUTORS is an object');
+  for (const [k, v] of Object.entries(TUTORS)) {
+    assert.equal(typeof v, 'string', k + ' persona is a string');
+    assert.ok(v.trim().length > 50, k + ' persona is substantial');
+  }
+  assert.ok(TUTORS.javid && TUTORS.javid.includes('جاوید'), 'owner persona addresses Javid by name');
+  assert.ok(TUTORS.setayesh, 'setayesh persona present');
+});
+
+test('personas: TONE_RULES has the three registers and HUMAN_VOICE is shared', () => {
+  const { TONE_RULES, HUMAN_VOICE } = require(path.join(ROOT, 'personas.js'));
+  for (const k of ['close', 'normal', 'formal']) {
+    assert.ok(TONE_RULES[k] && TONE_RULES[k].length > 20, 'tone register present: ' + k);
+  }
+  assert.ok(typeof HUMAN_VOICE === 'string' && HUMAN_VOICE.length > 50, 'shared human-voice rules present');
+});
+
+// htmltext.js — text → printable HTML (RTL auto-detected, markdown-ish inline).
+test('htmltext: textToPrintableHtml builds a page and detects direction', () => {
+  const ht = require(path.join(ROOT, 'htmltext.js'));
+  const fa = ht.textToPrintableHtml('# سلام\n**پررنگ**', 'گزارش');
+  assert.ok(fa.includes('dir="rtl"'), 'Persian → RTL');
+  assert.ok(fa.includes('<h1>سلام</h1>'), 'heading rendered');
+  assert.ok(fa.includes('<strong>پررنگ</strong>'), 'bold rendered');
+  assert.ok(fa.includes('<title>گزارش</title>'), 'title used');
+  const en = ht.textToPrintableHtml('hello <world> & co', 'doc');
+  assert.ok(en.includes('dir="ltr"'), 'English → LTR');
+  assert.ok(en.includes('&lt;world&gt;') && en.includes('&amp;'), 'HTML-escaped, no injection');
+});
+
+// doctext.js — office/ZIP → text. Round-trip a built ZIP and a minimal .docx.
+test('doctext: reads a plain ZIP listing and a .docx document', () => {
+  const dt = require(path.join(ROOT, 'doctext.js'));
+  const { buildZip } = require(path.join(ROOT, 'ziputil.js'));
+  // Plain ZIP: listing + inlined readable text file.
+  const zip = buildZip([{ name: 'notes.txt', data: Buffer.from('سلام دنیا', 'utf8') }]);
+  const listed = dt.zipToText(zip, 'bundle.zip');
+  assert.ok(listed.includes('notes.txt'), 'file name listed');
+  assert.ok(listed.includes('سلام دنیا'), 'readable text inlined');
+  assert.equal(dt.zipEntries(zip).length, 1, 'one entry parsed back');
+  // Minimal .docx: word/document.xml with two paragraphs.
+  const docXml = '<w:document><w:body>'
+    + '<w:p><w:r><w:t>خط اول</w:t></w:r></w:p>'
+    + '<w:p><w:r><w:t>line two</w:t></w:r></w:p>'
+    + '</w:body></w:document>';
+  const docx = buildZip([{ name: 'word/document.xml', data: Buffer.from(docXml, 'utf8') }]);
+  const text = dt.officeToText(docx, 'letter.docx');
+  assert.ok(text.includes('خط اول'), 'first paragraph extracted');
+  assert.ok(text.includes('line two'), 'second paragraph extracted');
+  assert.throws(() => dt.zipEntries(Buffer.from('not a zip')), /ZIP/, 'garbage buffer rejected');
+});
+
+// sanitize.js — untrusted client input is always bounded, never written raw.
+test('sanitize: theme / profile / script-name inputs are validated and bounded', () => {
+  const s = require(path.join(ROOT, 'sanitize.js'));
+  // Theme: good hex kept, bad hex dropped, numbers clamped, unknown keys ignored.
+  const th = s.sanitizeTheme({ appName: '  My House  ', accent: '#12ab34', bg: 'red', fontScale: 999, radius: -5, effects: 'yes', evil: 1 });
+  assert.equal(th.appName, 'My House', 'appName trimmed');
+  assert.equal(th.accent, '#12ab34', 'valid hex kept');
+  assert.equal(th.bg, undefined, 'invalid hex dropped');
+  assert.equal(th.fontScale, 140, 'fontScale clamped to max');
+  assert.equal(th.radius, 0, 'radius clamped to min');
+  assert.equal(th.effects, undefined, 'non-boolean effects ignored');
+  assert.equal(th.evil, undefined, 'unknown key ignored');
+  assert.equal(s.sanitizeTheme(null).appName, undefined, 'null input → empty object, no throw');
+  assert.equal(s.THEME_DEFAULTS.appName, 'Setayesh AI', 'defaults exported');
+  // Profile: age bounded 1..120, null passes through, strings capped.
+  assert.equal(s.sanitizeProfileFields({ age: 5000 }).age, 120, 'age clamped to 120');
+  assert.equal(s.sanitizeProfileFields({ age: -3 }).age, 1, 'age clamped to 1');
+  assert.equal(s.sanitizeProfileFields({ age: '' }).age, null, 'blank age → null');
+  assert.equal(s.sanitizeProfileFields({ interests: 'x'.repeat(500) }).interests.length, 300, 'interests capped');
+  assert.equal(s.sanitizeProfileFields(null).age, undefined, 'null body → empty object, no throw');
+  // Script name: path traversal stripped, .py appended, empty → null.
+  assert.equal(s.safeScriptName('../../etc/passwd'), 'passwd.py', 'traversal stripped to basename + .py');
+  assert.equal(s.safeScriptName('report'), 'report.py', '.py appended');
+  assert.equal(s.safeScriptName('run.py'), 'run.py', 'existing .py kept');
+  assert.equal(s.safeScriptName('....'), null, 'all-dots → null');
+  assert.equal(s.safeScriptName(''), null, 'empty → null');
+  // safeRelPath: traversal/absolute stripped, illegal chars replaced, throws on empty.
+  assert.equal(s.safeRelPath('a/b/c.txt'), 'a/b/c.txt', 'nested path kept');
+  assert.equal(s.safeRelPath('/../../etc/passwd'), 'etc/passwd', 'absolute + .. stripped');
+  assert.equal(s.safeRelPath('bad:name?.txt'), 'bad_name_.txt', 'illegal chars replaced');
+  assert.throws(() => s.safeRelPath('../..'), /نامعتبر/, 'all-traversal → throws');
+  assert.throws(() => s.safeRelPath('x'.repeat(300)), /بلند/, 'over-long → throws');
+});
+
+// diffutil.js — line-level diff for judging a proposed edit.
+test('diffutil: makeDiff reports added and removed lines, capped', () => {
+  const { makeDiff } = require(path.join(ROOT, 'diffutil.js'));
+  assert.deepEqual(makeDiff('a\nb', 'a\nb'), [], 'identical → no rows');
+  const d = makeDiff('a\nb\nc', 'a\nB\nc');
+  assert.ok(d.some((r) => r.t === '-' && r.s === 'b'), 'old line removed');
+  assert.ok(d.some((r) => r.t === '+' && r.s === 'B'), 'new line added');
+  const big = makeDiff('', Array.from({ length: 1000 }, (_, i) => 'l' + i).join('\n'));
+  assert.ok(big.length <= 402 && big[big.length - 1].t === '!', 'huge diff is capped');
+});
+
+// directives.js — the admin's notes must actually reach the brain's prompt.
+test('directives: the admin note is wrapped into the system-prompt block', () => {
+  const d = require(path.join(ROOT, 'directives.js'));
+  assert.equal(d.directivesBlock(''), '', 'empty notes → nothing injected');
+  assert.equal(d.directivesBlock('   '), '', 'whitespace-only → nothing injected');
+  const block = d.directivesBlock('همیشه کوتاه جواب بده. تا نخواستم لینک نده.');
+  assert.ok(block.includes('همیشه کوتاه جواب بده'), 'the note text is in the block');
+  assert.ok(block.includes('بالاترین اولویت'), 'it is framed as top priority');
+  assert.equal(d.clampDirectives('x'.repeat(9000)).length, 8000, 'a runaway paste is capped');
+  assert.equal(d.clampDirectives(null), '', 'null → empty string');
+});
+
+// End-to-end: a saved directive must actually be injected into the system prompt
+// sent to the engine, so "the notes don't work" can't regress silently. A stub
+// engine echoes the system prompt it received; the reply must contain the note.
+test('directives reach the engine: a saved note appears in the chat system prompt', async () => {
+  const http = require('node:http');
+  const marker = 'قانونِ_تستِ_دستور_' + Date.now();
+  const stub = http.createServer((req, res) => {
+    let body = '';
+    req.on('data', (c) => { body += c; });
+    req.on('end', () => {
+      let sys = '';
+      try {
+        const j = JSON.parse(body || '{}');
+        const m = (j.messages || []).find((x) => x.role === 'system');
+        sys = m ? (typeof m.content === 'string' ? m.content : JSON.stringify(m.content)) : '';
+      } catch (e) {}
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(req.url.endsWith('/chat/completions')
+        ? { choices: [{ message: { content: 'SYS>>' + sys } }] }
+        : { data: [] }));
+    });
+  });
+  await new Promise((r) => stub.listen(0, '127.0.0.1', r));
+  const sp = stub.address().port;
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  try {
+    await api('/api/admin/directives', { method: 'POST', token, body: { text: marker } });
+    await api('/api/admin/providers/custom', { method: 'POST', token, body: { id: 'dirtest', label: 'Dir Test', baseUrl: `http://127.0.0.1:${sp}/v1`, models: 'm1', key: 'k' } });
+    const r = await api('/api/chat', { method: 'POST', token, body: { message: 'سلام', provider: 'dirtest', model: 'm1', auto: 'false' } });
+    const d = await r.json();
+    assert.ok(String(d.reply || '').includes(marker), 'the saved directive must be in the system prompt sent to the engine');
+  } finally {
+    await api('/api/admin/directives', { method: 'POST', token, body: { text: '' } });   // don't leak into other tests
+    await api('/api/admin/providers/custom/dirtest', { method: 'DELETE', token });
+    stub.close();
+  }
+});
