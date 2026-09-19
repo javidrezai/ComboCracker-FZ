@@ -212,7 +212,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.164';
+const APP_VERSION = '9.9.165';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -2972,6 +2972,49 @@ function orderedEngineList(opts) {
   return list.filter((id) => engineUsable(id)).concat(list.filter((id) => !engineUsable(id)));
 }
 
+// SMART MODE (حالت هوشمند) — the owner's «فعال باشه، همه رو کنترل کنه و از همه
+// استفاده کنه». On by default (turn off with cfg.ENGINE_MODE = "manual"). It
+// means: pick automatically in the owner's order (Gemini first), fail over
+// across ALL engines, AND actively keep the whole fleet healthy — a recovered
+// key/quota rejoins on its own instead of staying parked. See
+// probeSidelinedEngines() for the "checks all of them" half.
+function smartModeOn() {
+  return !/^(0|false|no|off|manual|خاموش|دستی)$/i.test(String(cfg.ENGINE_MODE || 'smart').trim());
+}
+
+// The active watcher behind smart mode. It re-tests ONLY the engines that are
+// currently sidelined (cooling or quarantined) with one tiny request — a
+// recovered one is cleared and rejoins the rotation automatically. Healthy
+// engines are deliberately NOT probed: real questions already exercise them, and
+// pinging a free-tier engine (Gemini's quota is only a few dozen/day) on a timer
+// would burn the very quota we're protecting. So the whole fleet stays monitored
+// — healthy ones by real traffic, sidelined ones by this gentle re-check — and
+// none of it is wasted. Runs on a timer and never throws into the loop.
+let _engineProbeBusy = false;
+async function probeSidelinedEngines() {
+  if (!smartModeOn() || _engineProbeBusy) return;
+  const sidelined = Object.keys(PROVIDERS).filter((id) =>
+    id !== 'brain' && isConfigured(id) && !engineUsable(id));
+  if (!sidelined.length) return;
+  _engineProbeBusy = true;
+  try {
+    for (const id of sidelined) {
+      try {
+        const models = PROVIDERS[id].models || [];
+        const model = id === 'gemini' ? GEMINI_MODEL : ((models.find((m) => m.best !== 'code') || models[0] || {}).id);
+        if (id === 'gemini') { try { await ensureGeminiModel(); } catch (e) {} }
+        const reply = await callProvider(id, model, 'Reply with exactly: OK', [{ role: 'user', content: 'ping' }], { maxTokens: 8 });
+        if (String(reply || '').trim()) {
+          // Recovered — put it straight back in play.
+          if (engineHealth[id]) Object.assign(engineHealth[id], { streak: 0, cooldownUntil: 0, quarantined: false, needsAttention: null });
+          console.warn(`   [smart] ${PROVIDERS[id].label} recovered — back in rotation`);
+        }
+      } catch (e) { /* still down — leave it cooling, try again next cycle */ }
+    }
+    try { saveEngineHealth(); } catch (e) {}
+  } finally { _engineProbeBusy = false; }
+}
+
 // ---- Which engine suits THIS question? ----
 // A cheap, local look at what the message actually asks for. No model call,
 // no cost: just enough signal to stop sending a one-line "سلام" to the
@@ -3017,6 +3060,8 @@ function bestEngine(preferredId, opts) {
 
 app.get('/api/admin/engine-health', requireAuth, requireAdmin, (req, res) => {
   res.json({
+    smart: smartModeOn(),
+    order: orderedEngineList({}),
     engines: Object.keys(PROVIDERS).filter(isConfigured).map((id) => {
       const h = engineHealth[id] || {};
       return {
@@ -4983,6 +5028,13 @@ setInterval(() => {
   if (Date.now() - last < intervalMs) return;
   runResearchCycle().catch((e) => console.error('Research cycle failed:', e.message));
 }, 5 * 60 * 1000).unref();
+
+// Smart-mode watcher — every 10 minutes, re-test any sidelined engine so a
+// recovered key/quota rejoins on its own (see probeSidelinedEngines). A first
+// pass runs ~90s after boot so the fleet is checked soon after start, not only
+// after ten minutes. Both .unref() so they never hold the process open.
+setInterval(() => { probeSidelinedEngines().catch(() => {}); }, 10 * 60 * 1000).unref();
+setTimeout(() => { probeSidelinedEngines().catch(() => {}); }, 90 * 1000).unref();
 
 // ---------------- Admin: growing knowledge + research settings ----------------
 app.get('/api/admin/research', requireAuth, requireAdmin, (req, res) => {

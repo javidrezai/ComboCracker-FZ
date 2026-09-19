@@ -42,6 +42,8 @@ const EDITABLE_KEYS = {
   GITHUB_TOKEN:      { secret: true,  label: 'توکن GitHub (برای مخزن‌های خصوصی)' },
   OBSIDIAN_VAULT:    { secret: false, label: 'مسیر والت Obsidian' },
   LOCAL_FIRST:       { secret: false, label: 'اول موتور محلی (۱ = همه چیز داخل خانه می‌ماند، ولی کندتر است)' },
+  ENGINE_MODE:       { secret: false, label: 'حالت انتخاب موتور (smart = هوشمند و خودکار، manual = فقط موتوری که خودت انتخاب کردی)' },
+  ENGINE_ORDER:      { secret: false, label: 'ترتیب دلخواه موتورها (مثلاً gemini,groq,cerebras — خالی = ترتیب پیش‌فرض: اول جمنای)' },
   TUYA_CLIENT_ID:    { secret: false, label: 'Tuya Client ID (برای دوربین‌های LSC)' },
   TUYA_SECRET:       { secret: true,  label: 'Tuya Client Secret' },
   TUYA_REGION:       { secret: false, label: 'منطقه‌ی Tuya (eu / us / cn / in)' },

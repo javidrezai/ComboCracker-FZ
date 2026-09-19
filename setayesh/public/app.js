@@ -1,4 +1,4 @@
-/* SETAYESH_BUILD 9.9.164 */
+/* SETAYESH_BUILD 9.9.165 */
 (function(){
 'use strict';
 
@@ -2587,6 +2587,13 @@ function loadEngineHealth(){
   var box=$('ccHealth'); if(!box)return;
   adminFetch('/api/admin/engine-health').then(function(d){
     box.innerHTML='';
+    if(d.smart){
+      var sm=el('div','tk-card');
+      sm.setAttribute('style','padding:9px 11px;margin-bottom:8px;border-right:3px solid #34d399;font-size:12px');
+      var ord=(d.order||[]).map(function(id){var e=(d.engines||[]).find(function(x){return x.id===id;});return e?e.label:id;});
+      sm.innerHTML='<b>🧠 حالت هوشمند روشن است</b><br>ستایش خودکار همهٔ موتورها را کنترل می‌کند و به ترتیب از همه استفاده می‌کند؛ موتوری که سهمیه‌اش پر شود کنار می‌رود و به‌محض برگشتن، خودش دوباره وارد چرخه می‌شود.'+(ord.length?('<br><span style="color:#94a3b8">ترتیب فعلی: '+ord.join(' ← ')+'</span>'):'');
+      box.appendChild(sm);
+    }
     (d.engines||[]).forEach(function(e){
       var _en=lang==='en';
       var state=e.quarantined?(_en?'quarantined':'از دور خارج'):(e.cooling?((_en?'resting · ':'استراحت · ')+Math.ceil(e.coolingFor/60)+(_en?' min':' دقیقه')):(_en?'healthy':'سالم'));
