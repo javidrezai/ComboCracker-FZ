@@ -212,7 +212,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.163';
+const APP_VERSION = '9.9.164';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -1605,6 +1605,29 @@ async function callOpenAiCompatible(providerId, model, systemPrompt, messages, _
       }
       throw Object.assign(new Error('provider error'), { status: res.status, detail: body });
     }
+    // Generic model-churn recovery for the OTHER OpenAI-compatible providers
+    // (Groq/OpenRouter/Cerebras retire model ids the same way Gemini does — the
+    // key-test showed 404s like "llama-3.3-70b-versatile does not exist" and
+    // OpenRouter's "unavailable for free"). On a 404 (or a "model not found" 400)
+    // try the provider's NEXT listed model instead of failing over the whole
+    // engine, so one dead id doesn't take the engine down. Bounded to each id
+    // once via opts._triedModels so it can never loop.
+    if ((res.status === 404 || res.status === 400) && providerId !== 'gemini' && providerId !== 'local') {
+      const body = await res.text();
+      const looksLikeModel = res.status === 404 || /model|not\s*found|does not exist|no longer|unavailable/i.test(body);
+      if (looksLikeModel) {
+        const tried = (opts._triedModels || []).concat([model]);
+        const next = (PROVIDERS[providerId].models || [])
+          .map((m) => m.id)
+          .find((id) => id && !tried.includes(id));
+        if (next) {
+          console.warn(`   ${PROVIDERS[providerId].label} ${res.status} on "${model}" — retrying with "${next}"`);
+          return callOpenAiCompatible(providerId, next, systemPrompt, messages, _retried,
+            Object.assign({}, opts, { _triedModels: tried }));
+        }
+      }
+      throw Object.assign(new Error('provider error'), { status: res.status, detail: body });
+    }
     throw Object.assign(new Error('provider error'), { status: res.status, detail: await res.text() });
   }
   const data = await res.json();
@@ -2918,6 +2941,37 @@ function engineUsable(id) {
   return !h || !h.cooldownUntil || Date.now() > h.cooldownUntil;
 }
 
+// The owner's explicit engine order for USER QUESTIONS and RESEARCH (Sep 2026):
+//   «برای مغز و کارهای کوچک اولاما؛ و تحقیق و سوال‌های کاربر اول جمنای بعد دیگران
+//    به ترتیب.»  →  Gemini FIRST, then the other clouds in this order; the
+// on-device engines (local Ollama / brain) are for small tasks and as the final
+// fallback. Anthropic/Claude is a paid key, kept as a strong LAST cloud so it
+// isn't burned before the free tiers. Overridable per install with
+// cfg.ENGINE_ORDER = "gemini,groq,…".
+const DEFAULT_ENGINE_ORDER = ['gemini', 'groq', 'cerebras', 'mistral', 'openrouter', 'openai', 'anthropic'];
+function engineOrder() {
+  const custom = String(cfg.ENGINE_ORDER || '').split(',').map((s) => s.trim().toLowerCase()).filter((id) => PROVIDERS[id]);
+  const base = (custom.length ? custom : DEFAULT_ENGINE_ORDER).slice();   // copy — never mutate the const
+  // Append any configured cloud engine the list forgot, so nothing is unreachable.
+  for (const id of Object.keys(PROVIDERS)) {
+    if (id === 'local' || id === 'brain') continue;
+    if (!base.includes(id)) base.push(id);
+  }
+  return base;
+}
+// Configured cloud engines in the owner's priority order, HEALTHY ones first
+// (a cooling engine stays in the list as a last resort but sinks below healthy
+// ones, keeping priority order within each group). Used for the default target
+// AND the failover chain so both obey "Gemini first, then the rest in order".
+function orderedEngineList(opts) {
+  opts = opts || {};
+  const exclude = new Set(opts.exclude || []);
+  const list = engineOrder().filter((id) =>
+    !exclude.has(id) && isConfigured(id) && !(opts.needsVision && !PROVIDERS[id].vision));
+  // Stable partition: usable engines keep their priority order, then cooling ones.
+  return list.filter((id) => engineUsable(id)).concat(list.filter((id) => !engineUsable(id)));
+}
+
 // ---- Which engine suits THIS question? ----
 // A cheap, local look at what the message actually asks for. No model call,
 // no cost: just enough signal to stop sending a one-line "سلام" to the
@@ -3094,32 +3148,32 @@ function resolveTarget(providerId, model, username, opts) {
   const asked = PROVIDERS[providerId] ? providerId : null;   // did the client pick one?
   let id = pin ? pin : (asked || DEFAULT_PROVIDER);
 
-  // Local-first is now the DEFAULT (جاوید asked: always use Setayesh's own brain
-  // / Ollama first, and only fall back to Google when the local engine can't do
-  // it). Disable with LOCAL_FIRST=0. Order of preference when nobody pinned or
-  // picked an engine and there is no image to see:
-  //   1) a local Ollama/LM-Studio server (a REAL model, e.g. qwen2.5:7b)
-  //   2) the best available cloud engine (Gemini, …) — the automatic fallback
-  //   3) the Python "brain" — LAST resort only (it is a tiny toy agent and, on
-  //      its own, produces garbage like "# Ollama Ollama:"; it must never be the
-  //      default voice, only the keyless safety net when everything else is gone,
-  //      which the failover already handles further down).
-  // Children are always local-first regardless of the flag.
-  const localFirst = !/^(0|false|no|off)$/i.test(String(cfg.LOCAL_FIRST || ''));
+  // Routing order (updated Sep 2026 on the owner's instruction): a USER QUESTION
+  // goes to the cloud in his priority order — **Gemini first**, then the others —
+  // because that is fast and reliable; the slow on-device Ollama is for the brain
+  // and small tasks, and is the fallback here, not the default. Privacy-first
+  // (everything stays on the machine) is still available by setting LOCAL_FIRST=1
+  // explicitly. Children are always local-first regardless (handled above via
+  // stableEngineFor only when local is configured; otherwise they, too, get the
+  // ordered cloud). The Python brain is never the default voice — only the
+  // keyless safety net the failover reaches when all else is gone.
+  const localFirst = /^(1|true|yes|on)$/i.test(String(cfg.LOCAL_FIRST || ''));
   // "Detect the question": the local model cannot use tools (web search, finding
-  // a file, the calendar, the mailbox) or read an image. Those questions go to a
-  // tool-capable cloud engine automatically — that IS the "if it can't, use
-  // Google" he asked for. Plain conversation stays on the local model.
+  // a file, the calendar, the mailbox) or read an image. Those always need a
+  // tool/vision-capable cloud engine.
   const canLocal = !opts.needsVision && !tags.includes('tools') && !tags.includes('current') && !tags.includes('vision');
-  if (!pin && !asked && localFirst && canLocal && isConfigured('local') && engineUsable('local')) {
-    id = 'local';                       // the real local LLM (Ollama) — preferred
-  } else if (!pin && !asked) {
-    // localFirst off (or vision needed): pick the engine that suits the question
-    // and is answering right now.
-    const better = bestEngine(engineUsable(id) ? id : null, { tags, needsVision: opts.needsVision });
-    if (better && better !== id && isConfigured(better)) {
-      if (!engineUsable(id)) console.warn(`   ${PROVIDERS[id] && PROVIDERS[id].label} is cooling down - starting with ${PROVIDERS[better].label}`);
-      id = better;
+  if (!pin && !asked) {
+    if (localFirst && canLocal && isConfigured('local') && engineUsable('local')) {
+      id = 'local';                     // owner opted into on-device-first
+    } else {
+      // Gemini-first, then the rest in order; healthy engines ahead of cooling.
+      const ordered = orderedEngineList({ needsVision: opts.needsVision });
+      if (ordered.length) id = ordered[0];
+      else if (canLocal && isConfigured('local') && engineUsable('local')) id = 'local';
+      else {
+        const better = bestEngine(engineUsable(id) ? id : null, { tags, needsVision: opts.needsVision });
+        if (better && isConfigured(better)) id = better;
+      }
     }
   }
 
@@ -3555,8 +3609,9 @@ app.post('/api/chat', requireAuth, chatLimiter, upload.array('files', 8), async 
       // just whatever happens to be next in the list.
       // Never fail over to the toy Python brain — its one-liner garbage
       // ("چه بپرسم؟") is worse than an honest "busy, try again". It only
-      // answers when the owner picks it on purpose.
-      const alternatives = rankEngines(askTags, { needsVision, exclude: [target.id, 'brain'] });
+      // answers when the owner picks it on purpose. Follow the owner's engine
+      // order (Gemini first, then the rest), healthy engines ahead of cooling.
+      const alternatives = orderedEngineList({ needsVision, exclude: [target.id, 'brain'] });
 
       for (const altId of alternatives) {
         try {
@@ -4755,30 +4810,15 @@ app.get('/api/admin/activity', requireAuth, requireAdmin, (req, res) => {
   });
 });
 
-// The engine background research should use: the strongest HEALTHY engine that
-// can also read the web — never the slow local brain/Ollama (they can't ground
-// on the internet). جاوید asked that GEMINI be kept for ANSWERING only, nothing
-// else — so Gemini is excluded from background research too (its free quota is
-// protected for chat replies). Prefer another cloud engine (Claude, GPT, Groq…)
-// and its GENERAL model, not a code model.
-const RESEARCH_EXCLUDE = ['brain', 'local', 'gemini'];
+// The engine background research should use. On the owner's Sep-2026 order
+// («تحقیق … اول جمنای بعد دیگران به ترتیب») research now follows the SAME cloud
+// priority as chat — **Gemini first**, then the rest — instead of the old
+// "Gemini answering-only" exclusion. Research is capped (≤8/day) so this can't
+// drain the free quota. Still never the local brain/Ollama (they can't ground
+// on the internet), and always the engine's GENERAL model, not a code model.
 function bestResearchEngine() {
-  const ranked = rankEngines(['reasoning', 'general', 'current'], { exclude: RESEARCH_EXCLUDE });
-  const usableDefault = DEFAULT_PROVIDER && !RESEARCH_EXCLUDE.includes(DEFAULT_PROVIDER) && isConfigured(DEFAULT_PROVIDER);
-  // Gemini is normally kept out of research to save its free quota for chat.
-  // BUT if it is the only engine that can actually answer right now (the others
-  // have bad keys or are cooling), background learning must NOT stall — better
-  // to spend a little Gemini quota than to never learn. So Gemini becomes an
-  // allowed fallback whenever no non-Gemini engine is USABLE, not only when none
-  // is configured. This is why "self-learning didn't work" on a Gemini-mainly
-  // setup: every other key was unusable and Gemini was excluded outright.
-  const geminiUsable = isConfigured('gemini') && engineUsable('gemini');
-  const id = ranked.find((x) => isConfigured(x) && engineUsable(x))     // a healthy non-Gemini cloud engine
-          || (usableDefault && engineUsable(DEFAULT_PROVIDER) ? DEFAULT_PROVIDER : null)
-          || (geminiUsable ? 'gemini' : null)                          // Gemini if it is the only one working
-          || ranked.find((x) => isConfigured(x))                       // a cooling non-Gemini engine
-          || (usableDefault ? DEFAULT_PROVIDER : null)
-          || Object.keys(PROVIDERS).filter((x) => !RESEARCH_EXCLUDE.includes(x)).find(isConfigured)
+  const ordered = orderedEngineList({});   // Gemini first, healthy ahead of cooling
+  const id = ordered[0]
           || Object.keys(PROVIDERS).filter((x) => x !== 'brain' && x !== 'local').find(isConfigured);
   if (!id) return null;
   const models = PROVIDERS[id].models || [];
@@ -5777,10 +5817,10 @@ async function runTelegramTurn(text, chatId) {
     const generalModel = (models.find((m) => m.best !== 'code') || {}).id;
     return (tags.includes('code') ? (codeModel || generalModel) : (generalModel || codeModel)) || (models[0] || {}).id;
   };
-  const cloud = rankEngines(tags, { exclude: ['brain', 'local'] });
-  const order = [];
-  cloud.forEach((x) => { if (isConfigured(x) && engineUsable(x)) order.push(x); });   // healthy cloud
-  cloud.forEach((x) => { if (isConfigured(x) && !order.includes(x)) order.push(x); }); // cooling cloud
+  // Owner's order — Gemini first, then the rest — with healthy engines ahead of
+  // cooling ones (orderedEngineList already partitions that way), then the
+  // on-device engines as the final safety net.
+  const order = orderedEngineList({ exclude: ['brain', 'local'] });
   ['local', 'brain'].forEach((x) => { if (isConfigured(x) && !order.includes(x)) order.push(x); }); // last resort
   if (!order.length) return 'هیچ موتوری روی سرور تنظیم نشده — از مرکز کنترل یک کلید API اضافه کن.';
   // Telegram had replied in Chinese/Thai and dumped raw <tool_call> JSON. Lock

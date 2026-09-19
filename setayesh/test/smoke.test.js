@@ -1723,6 +1723,12 @@ test('toolnoise: tidyTelegram strips filler opener/closer, keeps substance', () 
   assert.ok(dis.includes('۴') && !/هوش مصنوعی/.test(dis), 'the AI disclaimer is stripped');
   // A plain direct answer must pass through untouched.
   assert.equal(tn.tidyTelegram('دو به‌علاوه دو می‌شود چهار.'), 'دو به‌علاوه دو می‌شود چهار.', 'a clean answer is unchanged');
+  // The "آیا نیازی به توضیحات بیشتری داری؟" filler the owner flagged is stripped…
+  const q = tn.tidyTelegram('امروز ۱۹ سپتامبر ۲۰۲۶ است. آیا نیازی به توضیحات بیشتری داری؟');
+  assert.ok(q.includes('۱۹ سپتامبر') && !/توضیحات بیشتری/.test(q), 'the آیا-filler tail is removed');
+  // …but a GENUINE trailing "آیا …؟" question is preserved.
+  const legit = tn.tidyTelegram('جلسه دوشنبه ساعت ۱۰:۳۰ است. آیا این زمان مناسب است؟');
+  assert.ok(/آیا این زمان مناسب است/.test(legit), 'a real trailing question is kept');
 });
 
 // runners.js — the language-runner catalogue + ext routing + detection probe.

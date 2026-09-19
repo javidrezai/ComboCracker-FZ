@@ -46,10 +46,15 @@ const PROVIDERS = {
     nativePdf: false,
     vision: false,
     keyUrl: 'https://console.groq.com/keys',
+    // Groq retires model ids; `llama-3.3-70b-versatile` began returning 404
+    // ("does not exist or you do not have access") on newer keys, so the general
+    // model is now the always-available `llama-3.1-8b-instant`. If any id here is
+    // 404, callOpenAiCompatible auto-retries the next one in this list.
     models: [
-      { id: 'llama-3.3-70b-versatile', label: 'Llama 3.3 70B — free' },
+      { id: 'llama-3.1-8b-instant', label: 'Llama 3.1 8B — free, fast' },
       { id: 'openai/gpt-oss-120b', label: 'GPT-OSS 120B — free', best: 'code' },
       { id: 'openai/gpt-oss-20b', label: 'GPT-OSS 20B — fastest' },
+      { id: 'llama-3.3-70b-versatile', label: 'Llama 3.3 70B — free (if available)' },
     ],
   },
   openrouter: {
@@ -62,10 +67,13 @@ const PROVIDERS = {
     nativePdf: false,
     vision: true,
     keyUrl: 'https://openrouter.ai/keys',
+    // The `:free` llama slug was retired ("unavailable for free"); DeepSeek V3.1
+    // free is a strong general+code model and stays available. On a 404 the
+    // client auto-retries the next id below.
     models: [
-      { id: 'meta-llama/llama-3.3-70b-instruct:free', label: 'Llama 3.3 70B — free' },
-      { id: 'deepseek/deepseek-chat-v3.1:free', label: 'DeepSeek V3.1 — free', best: 'code' },
+      { id: 'deepseek/deepseek-chat-v3.1:free', label: 'DeepSeek V3.1 — free' },
       { id: 'qwen/qwen3-coder:free', label: 'Qwen3 Coder — free', best: 'code' },
+      { id: 'meta-llama/llama-3.3-70b-instruct', label: 'Llama 3.3 70B (paid, if free is gone)' },
     ],
   },
   cerebras: {
@@ -78,8 +86,11 @@ const PROVIDERS = {
     nativePdf: false,
     vision: false,
     keyUrl: 'https://cloud.cerebras.ai',
+    // `llama-3.3-70b` began 404-ing on newer keys; `llama3.1-8b` is the stable
+    // always-on Cerebras id. Client auto-retries the next id on a 404.
     models: [
-      { id: 'llama-3.3-70b', label: 'Llama 3.3 70B — free' },
+      { id: 'llama3.1-8b', label: 'Llama 3.1 8B — free, fast' },
+      { id: 'llama-3.3-70b', label: 'Llama 3.3 70B — free (if available)' },
       { id: 'qwen-3-coder-480b', label: 'Qwen3 Coder 480B', best: 'code' },
     ],
   },
