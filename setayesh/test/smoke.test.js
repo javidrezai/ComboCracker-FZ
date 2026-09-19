@@ -188,6 +188,20 @@ test('self-heal incidents endpoint starts empty', async () => {
   assert.equal(d.count, 0);
 });
 
+// A download <a href> can't send the Authorization header, so a GET may present
+// the session token as ?auth=… instead — the fix that makes file/ZIP downloads
+// work (on the phone especially). A POST must NOT accept the query token.
+test('auth: GET accepts ?auth= token, POST does not', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  const okGet = await fetch(`${BASE}/api/chats?auth=${encodeURIComponent(token)}`); // no Authorization header
+  assert.equal(okGet.status, 200, 'GET with ?auth= is authorized');
+  const noHeader = await fetch(`${BASE}/api/chats`);
+  assert.equal(noHeader.status, 401, 'GET with neither header nor query is rejected');
+  const post = await fetch(`${BASE}/api/chats?auth=${encodeURIComponent(token)}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chats: [] }) });
+  assert.equal(post.status, 401, 'a state-changing PUT does NOT accept the query token');
+});
+
 test('encrypted backup encrypts and decrypts back to a valid zip', async () => {
   const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
   const pass = 'test-passphrase-123';

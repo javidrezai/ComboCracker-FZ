@@ -1,4 +1,4 @@
-/* SETAYESH_BUILD 9.9.166 */
+/* SETAYESH_BUILD 9.9.167 */
 (function(){
 'use strict';
 
@@ -293,6 +293,11 @@ function wireCopy(root){
 
 /* ================= auth ================= */
 function authHeaders(extra){var h={Authorization:'Bearer '+token};if(extra)for(var k in extra)h[k]=extra[k];return h;}
+/* A download <a href>/window.open can't send the Authorization header, so a GET
+   file link carries the session token as ?auth=… instead (the server accepts it
+   for GET only). This is what makes the ZIP/file download actually work — on the
+   phone too, where the header-only link used to 401 ("the link disconnects"). */
+function withAuth(url){ if(!url||!token)return url; return url+(url.indexOf('?')<0?'?':'&')+'auth='+encodeURIComponent(token); }
 
 async function doLogin(){
   var u=$('uField').value.trim(),p=$('pField').value;
@@ -1015,7 +1020,7 @@ async function send(){
       // A finished file is ready to download.
       if(d2.download){
         var dl=document.createElement('a');
-        dl.href=d2.download.url; dl.download=d2.download.name;
+        dl.href=withAuth(d2.download.url); dl.download=d2.download.name;
         dl.style.cssText='display:inline-flex;align-items:center;gap:8px;margin-top:12px;padding:10px 16px;'+
           'border-radius:12px;background:rgba(56,189,248,.14);border:1px solid rgba(56,189,248,.45);'+
           'color:var(--cyan);text-decoration:none;font-size:13px;font-weight:600';
@@ -1658,7 +1663,7 @@ function boardCard(m){
   // Attachments render inline: images show, audio and video get players,
   // everything else becomes a download link.
   (m.attachments||[]).forEach(function(a){
-    var url='/api/board/file/'+encodeURIComponent(a.stored);
+    var url=withAuth('/api/board/file/'+encodeURIComponent(a.stored));
     var holder=el('div'); holder.style.cssText='margin-top:'+(m.text?'8px':'0');
     if(a.kind==='image'){
       var im=el('img'); im.src=url; im.alt=a.name; im.loading='lazy';
@@ -1909,6 +1914,11 @@ $('shSearch').addEventListener('click',function(){ closeSheet(); setTimeout(func
 // brought back to the foreground.
 setInterval(refreshBoardBadge, 120000);
 document.addEventListener('visibilitychange',function(){ if(!document.hidden){refreshBoardBadge(); if(token)syncChatsFromServer();} });
+/* Keep every device/login-link on this account converged without the owner
+   having to switch tabs: while the page is visible and logged in, pull+merge the
+   server chats every 25s (the server merge is last-write-wins, so this is safe
+   and cheap). This is the fix for "chats aren't the same on phone and PC". */
+setInterval(function(){ if(!document.hidden && token) syncChatsFromServer(); }, 25000);
 
 /* ===== Control centre (admin): engines, users, privacy, capabilities ===== */
 var CC = { settings:null, dirty:{} };
@@ -3268,7 +3278,7 @@ $('codeLibSave').addEventListener('click',function(){
 });
 $('codeLibDl').addEventListener('click',function(){
   var name=$('codeLibSel').value;if(!name)return;
-  window.open('/api/codelib/download?name='+encodeURIComponent(name),'_blank');
+  window.open(withAuth('/api/codelib/download?name='+encodeURIComponent(name)),'_blank');
 });
 $('codeLibDel').addEventListener('click',function(){
   var name=$('codeLibSel').value;if(!name)return;

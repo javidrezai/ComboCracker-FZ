@@ -212,7 +212,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.166';
+const APP_VERSION = '9.9.167';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -867,7 +867,15 @@ function issueToken(username) {
 
 function requireAuth(req, res, next) {
   const header = req.headers.authorization || '';
-  const token = header.startsWith('Bearer ') ? header.slice(7) : null;
+  // A file DOWNLOAD is a plain <a href> / window.open, which cannot carry an
+  // Authorization header — so a GET may also present the session token as a
+  // `?auth=` query param. Without this, every download link 401'd (worst on the
+  // phone, where it looked like "the link disconnects"). Only honored for GET so
+  // a token can't ride in on a state-changing POST URL.
+  let token = header.startsWith('Bearer ') ? header.slice(7) : null;
+  if (!token && req.method === 'GET' && req.query && (req.query.auth || req.query.token)) {
+    token = String(req.query.auth || req.query.token);
+  }
   if (!token) return res.status(401).json({ error: 'unauthorized' });
 
   const session = sessions.get(token);
