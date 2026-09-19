@@ -126,4 +126,27 @@ function tidyTelegram(content) {
   return t.replace(/[ \t]{2,}/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
 }
 
-module.exports = { toPlainText, parseTextToolCalls, stripToolNoise, stripLinks, wantsLink, tidyTelegram };
+// Telegram (and SMS-like channels) send PLAIN TEXT — markdown is not rendered,
+// so `**پررنگ**`, `## سرتیتر` and `- بولت` reach the reader as literal asterisks
+// and hashes (the "**صبح:**" جاوید saw). Strip the markdown to clean prose while
+// keeping the words. Code fences keep their inner code (Telegram shows it fine as
+// text); everything else loses only its markup.
+function stripMarkdown(content) {
+  let t = toPlainText(content);
+  t = t.replace(/```[a-zA-Z0-9]*\n?/g, '').replace(/```/g, '')   // code fences → keep inner text
+       .replace(/`([^`]+)`/g, '$1')                              // `inline code`
+       .replace(/\*\*([^*]+)\*\*/g, '$1')                        // **bold**
+       .replace(/__([^_]+)__/g, '$1')                            // __bold__
+       .replace(/(^|[\s(])\*([^*\n]+)\*(?=[\s).,!؟?:]|$)/g, '$1$2') // *italic*
+       .replace(/(^|[\s(])_([^_\n]+)_(?=[\s).,!؟?:]|$)/g, '$1$2')   // _italic_
+       .replace(/^\s{0,3}#{1,6}\s+/gm, '')                       // ## headings
+       .replace(/^\s*>\s?/gm, '')                                // > blockquotes
+       .replace(/^\s*[-*+]\s+/gm, '• ')                          // - bullets → •
+       .replace(/^\s*\d+\.\s+/gm, (m) => m.trim() + ' ')         // keep numbered lists tidy
+       .replace(/[ \t]{2,}/g, ' ')
+       .replace(/\n{3,}/g, '\n\n')
+       .trim();
+  return t;
+}
+
+module.exports = { toPlainText, parseTextToolCalls, stripToolNoise, stripLinks, wantsLink, tidyTelegram, stripMarkdown };

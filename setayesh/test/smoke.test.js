@@ -1731,6 +1731,16 @@ test('toolnoise: tidyTelegram strips filler opener/closer, keeps substance', () 
   assert.ok(/آیا این زمان مناسب است/.test(legit), 'a real trailing question is kept');
 });
 
+// toolnoise.stripMarkdown — Telegram is plain text, so markup must go but the
+// words stay (the literal "**صبح:**" جاوید saw).
+test('toolnoise: stripMarkdown removes markup, keeps the words', () => {
+  const tn = require(path.join(ROOT, 'toolnoise.js'));
+  const out = tn.stripMarkdown('**صبح:** ۹ تا ۱۱ درجه\n## عصر\n- آفتابی\n- بادی');
+  assert.ok(!/\*\*/.test(out) && !/^#/m.test(out), 'no ** or ## remain');
+  assert.ok(out.includes('صبح:') && out.includes('۹ تا ۱۱ درجه') && out.includes('آفتابی'), 'the words stay');
+  assert.ok(/•/.test(out), 'bullets become • not -*');
+});
+
 // runners.js — the language-runner catalogue + ext routing + detection probe.
 test('runners: catalogue maps extensions and probe fills availability', () => {
   const r = require(path.join(ROOT, 'runners.js'));

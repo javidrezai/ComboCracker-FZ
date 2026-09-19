@@ -212,7 +212,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.165';
+const APP_VERSION = '9.9.166';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -2689,7 +2689,7 @@ function openAiToolsFrom(ctx) {
 // Harmony models sometimes emit a tool call as plain text; these helpers parse
 // those out (so we run them for real) and strip any leftover tool-call/harmony
 // tokens so a reply is never raw JSON. See toolnoise.js for the details.
-const { toPlainText, parseTextToolCalls, stripToolNoise, stripLinks, wantsLink, tidyTelegram } = require('./toolnoise');
+const { toPlainText, parseTextToolCalls, stripToolNoise, stripLinks, wantsLink, tidyTelegram, stripMarkdown } = require('./toolnoise');
 async function callOpenAiWithTools(providerId, model, systemPrompt, messages, ctx, opts) {
   opts = opts || {};
   const tools = openAiToolsFrom(ctx);
@@ -2948,7 +2948,13 @@ function engineUsable(id) {
 // fallback. Anthropic/Claude is a paid key, kept as a strong LAST cloud so it
 // isn't burned before the free tiers. Overridable per install with
 // cfg.ENGINE_ORDER = "gemini,groq,…".
-const DEFAULT_ENGINE_ORDER = ['gemini', 'groq', 'cerebras', 'mistral', 'openrouter', 'openai', 'anthropic'];
+// Gemini first (free, fast) — but the free quota is tiny, so Claude/Anthropic is
+// placed HIGH (#2) as the reliable paid fallback: the moment Gemini is out, a
+// fast good answer comes from Claude (its cheap Haiku model for chat) instead of
+// falling all the way down to the slow local qwen. Then the other free clouds,
+// then OpenAI. This is what the owner's €5 Claude credit is for — a real answer
+// beats a 70-second hallucination from the on-device model.
+const DEFAULT_ENGINE_ORDER = ['gemini', 'anthropic', 'groq', 'cerebras', 'mistral', 'openrouter', 'openai'];
 function engineOrder() {
   const custom = String(cfg.ENGINE_ORDER || '').split(',').map((s) => s.trim().toLowerCase()).filter((id) => PROVIDERS[id]);
   const base = (custom.length ? custom : DEFAULT_ENGINE_ORDER).slice();   // copy — never mutate the const
@@ -3754,7 +3760,14 @@ app.post('/api/chat', requireAuth, chatLimiter, upload.array('files', 8), async 
     // locally-installed Ollama (then the Python brain). If Ollama is running at
     // all, the owner gets a real answer instead of the apology — no stale
     // quarantine, no config flag, nothing can keep a working local model out.
-    if (!needsVision) {
+    //
+    // EXCEPTION: a `current` question (weather, news, prices) needs LIVE data via
+    // web_search, which the local model can't do — so it would just INVENT a
+    // plausible-looking answer (the 76-second fake "۹ تا ۱۱ درجه" forecast جاوید
+    // saw). For those, skip the local rescue and give a short honest note instead
+    // — a made-up live answer is worse than "I can't reach it right now".
+    const liveQuestion = askTags.includes('current');
+    if (!needsVision && !liveQuestion) {
       try {
         const state = await ollama.ensureUp(ollamaBase(), fetchWithTimeout);
         if (state.running && state.models.length) {
@@ -3795,14 +3808,17 @@ app.post('/api/chat', requireAuth, chatLimiter, upload.array('files', 8), async 
     // owner can do — an honest answer beats a stack trace.
     const cooling = Object.keys(PROVIDERS).filter(isConfigured).filter((id) => !engineUsable(id))
       .map((id) => PROVIDERS[id].label);
-    const reply = [
-      'ببخشید بابا — همین الان هیچ‌کدام از موتورهام جواب نمی‌دهند، برای همین نمی‌توانم این سؤال را درست جواب بدهم.',
-      '',
-      `• چیزی که برگشت: ${mapped.error}`,
-      cooling.length ? `• موتورهایی که فعلاً کنار گذاشته شدند: ${cooling.join('، ')}` : '',
-      '',
-      'خودم دوباره امتحان می‌کنم؛ تو هم می‌توانی چند لحظه بعد دوباره بفرستی، یا از «مرکز کنترل ← موتورها» یک موتور دیگر را فعال کنی.',
-    ].filter(Boolean).join('\n');
+    // For a live-data question, one short honest line — never a fake forecast.
+    const reply = liveQuestion
+      ? 'الان نمی‌توانم به اطلاعاتِ زنده (هوا/اخبار/قیمت) وصل شوم، برای همین چیزی از خودم نمی‌سازم. چند لحظه بعد دوباره بپرس.'
+      : [
+        'ببخشید بابا — همین الان هیچ‌کدام از موتورهام جواب نمی‌دهند، برای همین نمی‌توانم این سؤال را درست جواب بدهم.',
+        '',
+        `• چیزی که برگشت: ${mapped.error}`,
+        cooling.length ? `• موتورهایی که فعلاً کنار گذاشته شدند: ${cooling.join('، ')}` : '',
+        '',
+        'خودم دوباره امتحان می‌کنم؛ تو هم می‌توانی چند لحظه بعد دوباره بفرستی، یا از «مرکز کنترل ← موتورها» یک موتور دیگر را فعال کنی.',
+      ].filter(Boolean).join('\n');
     res.json({
       reply,
       historyText: message || (req.files || []).map(f => `[file: ${f.originalname}]`).join(' '),
@@ -5885,9 +5901,12 @@ async function runTelegramTurn(text, chatId) {
     + '۵) در پایان تعارف و پیشنهادِ اضافه نده: نه «اگر سؤال دیگری داری بپرس»، نه «در خدمتم»، نه «کمک دیگری لازم داری؟». وقتی جواب تمام شد، تمام کن.\n'
     + '۶) درباره‌ی خودت یا مدل حرف نزن («به عنوان یک هوش مصنوعی…» ممنوع) و از کاربر لینک/نشانی نخواه؛ خودت مستقل جواب بده.\n'
     + '۷) هرگز چیزی از خودت نساز. اگر واقعیت را نمی‌دانی، کوتاه بگو «نمی‌دانم» — هرگز جوابِ الکی نده.';
+  telegramRules += '\n۸) هرگز از Markdown استفاده نکن (نه **، نه ##، نه بولت). تلگرام ساده است — فقط جملهٔ معمولی.';
+  telegramRules += '\n۹) هرگز فهرستِ وب‌سایت/منبع نده و نگو «نمی‌توانم صفحه بخوانم». یا خودت جواب را پیدا کن، یا در یک جملهٔ کوتاه بگو نمی‌دانی — بدون معرفیِ سایت و بدون توضیحِ اینکه چطور خودت پیدا کنی.';
   if (tags.includes('current')) {
     telegramRules += '\n۵) این سؤال به اطلاعاتِ روز نیاز دارد (هوا، اخبار، قیمت…). '
-      + 'اول ابزار web_search را صدا بزن، از نتایج واقعی جواب بده و اگر جستجو چیزی نداد، صادقانه بگو که اطلاعاتِ زنده در دسترس نیست — چیزی از خودت نساز.';
+      + 'اول ابزار web_search را صدا بزن و از نتایجِ واقعی، کوتاه و مستقیم جواب بده (مثلاً فقط دما و وضعیتِ امروز). '
+      + 'اگر جستجو چیزی نداد، فقط یک جملهٔ کوتاهِ صادقانه بگو که الان اطلاعاتِ زنده نداری — هرگز عدد و پیش‌بینیِ الکی نساز و هرگز سایت معرفی نکن.';
   }
   // Lite prompt (no full knowledge/vault dump) + grounding that is RELEVANT to
   // THIS question only, so the prompt helps instead of hijacking the answer.
@@ -5925,9 +5944,11 @@ async function runTelegramTurn(text, chatId) {
       // one. Enforce it in code (the model kept ignoring the prompt and even
       // hallucinated a fake maps URL), so no stray/invented link ever ships.
       if (reply && !wantsLink(msg)) reply = stripLinks(reply);
-      // Brevity net: strip the greeting/agreement opener and the GPT-style
-      // "anything else?" closer the owner keeps rejecting, so the answer is
-      // direct and clean even when the model ignores the prompt rules.
+      // Telegram is plain text — strip markdown so "**پررنگ**" doesn't reach جاوید
+      // as literal asterisks. Then the brevity net: drop the greeting/agreement
+      // opener and the GPT-style "anything else?" closer, so the answer is direct
+      // and clean even when the model ignores the prompt rules.
+      if (reply) reply = stripMarkdown(reply);
       if (reply) reply = tidyTelegram(reply);
       if (reply && isBrainDump(eid, reply)) { continue; }   // note-dump, not an answer
       if (reply) {

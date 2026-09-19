@@ -16,10 +16,15 @@ const PROVIDERS = {
     nativePdf: true,
     vision: true,
     keyUrl: 'https://console.anthropic.com/settings/keys',
+    // Order matters for cost: resolveTarget picks the GENERAL model for chat and
+    // the first `best:'code'` model for code. Haiku (cheap+fast) is the general
+    // pick so normal chat barely spends the owner's €5 credit; Sonnet is the
+    // code pick (listed before Opus) so coding uses the mid-priced model, not the
+    // most expensive one. Opus stays available to pick by hand.
     models: [
-      { id: 'claude-opus-5', label: 'Opus 5 — strongest', best: 'code' },
+      { id: 'claude-haiku-4-5-20251001', label: 'Haiku 4.5 — fastest, cheapest' },
       { id: 'claude-sonnet-5', label: 'Sonnet 5 — balanced', best: 'code' },
-      { id: 'claude-haiku-4-5-20251001', label: 'Haiku 4.5 — fastest' },
+      { id: 'claude-opus-5', label: 'Opus 5 — strongest (pricey)', best: 'code' },
     ],
   },
   gemini: {
