@@ -116,7 +116,10 @@ const { TUTORS, TONE_RULES, HUMAN_VOICE } = require('./personas');
 const { TOOLS_SPEC } = require('./toolspec');
 const { EDITABLE_SOURCES, READABLE_SOURCES, SELF_MAP } = require('./sourcemap');
 const { EDITABLE_KEYS } = require('./configkeys');
-const { PII_PATTERNS, HIGH_VALUE, SECRET_PATTERNS, KIND_LABEL } = require('./privacydata');
+// Privacy pattern tables (PII_PATTERNS / SECRET_PATTERNS / HIGH_VALUE /
+// KIND_LABEL) live in ./privacydata and are consumed by ./privacyshield, which
+// owns the pure matching/redaction. index.js only keeps the stateful glue.
+const privacyshield = require('./privacyshield');
 const { buildSynthesisPrompt } = require('./council');
 const { SEARCH_LABELS, defaultSearchEngines, searchOne } = require('./websearch');
 const { encryptBuffer, decryptBuffer } = require('./cryptobackup');
@@ -213,7 +216,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.168';
+const APP_VERSION = '9.9.169';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -1749,16 +1752,10 @@ function protectedTerms() {
 // tables) are pure data and live in ./privacydata, required at the top.
 
 // Returns { clean, hits } — hits is what would leave the machine.
+// The matching itself is the pure privacyshield.scanOutbound; here we only
+// feed it the live protected-term list (account names + manual terms).
 function scanOutbound(text) {
-  const s = String(text == null ? '' : text);
-  const hits = [];
-  for (const term of protectedTerms()) {
-    if (s.toLowerCase().includes(term.toLowerCase())) hits.push({ kind: 'name', term });
-  }
-  for (const p of PII_PATTERNS) {
-    if (new RegExp(p.re.source, p.re.flags).test(s)) hits.push({ kind: p.name });
-  }
-  return { clean: hits.length === 0, hits };
+  return privacyshield.scanOutbound(text, protectedTerms());
 }
 
 // ---------------- Message shield (the user's own messages) ----------------
@@ -1772,33 +1769,9 @@ function scanOutbound(text) {
 // HIGH_VALUE / SECRET_PATTERNS / KIND_LABEL now live in ./privacydata (a name,
 // email or phone is still stripped too, but treated as a softer notice).
 
-// Returns { text, removed:[kinds], blockedHighValue:bool }
+// Returns { text, removed:[kinds], blockedHighValue:bool, labels:[…] }
 function shieldMessage(raw) {
-  let s = String(raw == null ? '' : raw);
-  const removed = new Set();
-
-  for (const p of SECRET_PATTERNS) {
-    const re = new RegExp(p.re.source, p.re.flags);
-    if (re.test(s)) { removed.add(p.name); s = s.replace(new RegExp(p.re.source, p.re.flags), '[حذف‌شده]'); }
-  }
-  for (const p of PII_PATTERNS) {
-    const re = new RegExp(p.re.source, p.re.flags);
-    if (re.test(s)) { removed.add(p.name); s = s.replace(new RegExp(p.re.source, p.re.flags), '[حذف‌شده]'); }
-  }
-  for (const term of protectedTerms()) {
-    if (!term) continue;
-    const esc = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const re = new RegExp(esc, 'gi');
-    if (re.test(s)) { removed.add('name'); s = s.replace(new RegExp(esc, 'gi'), '[حذف‌شده]'); }
-  }
-
-  const list = [...removed];
-  return {
-    text: s,
-    removed: list,
-    blockedHighValue: list.some((k) => HIGH_VALUE.includes(k)),
-    labels: list.map((k) => KIND_LABEL[k] || k),
-  };
+  return privacyshield.shieldMessage(raw, protectedTerms());
 }
 
 // The owner (father) asked to lift the privacy shield from HIS OWN account —
@@ -1810,14 +1783,7 @@ function privacyActiveFor(username) {
 }
 
 function redactOutbound(text) {
-  let s = String(text == null ? '' : text);
-  for (const term of protectedTerms()) {
-    if (!term) continue;
-    const esc = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    s = s.replace(new RegExp(esc, 'gi'), '[حذف‌شده]');
-  }
-  for (const p of PII_PATTERNS) s = s.replace(new RegExp(p.re.source, p.re.flags), '[حذف‌شده]');
-  return s;
+  return privacyshield.redactOutbound(text, protectedTerms());
 }
 
 function recordBlock(where, hits, sample) {

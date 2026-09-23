@@ -2161,3 +2161,46 @@ test('directives reach the engine: a saved note appears in the chat system promp
     stub.close();
   }
 });
+
+// privacyshield.js — the pure text side of the family privacy shield (v9.9.169).
+// Extracted from index.js so the matching/redaction can be tested without
+// booting the server. index.js keeps only the stateful glue (term list, audit,
+// admin exemption). See WORK-LOG 9.9.169.
+test('privacyshield: scanOutbound flags names and PII, clean text passes', () => {
+  const ps = require(path.join(ROOT, 'privacyshield.js'));
+  const clean = ps.scanOutbound('the weather is nice today', ['Setayesh']);
+  assert.equal(clean.clean, true, 'ordinary text has no hits');
+
+  const byName = ps.scanOutbound('call Setayesh about it', ['Setayesh']);
+  assert.equal(byName.clean, false, 'a protected name is a hit');
+  assert.ok(byName.hits.some((h) => h.kind === 'name'), 'the hit is tagged name');
+
+  const byEmail = ps.scanOutbound('write to a@b.com please', []);
+  assert.ok(byEmail.hits.some((h) => h.kind === 'email'), 'an email is caught with no terms');
+
+  const shortTerm = ps.scanOutbound('ab is fine', ['ab']);
+  // scanOutbound trusts the caller's list; index.js filters <3-char terms out
+  // upstream, so a 2-char term passed directly is still matched here.
+  assert.equal(shortTerm.clean, false, 'scanOutbound matches whatever terms it is given');
+});
+
+test('privacyshield: shieldMessage removes secrets/PII/names but keeps the rest', () => {
+  const ps = require(path.join(ROOT, 'privacyshield.js'));
+  const r = ps.shieldMessage('hi, my card is 4111 1111 1111 1111 and email a@b.com — thanks Setayesh', ['Setayesh']);
+  assert.ok(!/4111/.test(r.text), 'the card number is stripped');
+  assert.ok(!/a@b\.com/.test(r.text), 'the email is stripped');
+  assert.ok(!/Setayesh/.test(r.text), 'the protected name is stripped');
+  assert.ok(r.text.includes('thanks'), 'the surrounding prose survives');
+  assert.ok(r.text.includes(ps.REDACTED), 'a redaction placeholder is left in place');
+  assert.ok(r.removed.includes('card'), 'card is reported as removed');
+  assert.equal(r.blockedHighValue, true, 'a card counts as high-value');
+  assert.ok(r.labels.length === r.removed.length, 'every removed kind gets a label');
+});
+
+test('privacyshield: redactOutbound is a quiet redaction, global (every match)', () => {
+  const ps = require(path.join(ROOT, 'privacyshield.js'));
+  const out = ps.redactOutbound('Ali and Ali both wrote to x@y.com', ['Ali']);
+  assert.equal((out.match(/Ali/g) || []).length, 0, 'every occurrence of a name is redacted, not just the first');
+  assert.ok(!/x@y\.com/.test(out), 'PII is redacted too');
+  assert.equal(ps.redactOutbound('', ['Ali']), '', 'empty input stays empty');
+});
