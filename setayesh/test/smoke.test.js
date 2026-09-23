@@ -1727,6 +1727,24 @@ test('toolnoise: stripLinks removes markdown/image/bare links; wantsLink detects
 
 // toolnoise.tidyTelegram — the brevity net: strip the greeting opener and the
 // GPT-style "anything else?" closer, keep the real answer intact.
+// autopack.js — turn code the model WROTE into a real download when it couldn't
+// call make_files (the "زیپ بده → فایل، نه لینک" fix).
+test('autopack: detects a file request and extracts code blocks into files', () => {
+  const ap = require(path.join(ROOT, 'autopack.js'));
+  assert.equal(ap.wantsFileDelivery('یه اسکریپت بنویس و زیپش رو بده'), true, 'زیپ is a delivery request');
+  assert.equal(ap.wantsFileDelivery('give me the file'), true, 'english file request');
+  assert.equal(ap.wantsFileDelivery('پایتخت فرانسه کجاست؟'), false, 'a plain question is not');
+  const reply = 'باشه:\n```python\nprint("hello world from setayesh")\n```\nو استایل:\n```css\nbody { margin: 0; padding: 0; color: #fff; }\n```';
+  const files = ap.extractCodeFiles(reply);
+  assert.equal(files.length, 2, 'two code blocks → two files');
+  assert.ok(files.some((f) => /\.py$/.test(f.name) && f.content.includes('hello world')), 'python file kept');
+  assert.ok(files.some((f) => /\.css$/.test(f.name) && f.content.includes('margin')), 'css file kept');
+  // A named block keeps its filename; a tiny inline snippet is not packaged.
+  const named = ap.extractCodeFiles('```js src/app.js\nconst x = 1; function boot(){ return x + 1; }\n```');
+  assert.equal(named[0].name, 'src/app.js', 'filename from the fence info line');
+  assert.equal(ap.extractCodeFiles('```js\nx=1\n```').length, 0, 'a 3-char snippet is too small to package');
+});
+
 test('toolnoise: tidyTelegram strips filler opener/closer, keeps substance', () => {
   const tn = require(path.join(ROOT, 'toolnoise.js'));
   const out = tn.tidyTelegram('سلام! بله، پایتخت فرانسه پاریس است. اگر سؤال دیگری داری بپرس.');
