@@ -101,6 +101,7 @@ const { versionGreater, localLanIps } = require('./netutil');
 const { readZip, crc32, buildZip } = require('./ziputil');
 const { wantsFileDelivery, extractCodeFiles } = require('./autopack');
 const guardrail = require('./autonomy');
+const core = require('./core');
 const { isUpdatablePath, checkJsSyntax } = require('./srcguard');
 const { sanitizeHistory, maskSecret } = require('./textutil');
 const { ALLOWED_IMAGE_TYPES, MAX_FILE_BYTES, MAX_TEXT_CHARS, TEXT_EXTENSIONS, OFFICE_EXTENSIONS, classifyFile, clampText } = require('./filekind');
@@ -214,7 +215,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.169';
+const APP_VERSION = '9.9.170';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -3646,6 +3647,26 @@ app.post('/api/chat', requireAuth, chatLimiter, upload.array('files', 8), async 
   // background, so it never delays the answer. Uses the RAW message (local
   // memory never leaves the machine), so she remembers the real name/detail.
   setImmediate(() => autoLearn(req.username, message));
+
+  // INTERNAL FAST ENGINE (core.js) — answer the everyday deterministic asks
+  // (maths, today's date, the time, the app version, simple conversions) on the
+  // spot: no model call, works fully offline, sub-millisecond. Only the things
+  // that truly need a large model fall through below. Skipped for child accounts
+  // (their tutor/English experience stays engine-driven) and when a file is
+  // attached (that needs the vision/tools engine).
+  if (!hasFiles && !safeUsers.has(req.username)) {
+    try {
+      const fast = core.fastAnswer(message, { version: APP_VERSION });
+      if (fast && fast.text) {
+        return res.json({
+          reply: fast.text,
+          historyText: message,
+          provider: 'core', providerLabel: 'موتور داخلیِ ستایش · ⚡️ آنی',
+          model: 'core', elapsedMs: 0,
+        });
+      }
+    } catch (e) { /* fall through to the engines */ }
+  }
 
   let target;
   try {

@@ -1727,6 +1727,21 @@ test('toolnoise: stripLinks removes markdown/image/bare links; wantsLink detects
 
 // toolnoise.tidyTelegram — the brevity net: strip the greeting opener and the
 // GPT-style "anything else?" closer, keep the real answer intact.
+// core.js — the internal fast engine: instant, offline, no model call.
+test('core: fast engine answers maths/date/version instantly, passes the rest on', () => {
+  const core = require(path.join(ROOT, 'core.js'));
+  assert.equal(core.fastAnswer('۲+۳*۴').text, '2+3*4 = 14', 'Persian-digit maths works');
+  assert.equal(core.fastAnswer('(12/4)^2').text, '(12/4)^2 = 9', 'ASCII maths works');
+  assert.match(core.fastAnswer('نسخه چنده', { version: '9.9.170' }).text, /9\.9\.170/, 'version fast-path');
+  assert.match(core.fastAnswer('امروز چندمه').text, /\d/, 'date fast-path returns a date');
+  // A real question must NOT be hijacked — it goes to the engine.
+  assert.equal(core.fastAnswer('یه داستان کوتاه برام بنویس'), null, 'creative ask → engine');
+  assert.equal(core.fastAnswer('نظرت درباره هوش مصنوعی چیه؟'), null, 'opinion ask → engine');
+  // Jalali conversion sanity: a known Gregorian date → its Persian date.
+  const j = core.toJalali(2026, 3, 21);
+  assert.ok(j.jy === 1405 && j.jm === 1, 'Nowruz 2026 maps to 1 Farvardin 1405');
+});
+
 // autonomy.js — the Golden Guardrail permission matrix as code.
 test('autonomy: routine work is autonomous, dangerous work needs approval', () => {
   const a = require(path.join(ROOT, 'autonomy.js'));
