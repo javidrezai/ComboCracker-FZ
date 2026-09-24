@@ -234,7 +234,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.178';
+const APP_VERSION = '9.9.179';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -8464,13 +8464,17 @@ if (EMBEDDED_ASSETS) {
     res.send(Buffer.from(asset.data, 'base64'));
   });
 } else {
-  // Static assets carry a day-long cache; because their URLs now always carry
-  // the current ?v=, a new release busts the cache automatically. index.html
-  // is handled above (never by static) so it always reflects APP_VERSION.
+  // Freshness over bandwidth: this is a LAN app, so SCRIPTS AND STYLES are
+  // served no-store — the browser can never pin an old app.js/brainmap.js and
+  // show a frozen UI after an update (the "nothing changed" bug, even after the
+  // server itself is new). Only big static media (images/fonts) keep a cache;
+  // their ?v= busts it on a new release anyway.
   app.use(express.static(path.join(__dirname, 'public'), {
     index: false,
     setHeaders: (r, filePath) => {
-      if (/\.(js|css|png|jpg|jpeg|svg|webp|woff2?|ico)$/i.test(filePath)) {
+      if (/\.(js|css|html)$/i.test(filePath)) {
+        r.setHeader('Cache-Control', 'no-store');
+      } else if (/\.(png|jpg|jpeg|svg|webp|woff2?|ico)$/i.test(filePath)) {
         r.setHeader('Cache-Control', 'public, max-age=86400');
       } else {
         r.setHeader('Cache-Control', 'no-store');
