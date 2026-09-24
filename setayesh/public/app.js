@@ -1,4 +1,4 @@
-/* SETAYESH_BUILD 9.9.171 */
+/* SETAYESH_BUILD 9.9.172 */
 (function(){
 'use strict';
 
@@ -3989,31 +3989,37 @@ document.getElementById('shDiag').addEventListener('click',function(){ sheetGo(o
 var BRAIN = { scene:null, cam:null, renderer:null, raf:null, regions:[], pulses:[], data:null, pollTimer:null, hovered:null };
 
 function openBrain(){
-  // The brain view is ALWAYS the hexagon file-map (brainmap.js). The old 3D
-  // scene is retired and must never appear. If the map script hasn't loaded,
-  // load it on demand and open it — we never fall back to the old view.
-  if(typeof window.openBrainMap==='function'){ window.openBrainMap(); return; }
-  var tag=document.querySelector('script[data-brainmap]');
-  if(!tag){
-    tag=document.createElement('script');
-    tag.setAttribute('data-brainmap','1');
-    tag.src='/brainmap.js?v='+Date.now();
-    tag.onload=function(){ if(typeof window.openBrainMap==='function')window.openBrainMap();
-      else alert('نقشه‌ی مغز بارگذاری نشد — لطفاً Ctrl+Shift+R بزن.'); };
-    tag.onerror=function(){ alert('نقشه‌ی مغز پیدا نشد (brainmap.js). لطفاً نسخه‌ی کامل را دوباره نصب کن.'); };
-    document.head.appendChild(tag);
-    return;
+  // The brain view is the interactive 3D brain (brainmap3d.html): the glowing
+  // core with every engine, tool and I/O around it, and light pulses for each
+  // task. Served locally (three.js from /three.min.js, a built-in orbit
+  // controller) so it works fully offline. Shown in a full-screen iframe overlay.
+  var ov=document.getElementById('brain3dOverlay');
+  if(!ov){
+    ov=document.createElement('div');
+    ov.id='brain3dOverlay';
+    ov.style.cssText='position:fixed;inset:0;z-index:660;background:#04060c';
+    var fr=document.createElement('iframe');
+    fr.id='brain3dFrame';
+    fr.src='/brainmap3d.html?v='+(window.RUNNING_VERSION||Date.now());
+    fr.style.cssText='position:absolute;inset:0;width:100%;height:100%;border:0';
+    fr.setAttribute('allow','fullscreen');
+    ov.appendChild(fr);
+    document.body.appendChild(ov);
+    window.addEventListener('message',function(e){ if(e&&e.data==='setayesh-brain-close') closeBrain(); });
+  } else {
+    ov.style.display='block';
   }
-  alert('نقشه‌ی مغز آماده نیست — لطفاً Ctrl+Shift+R بزن.');
 }
 function closeBrain(){
-  var ov=document.getElementById('brainOverlay');
-  ov.style.display='none';
+  // The 3D brain view (brainmap3d.html in an iframe overlay) is what's open now.
+  var ov3=document.getElementById('brain3dOverlay'); if(ov3)ov3.style.display='none';
+  // Old scene teardown, kept but null-guarded so it never throws if absent.
+  var ov=document.getElementById('brainOverlay'); if(ov)ov.style.display='none';
   if(BRAIN.raf)cancelAnimationFrame(BRAIN.raf);
   if(BRAIN.pollTimer)clearInterval(BRAIN.pollTimer);
-  document.getElementById('brainEditor').style.display='none';
+  var ed=document.getElementById('brainEditor'); if(ed)ed.style.display='none';
   var h2=document.getElementById('brain2D'); if(h2)h2.remove();
-  document.getElementById('brainCanvas').style.display='block';
+  var bc=document.getElementById('brainCanvas'); if(bc)bc.style.display='block';
 }
 
 function brainInit(){

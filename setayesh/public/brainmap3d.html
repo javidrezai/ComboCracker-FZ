@@ -1,0 +1,289 @@
+<!doctype html>
+<!-- SETAYESH_BUILD 9.9.172 -->
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Setayesh — مغز</title>
+<link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;500;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet">
+<style>
+:root{--bg:#05070d;--b:#3aa8ff;--g:#ffab3d;--t:#eaf1fb;--m:#7f93b3;color-scheme:dark}
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+*,*:before,*:after{box-sizing:inherit}
+html,body{height:100%;margin:0;overflow:hidden;background:var(--bg);color:var(--t);font-family:Vazirmatn,Tahoma,sans-serif}
+body{background:radial-gradient(120% 90% at 50% 42%,#0a1630 0%,#060a15 45%,#04060c 100%)}
+#c{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none}
+.ms{font-family:'Material Symbols Rounded';font-weight:400;font-style:normal;line-height:1;display:inline-block;direction:ltr;-webkit-font-smoothing:antialiased;font-feature-settings:'liga'}
+.labels{position:absolute;inset:0;pointer-events:none;opacity:0;transition:opacity .8s ease}
+.labels.on{opacity:1}
+.node{position:absolute;left:0;top:0;pointer-events:auto;cursor:pointer;font:inherit;color:#fff;white-space:nowrap;
+ display:flex;align-items:center;gap:7px;will-change:transform;font-size:clamp(11px,1.2vw,14px);font-weight:500;letter-spacing:.2px;
+ padding:5px 12px 5px 5px;border-radius:100px;background:rgba(10,18,34,.55);backdrop-filter:blur(10px);
+ border:1px solid #ffffff1f;box-shadow:0 4px 20px #0006;transition:transform .5s cubic-bezier(.2,.8,.2,1),opacity .4s,border-color .3s}
+.node .ic{width:clamp(24px,2.5vw,30px);height:clamp(24px,2.5vw,30px);border-radius:50%;display:grid;place-items:center;flex:none}
+.node .ic .ms{font-size:clamp(14px,1.5vw,18px)}
+.node.b{border-color:#3aa8ff4d} .node.b .ic{background:linear-gradient(140deg,#2a6bff,#39c0ff);box-shadow:0 0 14px #2a9dff88}
+.node.g{border-color:#ffab3d4d} .node.g .ic{background:linear-gradient(140deg,#ff7a00,#ffc24d);box-shadow:0 0 14px #ffab3d88;color:#241000}
+.node.io{border-color:#ffffff33} .node.io .ic{background:linear-gradient(140deg,#8a5cff,#c56bff);box-shadow:0 0 14px #a06bffaa}
+.node:hover,.node:focus-visible{outline:none;border-color:#fff8;z-index:9}
+.node:hover .ic,.node:focus-visible .ic{filter:brightness(1.2)}
+.core{position:absolute;left:0;top:0;pointer-events:auto;cursor:pointer;transform:translate(-50%,-50%);
+ width:clamp(88px,10vw,128px);aspect-ratio:1;border-radius:50%;display:grid;place-items:center;text-align:center;
+ background:radial-gradient(circle at 50% 45%,#eaf6ff 0,#8fd0ff 28%,#2f7dff 60%,#0a2f7a 100%);
+ border:none;box-shadow:0 0 0 1px #bfe4ff88,0 0 30px 6px #38b4ff66,0 0 70px 20px #2a7aff33,inset 0 -8px 20px #0a2f7a99;
+ font-family:inherit;color:#04122e;font-weight:700;opacity:0;transition:opacity .8s}
+.core.on{opacity:1}
+.core b{display:block;font-size:clamp(13px,1.5vw,18px);letter-spacing:.3px}
+.core span{display:block;font-size:clamp(9px,1vw,12px);font-weight:500;opacity:.8;margin-top:1px}
+.tip{position:fixed;z-index:20;max-width:min(280px,86vw);padding:14px 16px;border-radius:18px;
+ background:rgba(9,15,28,.82);backdrop-filter:blur(16px);border:1px solid #ffffff1c;box-shadow:0 20px 50px #000a;
+ opacity:0;transform:translateY(6px) scale(.98);transition:.22s cubic-bezier(.2,.8,.2,1);pointer-events:none}
+.tip.on{opacity:1;transform:none}
+.tip .h{display:flex;align-items:center;gap:9px;margin-bottom:6px}
+.tip .h .ic{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;flex:none}
+.tip strong{font-size:15px;direction:ltr;font-weight:700}
+.tip p{margin:0;font-size:13px;line-height:1.85;color:#c4d4ec}
+.brand{position:fixed;bottom:calc(16px + env(safe-area-inset-bottom,0px));left:0;right:0;text-align:center;
+ font-size:11px;letter-spacing:3px;color:#3a4a66;text-transform:uppercase;pointer-events:none;transition:opacity .6s;font-weight:500}
+.hint{position:fixed;bottom:calc(40px + env(safe-area-inset-bottom,0px));left:0;right:0;text-align:center;
+ font-size:12px;color:#5a6f92;pointer-events:none;transition:opacity .8s}
+.hint.gone{opacity:0}
+.close{position:fixed;top:calc(14px + env(safe-area-inset-top,0px));right:14px;z-index:15;height:40px;padding:0 16px;border-radius:20px;
+ background:rgba(10,18,34,.6);backdrop-filter:blur(10px);border:1px solid #ffffff1f;color:#cfe0ff;cursor:pointer;
+ display:flex;align-items:center;gap:6px;font:inherit;font-size:13px}
+@media (prefers-reduced-motion:reduce){.node,.tip,.core{transition:none}}
+</style>
+</head>
+<body>
+<canvas id="c" aria-label="مغز سه‌بعدی ستایش"></canvas>
+<div class="labels" id="labels"></div>
+<div class="tip" id="tip" role="dialog" aria-live="polite"></div>
+<button class="close" id="closeBtn" type="button" onclick="(window.parent&&window.parent!==window&&window.parent.postMessage('setayesh-brain-close','*'))||history.back()">✕ بستن</button>
+<div class="hint" id="hint">زوم کن تا نام‌ها و خطوط ظاهر شوند</div>
+<div class="brand">SETAYESH</div>
+<!-- three.js served LOCALLY (r128) so the brain works fully offline — no CDN. -->
+<script src="/three.min.js"></script>
+<script>
+// Tiny built-in orbit controller (drag-rotate + wheel/pinch-zoom + autorotate),
+// so the brain needs NO external OrbitControls script and works offline. It
+// mirrors the small slice of the OrbitControls API this scene uses: it reads
+// camera.position each frame (so an external reset-lerp is respected) and writes
+// it back from a spherical around `target`.
+function MiniOrbit(cam,dom){
+  this.cam=cam;this.dom=dom;this.target=new THREE.Vector3();
+  this.enableDamping=false;this.dampingFactor=.06;this.enablePan=false;
+  this.minDistance=0;this.maxDistance=Infinity;this.zoomSpeed=1;
+  this.minPolarAngle=0;this.maxPolarAngle=Math.PI;this.autoRotate=false;this.autoRotateSpeed=2;
+  this._th=0;this._ph=0;this._scale=1;this._drag=false;this._lx=0;this._ly=0;this._pinch=0;
+  var self=this;
+  dom.addEventListener('pointerdown',function(e){self._drag=true;self._lx=e.clientX;self._ly=e.clientY;});
+  window.addEventListener('pointerup',function(){self._drag=false;self._pinch=0;});
+  window.addEventListener('pointermove',function(e){
+    if(!self._drag)return;
+    self._th-=(e.clientX-self._lx)*0.005;self._ph-=(e.clientY-self._ly)*0.005;
+    self._lx=e.clientX;self._ly=e.clientY;
+  });
+  dom.addEventListener('wheel',function(e){e.preventDefault();
+    self._scale*=(e.deltaY>0?1+0.0016*self.zoomSpeed*Math.min(120,Math.abs(e.deltaY)):1-0.0016*self.zoomSpeed*Math.min(120,Math.abs(e.deltaY)));
+  },{passive:false});
+  // Pinch-to-zoom (two fingers).
+  dom.addEventListener('touchmove',function(e){
+    if(e.touches.length!==2)return;e.preventDefault();
+    var d=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);
+    if(self._pinch)self._scale*=self._pinch/d;self._pinch=d;
+  },{passive:false});
+  dom.addEventListener('touchend',function(){self._pinch=0;});
+}
+MiniOrbit.prototype.update=function(){
+  var off=this.cam.position.clone().sub(this.target);
+  var sph=new THREE.Spherical().setFromVector3(off);
+  if(this.autoRotate&&!this._drag)this._th-=(2*Math.PI/60/60)*this.autoRotateSpeed*2;
+  sph.theta+=this._th;sph.phi+=this._ph;
+  sph.phi=Math.max(this.minPolarAngle,Math.min(this.maxPolarAngle,sph.phi));
+  sph.radius*=this._scale;
+  sph.radius=Math.max(this.minDistance,Math.min(this.maxDistance,sph.radius));
+  sph.makeSafe();
+  off.setFromSpherical(sph);
+  this.cam.position.copy(this.target).add(off);
+  this.cam.lookAt(this.target);
+  var keep=this.enableDamping?(1-this.dampingFactor):0;
+  this._th*=keep;this._ph*=keep;this._scale=1;
+};
+THREE.OrbitControls=MiniOrbit;   // the scene below constructs THREE.OrbitControls
+</script>
+<script>
+const BLUE=0x39b6ff,GOLD=0xffab3d,VIOLET=0xa878ff,reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
+const RX=2.0,RY=2.72,RZ=1.68,GAP=.12;
+const AI=[
+ ["OpenRouter",-.30,.74,"hub","دروازه به ده‌ها مدل هوش دیگر."],
+ ["OpenAI",-.58,.58,"neurology","مدل‌های GPT؛ یکی از موتورهای Failover."],
+ ["Ollama",-.24,.55,"dns","مغز محلی، بدون اینترنت و کاملاً خصوصی."],
+ ["Mistral",-.46,.42,"air","موتور اروپایی، سریع و ارزان."],
+ ["Groq",-.74,.31,"bolt","پرسرعت و رایگان؛ Whisper هم دارد."],
+ ["Cerebras",-.70,.10,"memory","بسیار سریع برای جواب فوری."],
+ ["Gemini",-.65,-.10,"auto_awesome","موتور گوگل؛ تحلیل و ساخت تصویر."],
+ ["Claude",-.72,-.33,"psychology","استدلال و نوشتن دقیق."],
+ ["Memory",-.44,.30,"database","حافظه کوتاه‌مدت، بلندمدت و Vector."],
+ ["Learning",-.50,-.18,"school","یادگیری خودکار و Insight Engine."],
+ ["Python",-.30,-.54,"terminal","مغز آفلاین؛ آخرین پشتیبان."]
+];
+const TL=[
+ ["Tools",.34,.72,"build","۶۲ ابزار واقعی که مغز اجرا می‌کند."],
+ ["Devices",.56,.50,"devices_other","دستگاه‌های خانه از Home Assistant."],
+ ["Web",.68,.26,"language","جستجو و تحقیق با منبع، اتوماسیون وب."],
+ ["Code",.69,.02,"code","اجرای کد در ۱۳ زبان و ساخت پروژه."],
+ ["Files",.66,-.22,"folder","ZIP، PDF، Word، Excel و تبدیل فرمت."],
+ ["API",.56,-.44,"cloud","اتصال به گوگل، تلگرام و سرویس‌ها."],
+ ["Smart Home",.48,-.65,"cottage","تلویزیون، پرینتر، دوربین، Tuya/LSC."],
+ ["Security",.30,-.84,"shield","Vault، تأیید پدر، NetGuard و HTTPS."]
+];
+const IO=[
+ ["Text",-.14,.30,"chat","ورودی و خروجی متنی."],
+ ["Voice",.14,.30,"mic","صدا به متن و متن به صدا."],
+ ["Image",-.14,0,"image","دیدن و ساخت تصویر."],
+ ["File",.14,0,"description","آپلود و دانلود فایل."],
+ ["Web",-.14,-.30,"public","ورودی/خروجی از وب."],
+ ["Device",.14,-.30,"home","کنترل و پاسخ دستگاه‌ها."]
+];
+const canvas=document.getElementById('c'),labels=document.getElementById('labels'),tip=document.getElementById('tip');
+const renderer=new THREE.WebGLRenderer({canvas,antialias:true,alpha:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+const scene=new THREE.Scene();scene.fog=new THREE.FogExp2(0x04060c,.05);
+const camera=new THREE.PerspectiveCamera(42,1,.1,100);
+const controls=new THREE.OrbitControls(camera,canvas);
+controls.enableDamping=true;controls.dampingFactor=.06;controls.enablePan=false;
+controls.minDistance=4;controls.maxDistance=13;controls.zoomSpeed=.7;
+controls.minPolarAngle=Math.PI/2-.5;controls.maxPolarAngle=Math.PI/2+.3;
+controls.autoRotate=!reduce;controls.autoRotateSpeed=.42;
+function glow(){const c=document.createElement('canvas');c.width=c.height=64;const x=c.getContext('2d'),r=x.createRadialGradient(32,32,0,32,32,32);
+ r.addColorStop(0,'#fff');r.addColorStop(.32,'rgba(255,255,255,.5)');r.addColorStop(1,'rgba(255,255,255,0)');x.fillStyle=r;x.fillRect(0,0,64,64);return new THREE.CanvasTexture(c)}
+const G=glow();
+const nz=(x,y,z)=>Math.sin(x*2.3+Math.sin(y*1.9+z))+Math.sin(y*2.9+Math.cos(z*2.1+x))+Math.sin(z*2.5+Math.sin(x*1.7-y));
+function surf(side,dx,dy,dz,k=1){const f=1+.045*nz(dx*3,dy*3,dz*3);
+ return new THREE.Vector3(side*(GAP+RX*Math.pow(dx,.85)*f*k),RY*dy*f*k,RZ*dz*f*k)}
+const brain=new THREE.Group();scene.add(brain);
+function hemi(side,hex){
+ const col=new THREE.Color(hex),hot=new THREE.Color(0xffffff),deep=col.clone().multiplyScalar(.3);
+ const N=innerWidth<700?6000:10500,P=[],C=[];
+ for(let i=0;i<N;i++){
+  const u=Math.random()*2-1,t=Math.random()*6.283,s=Math.sqrt(1-u*u);
+  const dx=Math.abs(s*Math.cos(t)),dy=u,dz=s*Math.sin(t);
+  const g=Math.sin(nz(dx*4.2,dy*4.2,dz*4.2)*3.2);
+  if(Math.abs(g)<.16&&Math.random()<.85)continue;
+  const depth=Math.random()<.16?.78+Math.random()*.18:1;
+  const p=surf(side,dx,dy,dz,depth);P.push(p.x,p.y,p.z);
+  const c=depth<1?deep.clone():col.clone().lerp(hot,Math.max(0,g)*.3+(Math.random()<.03?.55:0));C.push(c.r,c.g,c.b);
+ }
+ const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(P,3));geo.setAttribute('color',new THREE.Float32BufferAttribute(C,3));
+ brain.add(new THREE.Points(geo,new THREE.PointsMaterial({size:.045,map:G,vertexColors:true,transparent:true,opacity:.95,depthWrite:false,blending:THREE.AdditiveBlending})));
+ const lm=new THREE.LineBasicMaterial({color:hex,transparent:true,opacity:.3,blending:THREE.AdditiveBlending});
+ for(let j=0;j<58;j++){let d=new THREE.Vector3(Math.random(),Math.random()*2-1,Math.random()*2-1).normalize();d.x=Math.abs(d.x);
+  const pts=[];let a=Math.random()*6.28;
+  for(let s=0;s<22;s++){pts.push(surf(side,d.x,d.y,d.z,1.004));a+=nz(d.x*5,d.y*5,d.z*5)*.55;
+   d.add(new THREE.Vector3(Math.cos(a),Math.sin(a),Math.sin(a*.7)).multiplyScalar(.055)).normalize();d.x=Math.abs(d.x)}
+  brain.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),lm))}
+}
+hemi(-1,BLUE);hemi(1,GOLD);
+[[3.2,0xffffff,.4],[5.4,BLUE,.16],[5.4,GOLD,.11]].forEach(([s,c,o],i)=>{const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:G,color:c,opacity:o,transparent:true,blending:THREE.AdditiveBlending,depthWrite:false}));
+ sp.scale.set(s,s,1);sp.position.set(i==1?-.5:i==2?.5:0,0,RZ*.85);brain.add(sp)});
+brain.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(new THREE.CatmullRomCurve3([new THREE.Vector3(0,RY*.92,.3),new THREE.Vector3(0,0,RZ+.05),new THREE.Vector3(0,-RY*.92,.3)]).getPoints(40)),
+ new THREE.LineBasicMaterial({color:0xeaf2ff,transparent:true,opacity:.5,blending:THREE.AdditiveBlending})));
+(function(){const n=900,p=[];for(let i=0;i<n;i++){const r=12+Math.random()*22,a=Math.random()*6.28,b=Math.acos(2*Math.random()-1);
+ p.push(r*Math.sin(b)*Math.cos(a),r*Math.cos(b),r*Math.sin(b)*Math.sin(a))}
+ const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(p,3));
+ scene.add(new THREE.Points(g,new THREE.PointsMaterial({size:.06,color:0x46618f,map:G,transparent:true,opacity:.5,depthWrite:false,blending:THREE.AdditiveBlending})))})();
+const anchors=[],netG=new THREE.Group();netG.visible=false;brain.add(netG);
+function anchor(u,v){const dxn=Math.abs(u);const z=RZ*Math.sqrt(Math.max(.04,1-dxn*dxn-v*v))+.12;return new THREE.Vector3((u<0?-1:1)*(GAP+RX*dxn),v*RY,z)}
+function makeNode([name,u,v,icon,info],kind){
+ const b=document.createElement('button');b.className='node '+kind;b.type='button';
+ b.innerHTML='<span class="ic"><span class="ms">'+icon+'</span></span>'+name;
+ b.onclick=e=>{e.stopPropagation();showTip(b,name,info,icon,kind)};labels.appendChild(b);
+ const p=kind==='io'?new THREE.Vector3((u<0?-1:1)*Math.abs(u)*RX*.9,v*RY*.8,RZ*.55):anchor(u,v);
+ anchors.push({el:b,p,kind})}
+AI.forEach(n=>makeNode(n,'b'));TL.forEach(n=>makeNode(n,'g'));IO.forEach(n=>makeNode(n,'io'));
+const coreEl=document.createElement('button');coreEl.className='core';coreEl.type='button';
+coreEl.innerHTML='<div><b>Setayesh</b><span>Brain Core</span></div>';
+coreEl.onclick=e=>{e.stopPropagation();showTip(coreEl,'Setayesh Brain Core','مغز مرکزی: پیام را می‌گیرد، از حافظه کمک می‌گیرد، موتور هوش را انتخاب می‌کند و ابزار لازم را اجرا می‌کند.','graph_3','')};
+labels.appendChild(coreEl);anchors.push({el:coreEl,p:new THREE.Vector3(0,0,RZ+.35),core:true});
+(function(){const c=new THREE.Vector3(0,0,RZ*.25);
+ const line=(a,b,hex,o)=>{const g=new THREE.QuadraticBezierCurve3(a,a.clone().add(b).multiplyScalar(.5).multiplyScalar(1.06),b);
+  netG.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(g.getPoints(14)),new THREE.LineBasicMaterial({color:hex,transparent:true,opacity:o,blending:THREE.AdditiveBlending})))};
+ const nodes=anchors.filter(a=>!a.core);
+ nodes.forEach(n=>{const hex=n.kind==='b'?BLUE:n.kind==='g'?GOLD:VIOLET;line(n.p,c,hex,.22);
+  const near=nodes.filter(m=>m!==n&&m.kind===n.kind).sort((x,y)=>n.p.distanceTo(x.p)-n.p.distanceTo(y.p))[0];
+  if(near)line(n.p,near.p,hex,.16)})})();
+
+/* ===== خطوط و انتقال نور از بیرون مغز (برای هر کار، حتی کوچک) ===== */
+const outerG=new THREE.Group();outerG.visible=false;brain.add(outerG);
+const outerPulses=[];
+function buildOuter(){
+  const nodes=anchors.filter(a=>!a.core);
+  nodes.forEach(n=>{
+    const hex=n.kind==='b'?BLUE:n.kind==='g'?GOLD:VIOLET;
+    const outDir=n.p.clone().normalize();
+    const outPt=n.p.clone().add(outDir.multiplyScalar(2.2+Math.random()*1.4));
+    outPt.z*=0.5;
+    const mid=n.p.clone().add(outPt).multiplyScalar(0.5).add(new THREE.Vector3(0,(Math.random()-.5)*0.6,0));
+    const curve=new THREE.QuadraticBezierCurve3(n.p.clone(),mid,outPt);
+    const pts=curve.getPoints(28);
+    const line=new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),
+      new THREE.LineBasicMaterial({color:hex,transparent:true,opacity:.16,blending:THREE.AdditiveBlending}));
+    outerG.add(line);
+    const tip=new THREE.Sprite(new THREE.SpriteMaterial({map:G,color:hex,transparent:true,opacity:.5,blending:THREE.AdditiveBlending,depthWrite:false}));
+    tip.scale.set(.22,.22,1);tip.position.copy(outPt);outerG.add(tip);
+    for(let k=0;k<2;k++){
+      const pu=new THREE.Sprite(new THREE.SpriteMaterial({map:G,color:0xffffff,transparent:true,opacity:.9,blending:THREE.AdditiveBlending,depthWrite:false}));
+      pu.scale.set(.11,.11,1);outerG.add(pu);
+      outerPulses.push({pu,curve,t:Math.random(),v:.15+Math.random()*.25,dir:k?1:-1});
+    }
+  });
+}
+buildOuter();
+
+const pulses=[];anchors.filter(a=>!a.core).forEach(n=>{const s=new THREE.Sprite(new THREE.SpriteMaterial({map:G,color:0xffffff,transparent:true,opacity:.9,blending:THREE.AdditiveBlending,depthWrite:false}));
+ s.scale.set(.13,.13,1);brain.add(s);pulses.push({s,a:n.p.clone(),b:new THREE.Vector3(0,0,RZ*.25),t:Math.random(),v:.2+Math.random()*.25})});
+let revealed=false;
+function setRevealed(on){
+  if(on===revealed)return;
+  revealed=on;
+  labels.classList.toggle('on',on);
+  coreEl.classList.toggle('on',on);
+  netG.visible=on;
+  outerG.visible=on;
+  document.getElementById('hint').classList.toggle('gone',on);
+  document.querySelector('.brand').style.opacity=on?'.4':'';
+  if(!on)tip.classList.remove('on');
+}
+function showTip(el,t,d,icon,kind){const col=kind==='b'?'#2a9dff':kind==='g'?'#ffab3d':kind==='io'?'#a878ff':'#8fd0ff';
+ tip.innerHTML='<div class="h"><span class="ic" style="background:'+col+'33;border:1px solid '+col+'"><span class="ms" style="color:'+col+'">'+icon+'</span></span><strong>'+t+'</strong></div><p>'+d+'</p>';
+ tip.classList.add('on');const r=el.getBoundingClientRect();
+ let x=r.left+r.width/2-140;x=Math.max(8,Math.min(innerWidth-288,x));let y=r.bottom+10;if(y>innerHeight-130)y=r.top-130;
+ tip.style.left=x+'px';tip.style.top=Math.max(8,y)+'px';clearTimeout(showTip.t);showTip.t=setTimeout(()=>tip.classList.remove('on'),5000)}
+canvas.addEventListener('pointerup',()=>{tip.classList.remove('on')});
+let initDist=10,target=null;
+function resize(){const w=innerWidth,h=innerHeight;renderer.setSize(w,h,false);camera.aspect=w/h;
+ const vf=Math.tan(THREE.MathUtils.degToRad(camera.fov/2));
+ initDist=Math.max(RY*1.15/vf,(RX+GAP)*1.3/(vf*camera.aspect))+RZ+.5;
+ if(!revealed&&!target)camera.position.set(0,0,initDist);controls.target.set(0,0,0);camera.updateProjectionMatrix()}
+addEventListener('resize',resize);
+const v=new THREE.Vector3(),dir=new THREE.Vector3(),clk=new THREE.Clock();
+function loop(){const dt=Math.min(clk.getDelta(),.05);
+ const dist=camera.position.length();
+ if(dist < initDist-0.5) setRevealed(true);
+ else if(dist > initDist-0.15) setRevealed(false);
+ pulses.forEach(p=>{if(revealed&&!reduce)p.t=(p.t+p.v*dt)%1;p.s.material.opacity=revealed?.9:0;p.s.position.lerpVectors(p.a,p.b,p.t)});
+ outerPulses.forEach(p=>{if(!reduce)p.t=(p.t+p.v*dt*p.dir+1)%1;const pt=p.curve.getPoint(p.t);p.pu.position.copy(pt);p.pu.material.opacity=.95});
+ if(target){camera.position.lerp(target.pos,.08);if(camera.position.distanceTo(target.pos)<.05)target=null}
+ controls.update();renderer.render(scene,camera);
+ const w=innerWidth,h=innerHeight;camera.getWorldDirection(dir);
+ anchors.forEach(a=>{v.copy(a.p).applyMatrix4(brain.matrixWorld);const face=v.clone().sub(camera.position).normalize().dot(dir);
+  v.project(camera);a.el.style.transform='translate('+((v.x*.5+.5)*w)+'px,'+((-v.y*.5+.5)*h)+'px) translate(-50%,-50%)';
+  const vis=revealed&&face>0;a.el.style.opacity=vis?1:0;a.el.style.pointerEvents=vis?'auto':'none'});
+ requestAnimationFrame(loop)}
+resize();loop();
+// Let the parent app close this view with the Esc key too.
+addEventListener('keydown',e=>{if(e.key==='Escape'){(window.parent&&window.parent!==window&&window.parent.postMessage('setayesh-brain-close','*'))||history.back();}});
+</script>
+</body>
+</html>
