@@ -1,4 +1,4 @@
-/* SETAYESH_BUILD 9.9.176 */
+/* SETAYESH_BUILD 9.9.177 */
 /* Brain map — a living picture of Setayesh's whole self: a central hexagon
    core with every file as a node around it, colour-coded by area, green when
    healthy / red when missing. Click a node to see what it does and edit it.
@@ -352,11 +352,17 @@
     img.onerror=function(){ /* keep the built-in star gradient */ };
     box.innerHTML=''; box.appendChild(img);
   }
+  // The brain view is now the 3D brain (openBrain in app.js → brainmap3d.html).
+  // The topbar «مغز» button must open THAT, not this old hexagon/file map — so
+  // prefer window.openBrain when present and only fall back to this old map if
+  // the new one somehow isn't loaded. (This was the bug where «مغز» kept opening
+  // the old map no matter how many updates shipped.)
+  var openView=function(){ if(typeof window.openBrain==='function') return window.openBrain(); return open(); };
   document.addEventListener('DOMContentLoaded',function(){
     var c=el('brainMapClose'); if(c)c.addEventListener('click',close);
-    var b=el('brainMapBtn'); if(b)b.addEventListener('click',open);
-    var sh=el('shBrainMap'); if(sh)sh.addEventListener('click',function(){ if(typeof closeSheet==='function')closeSheet(); setTimeout(open,160); });
-    var rf=el('brainMapRefresh'); if(rf)rf.addEventListener('click',open);   // re-fetch + re-render
+    var b=el('brainMapBtn'); if(b)b.addEventListener('click',openView);
+    var sh=el('shBrainMap'); if(sh)sh.addEventListener('click',function(){ if(typeof closeSheet==='function')closeSheet(); setTimeout(openView,160); });
+    var rf=el('brainMapRefresh'); if(rf)rf.addEventListener('click',openView);   // re-fetch + re-render
     var zi=el('brainMapZoomIn'); if(zi)zi.addEventListener('click',function(){ if(window.brainGlobeZoom)window.brainGlobeZoom(-3); });
     var zo=el('brainMapZoomOut'); if(zo)zo.addEventListener('click',function(){ if(window.brainGlobeZoom)window.brainGlobeZoom(3); });
     setBrainLogoFace();
