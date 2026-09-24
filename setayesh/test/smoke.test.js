@@ -1727,6 +1727,23 @@ test('toolnoise: stripLinks removes markdown/image/bare links; wantsLink detects
 
 // toolnoise.tidyTelegram — the brevity net: strip the greeting opener and the
 // GPT-style "anything else?" closer, keep the real answer intact.
+// autonomy.js — the Golden Guardrail permission matrix as code.
+test('autonomy: routine work is autonomous, dangerous work needs approval', () => {
+  const a = require(path.join(ROOT, 'autonomy.js'));
+  assert.equal(a.classifyAction('scroll the page and fill the form').mode, 'auto', 'web+forms = autonomous');
+  assert.equal(a.classifyAction('تحقیق کن و یک پیش‌نویس بنویس').mode, 'auto', 'research/drafting = autonomous');
+  assert.equal(a.classifyAction('اینباکس را اسکن و مرتب کن').mode, 'auto', 'reading/sorting mail = autonomous');
+  assert.equal(a.needsApproval('این ایمیل را بفرست'), true, 'sending email needs approval');
+  assert.equal(a.needsApproval('deploy to production'), true, 'deploy needs approval');
+  assert.equal(a.needsApproval('این فایل‌ها را حذف کن'), true, 'delete needs approval');
+  assert.equal(a.needsApproval('برو این اشتراک را بخر و پرداخت کن'), true, 'spending money needs approval');
+  // "draft AND send" must land on the stricter send rule, not the draft rule.
+  assert.equal(a.classifyAction('یک ایمیل بنویس و بفرست').mode, 'approval', 'send wins over draft');
+  // Unknown → autonomous by default, strict when asked.
+  assert.equal(a.classifyAction('یه چیزی').mode, 'auto', 'unknown defaults autonomous');
+  assert.equal(a.classifyAction('یه چیزی', { defaultMode: 'approval' }).mode, 'approval', 'strict mode flips unknown');
+});
+
 // autopack.js — turn code the model WROTE into a real download when it couldn't
 // call make_files (the "زیپ بده → فایل، نه لینک" fix).
 test('autopack: detects a file request and extracts code blocks into files', () => {

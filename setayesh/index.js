@@ -100,6 +100,7 @@ const net = require('net');
 const { versionGreater, localLanIps } = require('./netutil');
 const { readZip, crc32, buildZip } = require('./ziputil');
 const { wantsFileDelivery, extractCodeFiles } = require('./autopack');
+const guardrail = require('./autonomy');
 const { isUpdatablePath, checkJsSyntax } = require('./srcguard');
 const { sanitizeHistory, maskSecret } = require('./textutil');
 const { ALLOWED_IMAGE_TYPES, MAX_FILE_BYTES, MAX_TEXT_CHARS, TEXT_EXTENSIONS, OFFICE_EXTENSIONS, classifyFile, clampText } = require('./filekind');
@@ -213,7 +214,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.168';
+const APP_VERSION = '9.9.169';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -328,6 +329,87 @@ const connectors = makeConnectors({ storeFile: CONNECTORS_STORE, getCfg: () => c
 // Telegram connector — reach Setayesh from outside the house (long-polling,
 // answers only the whitelisted chat). See telegram.js.
 const telegram = makeTelegram({ getCfg: () => cfg });
+
+// ---------------- Telegram Approval Gateway (Super-Agent blueprint, Phase 3) --
+// The Golden Guardrail in practice: a high-privilege action (send email, deploy,
+// self-core change, spend money, delete data — see autonomy.js) is NOT run
+// silently. It becomes a PENDING request; Setayesh pings Javid on Telegram with
+// ✅/❌ inline buttons (and it also shows in the control centre), and only his
+// yes runs the stored action. His no drops it. Everything routine still runs
+// autonomously — this gate is only for the dangerous, irreversible things.
+const APPROVALS_FILE = process.env.SETAYESH_APPROVALS_FILE || path.join(DATA_DIR, '.setayesh-approvals.json');
+const approvals = new Map();          // id -> { id, title, detail, domain, at, status, decidedAt }
+const _approvalRunners = new Map();   // id -> async fn to run on approve (in-memory only)
+function loadApprovals() {
+  try {
+    const raw = JSON.parse(fs.readFileSync(APPROVALS_FILE, 'utf8'));
+    if (Array.isArray(raw)) for (const a of raw) if (a && a.id) approvals.set(String(a.id), a);
+  } catch (e) {}
+}
+function saveApprovals() {
+  try {
+    // Keep the most recent 200 so the file can't grow forever.
+    const all = [...approvals.values()].sort((a, b) => (b.at || 0) - (a.at || 0)).slice(0, 200);
+    approvals.clear(); for (const a of all) approvals.set(String(a.id), a);
+    fs.writeFileSync(APPROVALS_FILE, JSON.stringify(all), { mode: 0o600 });
+  } catch (e) {}
+}
+loadApprovals();
+
+// Create a pending approval. `run` (optional) is an async function executed once
+// Javid approves. Returns the record. Never throws.
+function requestApproval(opts, run) {
+  opts = opts || {};
+  const id = Date.now().toString(36) + crypto.randomBytes(2).toString('hex');
+  const rec = {
+    id,
+    title: String(opts.title || 'یک کار نیاز به تأیید دارد').slice(0, 200),
+    detail: String(opts.detail || '').slice(0, 1500),
+    domain: String(opts.domain || 'other'),
+    at: Date.now(), status: 'pending', decidedAt: 0,
+  };
+  approvals.set(id, rec);
+  if (typeof run === 'function') _approvalRunners.set(id, run);
+  saveApprovals();
+  // Notify Javid on Telegram with tappable buttons (best-effort).
+  try {
+    if (telegram.configured()) {
+      const body = `🔐 اجازه می‌خواهم:\n${rec.title}` + (rec.detail ? `\n\n${rec.detail}` : '') + `\n\nکد: ${id}`;
+      telegram.send(body, null, [
+        { text: '✅ تأیید', data: 'ap:' + id + ':yes' },
+        { text: '❌ رد', data: 'ap:' + id + ':no' },
+      ]).catch(() => {});
+    }
+  } catch (e) {}
+  return rec;
+}
+
+// Approve or reject a pending item. Runs the stored action on approve. Returns a
+// short Persian note for Telegram / the UI. `who` is for the log only.
+async function decideApproval(id, ok, who) {
+  const rec = approvals.get(String(id));
+  if (!rec) return 'این درخواست پیدا نشد (شاید قدیمی شده).';
+  if (rec.status !== 'pending') return `این درخواست قبلاً ${rec.status === 'approved' ? 'تأیید' : 'رد'} شده.`;
+  rec.status = ok ? 'approved' : 'rejected';
+  rec.decidedAt = Date.now();
+  rec.by = who || 'admin';
+  saveApprovals();
+  const run = _approvalRunners.get(String(id));
+  _approvalRunners.delete(String(id));
+  if (ok && run) {
+    try { await run(); return `✅ تأیید شد و انجام شد: ${rec.title}`; }
+    catch (e) { rec.status = 'failed'; rec.error = String(e && e.message || e).slice(0, 300); saveApprovals(); return `تأیید شد ولی هنگام انجام خطا داد: ${rec.error}`; }
+  }
+  return ok ? `✅ تأیید شد: ${rec.title}` : `❌ رد شد: ${rec.title}`;
+}
+
+// Telegram inline-button handler: data is "ap:<id>:yes" / "ap:<id>:no".
+async function handleTelegramCallback(data, from) {
+  const m = /^ap:([^:]+):(yes|no)$/.exec(String(data || ''));
+  if (!m) return '';
+  return decideApproval(m[1], m[2] === 'yes', 'telegram');
+}
+function pendingApprovals() { return [...approvals.values()].filter((a) => a.status === 'pending').sort((a, b) => b.at - a.at); }
 
 // Light local RAG — private semantic-ish search over the family's own notes
 // and memories, no external service. See rag.js.
@@ -2326,6 +2408,15 @@ async function dispatchTool(name, input, ctx) {
         return { ok: true, saved: saved.text, due: saved.due,
                  note: 'ذخیره شد. به کاربر کوتاه بگو چه چیزی را یادداشت کردی.' };
       }
+      case 'request_approval': {
+        // Only the admin's autonomous work goes through the gateway; a family
+        // member's chat can't create admin-approval requests.
+        if (!ctx.isAdmin) return { error: 'فقط برای حسابِ ادمین.' };
+        const cls = guardrail.classifyAction((input.title || '') + ' ' + (input.detail || ''));
+        const rec = requestApproval({ title: input.title, detail: input.detail, domain: cls.domain });
+        return { ok: true, id: rec.id, domain: cls.domain,
+          note: 'درخواستِ تأیید برای جاوید فرستاده شد (تلگرام + پنل مرکز کنترل). تا تأیید نکند این کار انجام نمی‌شود. کوتاه به کاربر بگو منتظرِ تأیید هستی.' };
+      }
       case 'make_files': {
         const list = Array.isArray(input.files) ? input.files : [];
         if (!list.length) return { error: 'هیچ فایلی داده نشد.' };
@@ -3146,6 +3237,17 @@ app.post('/api/admin/engine-health/reset', requireAuth, requireAdmin, (req, res)
   }
   saveEngineHealth();
   res.json({ ok: true });
+});
+
+// Approval gateway — list pending/recent requests and decide them from the app.
+app.get('/api/admin/approvals', requireAuth, requireAdmin, (req, res) => {
+  const all = [...approvals.values()].sort((a, b) => (b.at || 0) - (a.at || 0)).slice(0, 50);
+  res.json({ pending: pendingApprovals(), recent: all });
+});
+app.post('/api/admin/approvals/:id', requireAuth, requireAdmin, async (req, res) => {
+  const ok = (req.body || {}).decision === 'approve' || (req.body || {}).ok === true;
+  const note = await decideApproval(req.params.id, ok, req.username);
+  res.json({ ok: true, note });
 });
 
 // LIVE KEY TEST — "کلید ها اصلا کار نمیکنن دقیق کار کن".
@@ -5939,6 +6041,17 @@ function telegramHistoryFor(chatId) {
 async function runTelegramTurn(text, chatId) {
   const msg = String(text || '').trim();
   if (!msg) return '';
+  // Approval-gateway commands (fallback for when the ✅/❌ buttons aren't tapped).
+  const apm = /^\/(approve|reject|ok|no|yes)\s+([A-Za-z0-9]+)$/i.exec(msg);
+  if (apm) {
+    const ok = /^(approve|ok|yes)$/i.test(apm[1]);
+    return decideApproval(apm[2], ok, 'telegram');
+  }
+  if (/^\/(pending|approvals|تاییدها|درخواست‌ها)$/i.test(msg)) {
+    const p = pendingApprovals();
+    if (!p.length) return 'هیچ درخواستِ تأییدی در انتظار نیست.';
+    return 'درخواست‌های در انتظارِ تأیید:\n' + p.map((a) => `• ${a.title}\n  تأیید: /approve ${a.id}   رد: /reject ${a.id}`).join('\n');
+  }
   if (!anyConfigured()) return 'هنوز هیچ موتور هوش مصنوعی روی سرور تنظیم نشده — از مرکز کنترل یک کلید API اضافه کن.';
   const adminUser = Array.from(users.keys()).find((u) => isAdmin(u)) || Array.from(users.keys())[0];
   // Classify so a news/"today" question goes to a tool-capable cloud engine
@@ -7515,7 +7628,7 @@ app.post('/api/admin/settings', requireAuth, requireAdmin, (req, res) => {
     for (const [k] of Object.entries(EDITABLE_KEYS)) cfg[k] = fresh[k] || '';
     reloadKeys();
     // A newly-pasted Telegram token should start polling without a restart.
-    try { telegram.start(runTelegramTurn); } catch (e) {}
+    try { telegram.start(runTelegramTurn, handleTelegramCallback); } catch (e) {}
     res.json({ ok: true, applied: true, note: 'ذخیره شد. کلیدها بلافاصله فعال شدند؛ تغییر موتور پیش‌فرض یا فعال‌سازی پایتون بعد از ری‌استارت اعمال می‌شود.' });
   } catch (e) {
     res.status(500).json({ error: 'ذخیره نشد: ' + e.message });
@@ -8362,7 +8475,7 @@ server.listen(PORT, HOST, () => {
   checkPendingVerification();
 
   // Start answering Telegram (no-op unless a bot token is configured).
-  try { telegram.start(runTelegramTurn); if (telegram.configured()) console.log('   Telegram: bot polling started ✓'); } catch (e) {}
+  try { telegram.start(runTelegramTurn, handleTelegramCallback); if (telegram.configured()) console.log('   Telegram: bot polling started ✓'); } catch (e) {}
 });
 
 // Build / drop the in-memory TLS handler that the net front dispatches TLS

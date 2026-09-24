@@ -142,6 +142,18 @@ const TOOLS_SPEC = [
     },
   },
   {
+    name: 'request_approval',
+    description: "Ask the admin (Javid) to approve a HIGH-PRIVILEGE action before you do it — sending an email, deploying/publishing, changing your own core structure, spending money, or deleting/overwriting data. Routine work (browsing, research, drafting, reading/sorting email) does NOT need this — just do it. Calling this pings Javid on Telegram with ✅/❌ buttons and adds it to the approvals panel; it does NOT perform the action, it only asks. Tell the user briefly that you've asked for approval.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        title: { type: 'string', description: 'One short line naming the action, e.g. "ارسال ایمیل به اداره کار".' },
+        detail: { type: 'string', description: 'What exactly will happen if approved — recipients, what is sent/changed/deleted.' },
+      },
+      required: ['title'],
+    },
+  },
+  {
     name: 'make_files',
     description: "Write one or more finished files into the owner's workspace and package them as a downloadable ZIP. Use this whenever you have produced something complete the user should keep: a finished script or project, a converted document, a report, a filled-in form draft. Give every file its real name and full final content — no placeholders, no 'rest of code here'. Returns a download link.",
     input_schema: {
