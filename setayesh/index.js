@@ -234,7 +234,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.177';
+const APP_VERSION = '9.9.178';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -1292,6 +1292,29 @@ function frontendIntegrity() {
 app.get('/api/admin/integrity', requireAuth, requireAdmin, (req, res) => {
   res.set('Cache-Control', 'no-store');
   res.json(frontendIntegrity());
+});
+
+// TRUTH REPORT — no login needed, no secrets. This tells us, straight from the
+// running server, EXACTLY what is (or isn't) in place — so we diagnose "nothing
+// changed" with facts, not guesses. Open http://<server>:3000/api/diag .
+app.get('/api/diag', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const marker = (rel) => { try { const h = fs.readFileSync(path.join(__dirname, rel), 'utf8').slice(0, 300); const m = h.match(/SETAYESH_BUILD\s+([0-9.]+)/); return m ? m[1] : null; } catch (e) { return 'MISSING'; } };
+  res.json({
+    runningVersion: APP_VERSION,                         // what index.js in memory says
+    servingFrom: EMBEDDED_ASSETS ? 'embedded-bundle' : 'disk',
+    serverFolder: __dirname,                             // WHERE this process actually runs
+    onDisk: {
+      appJs: marker('public/app.js'),                    // build marker of the file on disk
+      indexHtml: marker('public/index.html'),
+      brainmapJs: marker('public/brainmap.js'),
+      brainmap3d_exists: fs.existsSync(path.join(__dirname, 'public', 'brainmap3d.html')),
+      core_js_exists: fs.existsSync(path.join(__dirname, 'core.js')),
+      autonomy_js_exists: fs.existsSync(path.join(__dirname, 'autonomy.js')),
+    },
+    bakedBundlePresent: fs.existsSync(path.join(__dirname, 'assets.generated.js')),
+    bakedBundleDisabled: fs.existsSync(path.join(__dirname, 'assets.generated.js.disabled')),
+  });
 });
 
 // ---- Setayesh's face (the brain cover + the app logos) -------------------
