@@ -215,7 +215,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.174';
+const APP_VERSION = '9.9.175';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -6930,14 +6930,21 @@ const UPDATES_DIR = process.env.SETAYESH_UPDATES_DIR || path.join(DATA_DIR, 'upd
 // Walk the app folder, skipping runtime state, node_modules and the like —
 // the same shape as a release zip (source at the root).
 function collectAppFiles() {
-  const SKIP_DIR = new Set(['node_modules', 'updates']);
+  // Dirs to skip anywhere by name: dependencies + runtime/self-update scratch.
+  const SKIP_DIR = new Set(['node_modules', 'updates', 'rollback', 'patches', 'workspace', '.git']);
+  // Heavy/vendored subtrees to skip by RELATIVE path — pybrain/libs is ~96 MB of
+  // downloaded Python packages. Including it made the self-package tens of MB,
+  // which the phone's download of /api/admin/build-update timed out on → the
+  // "Load failed" جاوید saw. The package is SOURCE only (the owner installs the
+  // Python libs with one click), exactly like the delivered release zips.
+  const SKIP_REL = new Set(['pybrain/libs']);
   const out = [];
   (function walk(dir, rel) {
     for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
       if (ent.name.startsWith('.')) continue;                  // .git, .setayesh-* state, dotfiles
       const abs = path.join(dir, ent.name);
       const r = rel ? rel + '/' + ent.name : ent.name;
-      if (ent.isDirectory()) { if (!SKIP_DIR.has(ent.name)) walk(abs, r); continue; }
+      if (ent.isDirectory()) { if (!SKIP_DIR.has(ent.name) && !SKIP_REL.has(r)) walk(abs, r); continue; }
       if (ent.name.endsWith('.zip')) continue;                 // never nest a package inside itself
       try { const data = fs.readFileSync(abs); if (data.length <= 8 * 1024 * 1024) out.push({ name: r, data }); } catch (e) {}
     }
