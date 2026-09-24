@@ -215,7 +215,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.173';
+const APP_VERSION = '9.9.174';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -5907,7 +5907,14 @@ function ollamaBase() { return ollamaHosts()[0]; }
 function ollamaHosts() {
   const norm = (u) => { let s = String(u || '').trim().replace(/\/+$/, ''); if (!s) return ''; if (!/^https?:\/\//i.test(s)) s = 'http://' + s; if (!/\/v1$/i.test(s)) s += '/v1'; return s; };
   const raw = String(cfg.OLLAMA_HOSTS || '').split(',').map(norm).filter(Boolean);
-  const out = raw.length ? raw : [norm(baseUrlFor('local') || 'http://localhost:11434'), 'http://localhost:11435/v1'];
+  if (raw.length) return [...new Set(raw)];
+  // AUTO-DISCOVERY (جاوید: «خودش بگرده ببینه چی روی سیستمه و استفاده کند»): with
+  // nothing configured, scan the common local LLM ports — Ollama's default and a
+  // few next ones (a second/third install), plus LM Studio's 1234. Probed in
+  // parallel with a short timeout, so a handful of dead ports cost almost nothing
+  // and whatever is actually running is found and used automatically.
+  const out = [norm(baseUrlFor('local') || 'http://localhost:11434')];
+  ['11435', '11436', '11437', '1234'].forEach((p) => out.push('http://localhost:' + p + '/v1'));
   return [...new Set(out)];
 }
 
@@ -5921,24 +5928,26 @@ const localModelHost = new Map();
 async function probeAllOllama(opts) {
   opts = opts || {};
   const hosts = ollamaHosts();
-  const results = [];
-  for (let i = 0; i < hosts.length; i++) {
-    const base = hosts[i];
-    // Only try to auto-start the primary (first) host; a second install may not
-    // be startable with the same `ollama serve` and shouldn't block boot.
-    let state = (opts.ensure && i === 0)
-      ? await ollama.ensureUp(base, fetchWithTimeout)
-      : await ollama.probe(base, fetchWithTimeout);
+  // Bring the PRIMARY host up first (spawn `ollama serve` if installed-but-down),
+  // sequentially, since it may start the service the others rely on. Then probe
+  // ALL hosts in PARALLEL — scanning several candidate ports costs about one
+  // probe's time, not the sum, so wide auto-discovery stays fast.
+  let primary = null;
+  if (opts.ensure && hosts.length) {
+    try { primary = await ollama.ensureUp(hosts[0], fetchWithTimeout); } catch (e) { primary = { running: false, models: [] }; }
+  }
+  const results = await Promise.all(hosts.map(async (base, i) => {
+    let state = (i === 0 && primary) ? primary : await ollama.probe(base, fetchWithTimeout).catch(() => ({ running: false, models: [] }));
     const models = state.models || [];
     for (const m of models) if (!localModelHost.has(m)) localModelHost.set(m, base.replace(/\/v1\/?$/, ''));
-    results.push({ base, running: !!state.running, installed: state.installed, models });
-  }
+    return { base, running: !!state.running, installed: state.installed, models };
+  }));
   const merged = [...new Set(results.flatMap((r) => r.models))];
   return {
     installed: ollama.installed(),
     running: results.some((r) => r.running),
     models: merged,
-    hosts: results,
+    hosts: results.filter((r) => r.running || r.models.length),   // report servers that actually answered
   };
 }
 async function detectOllamaModels() { return (await probeAllOllama()).models; }
