@@ -215,7 +215,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.170';
+const APP_VERSION = '9.9.171';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -1601,7 +1601,6 @@ async function callAnthropic(providerId, model, systemPrompt, messages, opts) {
 // text (a small local model gets plain conversation, never multimodal parts).
 async function callOllamaNative(model, systemPrompt, messages, opts) {
   opts = opts || {};
-  const base = (baseUrlFor('local') || 'http://localhost:11434/v1').replace(/\/v1\/?$/, '');
   const flat = messages.map((m) => ({
     role: m.role,
     content: typeof m.content === 'string' ? m.content
@@ -1609,15 +1608,44 @@ async function callOllamaNative(model, systemPrompt, messages, opts) {
   }));
   const options = { num_ctx: LOCAL_NUM_CTX };
   if (opts.steady) options.temperature = 0.3;
-  const res = await fetchWithTimeout(base + '/api/chat', {
-    method: 'POST',
-    timeoutMs: providerTimeout('local'),
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model, stream: false, messages: [{ role: 'system', content: systemPrompt }, ...flat], options }),
-  });
-  if (!res.ok) throw Object.assign(new Error('provider error'), { status: res.status, detail: await res.text() });
-  const data = await res.json();
-  return (data.message && data.message.content) || '';
+  const body = JSON.stringify({ model, stream: false, messages: [{ role: 'system', content: systemPrompt }, ...flat], options });
+
+  // Route to the RIGHT Ollama of the two: the server known to have this model
+  // first, then every other configured server as a failover. So a model that
+  // lives on the second Ollama is reached even though the first is the default,
+  // and if one server is busy/down the other answers.
+  let candidates;
+  try {
+    const known = localModelHost.get(model);
+    const all = ollamaHosts().map((h) => h.replace(/\/v1\/?$/, ''));
+    candidates = [...new Set([known, ...all].filter(Boolean))];
+  } catch (e) {
+    candidates = [(baseUrlFor('local') || 'http://localhost:11434/v1').replace(/\/v1\/?$/, '')];
+  }
+
+  let lastErr = null;
+  for (const base of candidates) {
+    try {
+      const res = await fetchWithTimeout(base + '/api/chat', {
+        method: 'POST',
+        timeoutMs: providerTimeout('local'),
+        headers: { 'Content-Type': 'application/json' },
+        body,
+      });
+      if (!res.ok) {
+        // 404 = this server doesn't have the model — try the other Ollama.
+        lastErr = Object.assign(new Error('provider error'), { status: res.status, detail: await res.text() });
+        if (res.status === 404) continue;
+        throw lastErr;
+      }
+      const data = await res.json();
+      try { localModelHost.set(model, base); } catch (e) {}   // remember which server served it
+      return (data.message && data.message.content) || '';
+    } catch (e) {
+      lastErr = e;   // network error / this server down — try the next
+    }
+  }
+  throw lastErr || Object.assign(new Error('provider error'), { status: 503 });
 }
 
 async function callOpenAiCompatible(providerId, model, systemPrompt, messages, _retried, opts) {
@@ -3968,7 +3996,7 @@ app.post('/api/chat', requireAuth, chatLimiter, upload.array('files', 8), async 
     const liveQuestion = askTags.includes('current');
     if (!needsVision && !liveQuestion) {
       try {
-        const state = await ollama.ensureUp(ollamaBase(), fetchWithTimeout);
+        const state = await probeAllOllama({ ensure: true });   // both servers
         if (state.running && state.models.length) {
           const localModel = ((PROVIDERS.local.models || [])[0] || {}).id || state.models[0];
           const rescuePrompt = promptFor(req.username, req.body.mode, safe, req.body.codelib, message);
@@ -5828,20 +5856,66 @@ function applyLocalModels() {
 applyLocalModels();
 // Ollama helpers (probe / auto-start / status hint) live in ./ollama.
 const ollama = require('./ollama');
-function ollamaBase() { return (baseUrlFor('local') || 'http://localhost:11434/v1'); }
-async function detectOllamaModels() {
-  return (await ollama.probe(ollamaBase(), fetchWithTimeout)).models;
+function ollamaBase() { return ollamaHosts()[0]; }
+
+// TWO (or more) local Ollama servers. جاوید: «دو اولامای لوکال روی سرورِ ستایش
+// نصب است». Two installs can't share port 11434, so the second listens on
+// another port (commonly 11435). ستایش باید از هر دو استفاده کند:
+//   - OLLAMA_HOSTS (کاما-جدا) صریح‌ترین راه است؛
+//   - اگر خالی بود، به‌صورتِ پیش‌فرض هم 11434 و هم 11435 (و آدرسِ local اگر ست شده)
+//     را می‌گردد، پس دو اولاما بدونِ تنظیمِ دستی پیدا می‌شوند.
+// همه به شکلِ v1 (…/v1) نرمال می‌شوند تا با بقیهٔ کد یکدست باشند.
+function ollamaHosts() {
+  const norm = (u) => { let s = String(u || '').trim().replace(/\/+$/, ''); if (!s) return ''; if (!/^https?:\/\//i.test(s)) s = 'http://' + s; if (!/\/v1$/i.test(s)) s += '/v1'; return s; };
+  const raw = String(cfg.OLLAMA_HOSTS || '').split(',').map(norm).filter(Boolean);
+  const out = raw.length ? raw : [norm(baseUrlFor('local') || 'http://localhost:11434'), 'http://localhost:11435/v1'];
+  return [...new Set(out)];
 }
+
+// modelId (tag) -> the native base URL of the Ollama server that actually has
+// it, so a request goes to the right one of the two servers. Filled by probing.
+const localModelHost = new Map();
+
+// Probe every configured Ollama server, bring the first up if it's installed but
+// down, and MERGE the models from all of them. Returns
+// { installed, running, models, hosts:[{base,running,models}] }.
+async function probeAllOllama(opts) {
+  opts = opts || {};
+  const hosts = ollamaHosts();
+  const results = [];
+  for (let i = 0; i < hosts.length; i++) {
+    const base = hosts[i];
+    // Only try to auto-start the primary (first) host; a second install may not
+    // be startable with the same `ollama serve` and shouldn't block boot.
+    let state = (opts.ensure && i === 0)
+      ? await ollama.ensureUp(base, fetchWithTimeout)
+      : await ollama.probe(base, fetchWithTimeout);
+    const models = state.models || [];
+    for (const m of models) if (!localModelHost.has(m)) localModelHost.set(m, base.replace(/\/v1\/?$/, ''));
+    results.push({ base, running: !!state.running, installed: state.installed, models });
+  }
+  const merged = [...new Set(results.flatMap((r) => r.models))];
+  return {
+    installed: ollama.installed(),
+    running: results.some((r) => r.running),
+    models: merged,
+    hosts: results,
+  };
+}
+async function detectOllamaModels() { return (await probeAllOllama()).models; }
 app.get('/api/admin/local-models', requireAuth, requireAdmin, async (req, res) => {
-  // Bring Ollama up on its own if it's installed but not running, then report
-  // an honest status (installed / running / models) plus a Persian hint.
-  const state = await ollama.ensureUp(ollamaBase(), fetchWithTimeout);
+  // Bring the primary Ollama up if needed, probe ALL servers, report an honest
+  // status: which models each server has, and how many Ollamas answered.
+  const all = await probeAllOllama({ ensure: true });
+  const upCount = all.hosts.filter((h) => h.running).length;
   res.json({
     active: (PROVIDERS.local.models || []).map((m) => m.id),
-    detected: state.models,
-    installed: state.installed,
-    running: state.running,
-    hint: ollama.statusHint(state),
+    detected: all.models,
+    installed: all.installed,
+    running: all.running,
+    servers: all.hosts.map((h) => ({ base: h.base, running: h.running, models: h.models })),
+    serverCount: upCount,
+    hint: (upCount > 1 ? `🟢 ${upCount} سرورِ اولاما متصل‌اند. ` : '') + ollama.statusHint({ running: all.running, models: all.models, installed: all.installed }),
   });
 });
 app.post('/api/admin/local-models', requireAuth, requireAdmin, (req, res) => {
@@ -5875,7 +5949,9 @@ async function autoSyncLocalModels() {
   try {
     // If Ollama is installed but not running, start it first (once) — mirrors
     // the Python brain, so the local engine comes up without a manual serve.
-    const detected = (await ollama.ensureUp(ollamaBase(), fetchWithTimeout)).models;
+    // Probes ALL configured servers and merges their models (two Ollamas → one
+    // combined model list, each tag routed back to the server that has it).
+    const detected = (await probeAllOllama({ ensure: true })).models;
     if (!detected || !detected.length) return;
     const saved = loadJsonFile(LOCAL_MODELS_FILE, null);
     const savedList = (saved && Array.isArray(saved.models)) ? saved.models : [];

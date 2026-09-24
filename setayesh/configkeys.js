@@ -44,6 +44,7 @@ const EDITABLE_KEYS = {
   LOCAL_FIRST:       { secret: false, label: 'اول موتور محلی (۱ = همه چیز داخل خانه می‌ماند، ولی کندتر است)' },
   ENGINE_MODE:       { secret: false, label: 'حالت انتخاب موتور (smart = هوشمند و خودکار، manual = فقط موتوری که خودت انتخاب کردی)' },
   ENGINE_ORDER:      { secret: false, label: 'ترتیب دلخواه موتورها (مثلاً gemini,groq,cerebras — خالی = ترتیب پیش‌فرض: اول جمنای)' },
+  OLLAMA_HOSTS:      { secret: false, label: 'آدرسِ اولاماها (چند سرور با کاما، مثلاً http://localhost:11434,http://localhost:11435 — خالی = خودش ۱۱۴۳۴ و ۱۱۴۳۵ را می‌گردد)' },
   TUYA_CLIENT_ID:    { secret: false, label: 'Tuya Client ID (برای دوربین‌های LSC)' },
   TUYA_SECRET:       { secret: true,  label: 'Tuya Client Secret' },
   TUYA_REGION:       { secret: false, label: 'منطقه‌ی Tuya (eu / us / cn / in)' },
