@@ -1534,6 +1534,18 @@ test('ziputil round-trips a zip and rejects garbage', () => {
   assert.throws(() => zu.readZip(Buffer.from('not a zip')), /ZIP/);
 });
 
+// The download-verification premise (owner's rule "never hand over an empty
+// file"): a ZIP re-opens with the expected members, and an empty-content member
+// is detectable as zero-length so verifyDownloadFile() can reject it.
+test('ziputil: verification premise — members readable, empties are zero-length', () => {
+  const zu = require(path.join(ROOT, 'ziputil.js'));
+  const good = zu.readZip(zu.buildZip([{ name: 'x.py', data: Buffer.from('print(1)\n') }]));
+  assert.equal(Object.keys(good).length, 1, 'one member present');
+  assert.ok(good['x.py'].length > 0, 'a real file is non-empty');
+  const empty = zu.readZip(zu.buildZip([{ name: 'blank.txt', data: Buffer.from('') }]));
+  assert.equal((empty['blank.txt'] || Buffer.alloc(0)).length, 0, 'an empty file reads back zero-length (would be rejected)');
+});
+
 test('srcguard blocks unsafe update paths and catches bad JS', async () => {
   const sg = require(path.join(ROOT, 'srcguard.js'));
   assert.equal(sg.isUpdatablePath('index.js'), true);

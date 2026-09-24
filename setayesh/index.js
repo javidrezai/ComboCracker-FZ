@@ -215,7 +215,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.172';
+const APP_VERSION = '9.9.173';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -2204,20 +2204,47 @@ function autoPackageReply(message, reply, sideEffects) {
       entries.push({ name: rel, data: content });
     }
     if (!entries.length) return null;
-    // A single file → hand it over directly; several → zip them.
+    // A single file → hand it over directly; several → zip them. Either way,
+    // VERIFY the file on disk is real and non-empty before offering it — never a
+    // fake "ready" download (the owner's rule).
     if (entries.length === 1) {
+      const full = path.join(dir, entries[0].name);
+      if (!verifyDownloadFile(full)) return null;
       const token = path.basename(dir) + '/' + entries[0].name;
-      const d = { url: '/api/download/' + encodeURIComponent(token), name: entries[0].name, auto: true };
+      const d = { url: '/api/download/' + encodeURIComponent(token), name: entries[0].name, auto: true, verified: true };
       if (sideEffects) sideEffects.download = d;
       return d;
     }
     const zipName = 'setayesh-files.zip';
-    fs.writeFileSync(path.join(dir, zipName), buildZip(entries));
+    const zipPath = path.join(dir, zipName);
+    fs.writeFileSync(zipPath, buildZip(entries));
+    if (!verifyDownloadFile(zipPath, entries.length)) return null;
     const token = path.basename(dir) + '/' + zipName;
-    const d = { url: '/api/download/' + encodeURIComponent(token), name: zipName, auto: true, count: entries.length };
+    const d = { url: '/api/download/' + encodeURIComponent(token), name: zipName, auto: true, count: entries.length, verified: true };
     if (sideEffects) sideEffects.download = d;
     return d;
   } catch (e) { return null; }
+}
+
+// The owner's rule «هیچ فایلی رو الکی و خالی نده» as code: before ANY download is
+// offered, prove the file on disk is real — non-empty, and (for a .zip) that it
+// re-opens with the expected number of non-empty entries. Returns true only when
+// the file is genuinely usable; anything odd → false, and the caller withholds
+// the link and says so honestly instead of shipping an empty/broken file.
+function verifyDownloadFile(fullPath, expectedZipCount) {
+  try {
+    const st = fs.statSync(fullPath);
+    if (!st.isFile() || st.size < 1) return false;
+    if (/\.zip$/i.test(fullPath)) {
+      if (st.size < 22) return false;                 // smaller than an empty ZIP EOCD
+      const back = readZip(fs.readFileSync(fullPath));
+      const names = back ? Object.keys(back) : [];
+      if (!names.length) return false;
+      if (expectedZipCount && names.length < expectedZipCount) return false;
+      if (!names.every((n) => back[n] && back[n].length > 0)) return false;  // no empty members
+    }
+    return true;
+  } catch (e) { return false; }
 }
 
 // (A second, "stored/no-compression" buildZip used to live here. It was dead
@@ -2454,8 +2481,12 @@ async function dispatchTool(name, input, ctx) {
         const entries = [];
         let total = 0;
         for (const f of list) {
-          const rel = safeRelPath(f.name);
           const content = String(f.content == null ? '' : f.content);
+          // NEVER package an empty file — the owner's rule: don't hand over a
+          // "ready" file that's actually blank. Skip blanks silently; if that
+          // leaves nothing, error out below instead of shipping an empty ZIP.
+          if (!content.trim()) continue;
+          const rel = safeRelPath(f.name);
           total += content.length;
           if (total > 4 * 1024 * 1024) return { error: 'مجموع حجم فایل‌ها خیلی زیاد است.' };
           const full = path.join(dir, rel);
@@ -2463,16 +2494,24 @@ async function dispatchTool(name, input, ctx) {
           fs.writeFileSync(full, content, 'utf8');
           entries.push({ name: rel, data: content });
         }
+        if (!entries.length) return { error: 'همهٔ فایل‌ها خالی بودند؛ چیزی برای بسته‌بندی نبود. محتوای واقعی بده تا فایل بسازم.' };
         const zipName = safeRelPath(input.zipName || 'setayesh-files.zip').replace(/\.zip$/i, '') + '.zip';
         const zipPath = path.join(dir, zipName);
-        fs.writeFileSync(zipPath, buildZip(entries));
+        const zipBuf = buildZip(entries);
+        fs.writeFileSync(zipPath, zipBuf);
+        // VERIFY before offering it: re-open the ZIP and confirm every file is
+        // present and non-empty. If the package is broken/empty, do NOT show a
+        // download and say so honestly — never a fake "it's ready".
+        if (!verifyDownloadFile(zipPath, entries.length)) {
+          return { error: 'فایل‌ها ساخته شدند ولی بستهٔ ZIP سالم درنیامد — لینک نمی‌دهم تا چیزِ خراب دستت نرسد. دوباره امتحان می‌کنم.' };
+        }
         const token = path.basename(dir) + '/' + zipName;
-        ctx.sideEffects.download = { url: '/api/download/' + encodeURIComponent(token), name: zipName };
+        ctx.sideEffects.download = { url: '/api/download/' + encodeURIComponent(token), name: zipName, verified: true };
         return {
           ok: true,
           files: entries.map((e) => e.name),
           zip: zipName,
-          note: 'فایل‌ها ساخته و در یک ZIP بسته شدند. لینک دانلود به کاربر نمایش داده می‌شود. به کاربر بگو چه چیزی ساختی و چه چیزی را باید بررسی کند.',
+          note: 'فایل‌ها ساخته، بسته و بررسی شدند (خالی/خراب نیستند). لینک دانلود نمایش داده می‌شود. به کاربر بگو چه ساختی و چه چیزی را بررسی کند.',
         };
       }
       case 'convert_file': {
