@@ -181,9 +181,28 @@ const makeTelegram = loadOptional('./telegram', 'makeTelegram', () => new Proxy(
 
 // When packaged into a single .exe the web assets are baked into a generated
 // module; in normal dev they're read from public/ on disk.
+//
+// CRITICAL (the "nothing changes after an update" bug): the embedded bundle is
+// baked ONCE at package time. If a real `public/` folder exists on disk (every
+// normal install has one), the FILES ON DISK are the truth — a self-update
+// rewrites them — so we must serve from disk and IGNORE any leftover
+// assets.generated.js. Otherwise the server keeps serving the old baked-in
+// app.js/index.html forever and every update looks like it did nothing, even
+// though the version number (read from this file) goes up. The embedded bundle
+// is used ONLY when there is no public/ on disk (a true single-file exe).
 let EMBEDDED_ASSETS = null;
 try {
-  EMBEDDED_ASSETS = require('./assets.generated.js');
+  const hasDiskUI = fs.existsSync(path.join(__dirname, 'public', 'app.js'))
+                 && fs.existsSync(path.join(__dirname, 'public', 'index.html'));
+  if (!hasDiskUI) {
+    EMBEDDED_ASSETS = require('./assets.generated.js');
+  } else {
+    // A stale baked bundle sitting next to a real public/ is exactly what froze
+    // the UI across updates — remove it so nothing can ever prefer it again.
+    const baked = path.join(__dirname, 'assets.generated.js');
+    if (fs.existsSync(baked)) { try { fs.renameSync(baked, baked + '.disabled'); } catch (e) { try { fs.unlinkSync(baked); } catch (e2) {} } }
+    EMBEDDED_ASSETS = null;
+  }
 } catch (e) {
   EMBEDDED_ASSETS = null;
 }
@@ -215,7 +234,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.175';
+const APP_VERSION = '9.9.176';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
