@@ -234,7 +234,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.181';
+const APP_VERSION = '9.9.182';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -5092,6 +5092,16 @@ function writeChats(user, store) {
   fs.writeFileSync(chatsFileFor(user), JSON.stringify(store), { mode: 0o600 });
 }
 function chatStamp(c) { return Number(c && (c.updated || c.t)) || 0; }
+// Wipe every conversation for a user, leaving tombstones so no other device can
+// resurrect them on its next sync. Returns how many were removed. Used by the
+// Telegram "clear my chats" command and the in-app "clear all".
+function clearAllChats(user) {
+  const store = readChats(user);
+  const ids = store.chats.map((c) => c && c.id).filter(Boolean).map(String);
+  const tombs = new Set([...store.deleted.map(String), ...ids]);
+  writeChats(user, { t: Date.now(), chats: [], deleted: [...tombs].slice(-2000) });
+  return ids.length;
+}
 
 app.get('/api/chats', requireAuth, (req, res) => {
   const store = readChats(req.username);
@@ -6253,6 +6263,21 @@ async function runTelegramTurn(text, chatId) {
     const p = pendingApprovals();
     if (!p.length) return 'هیچ درخواستِ تأییدی در انتظار نیست.';
     return 'درخواست‌های در انتظارِ تأیید:\n' + p.map((a) => `• ${a.title}\n  تأیید: /approve ${a.id}   رد: /reject ${a.id}`).join('\n');
+  }
+  // Clear-chats command (owner asked for a way to clear chats from Telegram).
+  // "/clear" or a plain "چت‌ها را پاک کن" wipes EVERYTHING: the Telegram
+  // conversation memory AND every saved conversation in the app (with tombstones
+  // so no device resurrects them). Admin only — and on Telegram every turn is the
+  // admin. A bot cannot delete the user's own messages from the Telegram app via
+  // the API, so we clear what we own and say so plainly.
+  if (/^\/clear(all)?$/i.test(msg) || (/چت/.test(msg) && /پاک|حذف|خالی/.test(msg))) {
+    const adminU = Array.from(users.keys()).find((u) => isAdmin(u)) || Array.from(users.keys())[0];
+    let removed = 0;
+    try { removed = clearAllChats(adminU); } catch (e) {}
+    try { telegramHistory.delete(String(chatId || 'default')); } catch (e) {}
+    try { reindexInsight(); } catch (e) {}
+    return `همهٔ گفتگوها پاک شد (${removed} گفتگو) و حافظهٔ این چتِ تلگرام هم خالی شد. `
+      + `پیام‌هایی که خودت در تلگرام فرستادی را فقط از داخلِ تلگرام می‌شود پاک کرد (ربات اجازهٔ حذفِ پیامِ تو را ندارد).`;
   }
   if (!anyConfigured()) return 'هنوز هیچ موتور هوش مصنوعی روی سرور تنظیم نشده — از مرکز کنترل یک کلید API اضافه کن.';
   const adminUser = Array.from(users.keys()).find((u) => isAdmin(u)) || Array.from(users.keys())[0];

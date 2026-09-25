@@ -1,4 +1,4 @@
-/* SETAYESH_BUILD 9.9.181 */
+/* SETAYESH_BUILD 9.9.182 */
 /* Brain map — a living picture of Setayesh's whole self: a central hexagon
    core with every file as a node around it, colour-coded by area, green when
    healthy / red when missing. Click a node to see what it does and edit it.
@@ -318,28 +318,47 @@
     }).catch(function(e){ note.style.color='#fb7185'; note.textContent='خطا: '+e.message; });
   }
 
+  // THE ONE BRAIN. Every brain button in the app now opens the same thing: the
+  // interactive 3D brain (brainmap3d.html) — the glowing core with every engine,
+  // tool and I/O around it. This is done HERE, self-contained in brainmap.js, so
+  // it NEVER depends on app.js exposing window.openBrain (that dependency was the
+  // bug where «مغز» kept opening the old file-map no matter how many updates
+  // shipped — a stale/cached app.js left window.openBrain undefined and the old
+  // map won). brainmap.js is served no-store, so this path is always fresh.
+  // The old file-node map (#brainMapOverlay + brain3d-globe.js) is retired.
+  function open3DBrain(){
+    var ov=el('brain3dOverlay');
+    if(!ov){
+      ov=document.createElement('div');
+      ov.id='brain3dOverlay';
+      ov.style.cssText='position:fixed;inset:0;z-index:660;background:#04060c';
+      var fr=document.createElement('iframe');
+      fr.id='brain3dFrame';
+      fr.src='/brainmap3d.html?v='+(window.RUNNING_VERSION||Date.now());
+      fr.style.cssText='position:absolute;inset:0;width:100%;height:100%;border:0';
+      fr.setAttribute('allow','fullscreen');
+      ov.appendChild(fr);
+      document.body.appendChild(ov);
+      window.addEventListener('message',function(e){ if(e&&e.data==='setayesh-brain-close') close(); });
+    } else {
+      ov.style.display='block';
+    }
+  }
   function open(){
-    var ov=el('brainMapOverlay'); if(!ov)return;
-    ov.style.display='block';
-    try{ if(window.setBrainLogoFace)window.setBrainLogoFace(); }catch(e){}
-    var p=panel(); if(p){ p.style.display='none'; }
-    el('brainMapView').innerHTML='<div style="color:#8ea0c8;text-align:center;padding:40px">در حال ساخت نقشه…</div>';
-    fetch('/api/admin/brain/map',{headers:authH()}).then(function(r){return r.json();}).then(function(d){
-      if(d&&d.error){ el('brainMapView').innerHTML='<div style="color:#fb7185;text-align:center;padding:40px">'+d.error+'</div>'; return; }
-      MAP=d;
-      // The brain is now a real 3D globe (brain3d-globe.js). No cover image —
-      // opening the brain goes straight in. The flat map stays as a fallback.
-      var p=panel(); if(p)p.style.display='none';
-      if(typeof window.renderBrainGlobe==='function') window.renderBrainGlobe(d);
-      else build();
-    }).catch(function(e){ el('brainMapView').innerHTML='<div style="color:#fb7185;text-align:center;padding:40px">خطا: '+e.message+'</div>'; });
+    // Hide the old file-map overlay if it is somehow showing, then open the 3D brain.
+    var oldOv=el('brainMapOverlay'); if(oldOv)oldOv.style.display='none';
+    open3DBrain();
   }
   function close(){
+    var ov3=el('brain3dOverlay'); if(ov3)ov3.style.display='none';
     var ov=el('brainMapOverlay'); if(ov)ov.style.display='none';
-    // stop the 3D scene so a closed brain costs nothing
     if(typeof window.closeBrainGlobe==='function')window.closeBrainGlobe();
   }
   window.openBrainMap=open; window.closeBrainMap=close;
+  // Also become the canonical window.openBrain/closeBrain so any caller in
+  // app.js (topbar/sheet brain buttons) opens this same 3D brain, even if the
+  // app.js copy of these functions is missing or stale.
+  window.openBrain=open; window.closeBrain=close;
   // the 3D globe renderer drives the same detail/edit panels
   window.__bmPanel={ node:selectNode, pybrain:selectPybrain, core:selectCore };
   // The header logo is Setayesh's chosen face, like everywhere else.
@@ -352,12 +371,10 @@
     img.onerror=function(){ /* keep the built-in star gradient */ };
     box.innerHTML=''; box.appendChild(img);
   }
-  // The brain view is now the 3D brain (openBrain in app.js → brainmap3d.html).
-  // The topbar «مغز» button must open THAT, not this old hexagon/file map — so
-  // prefer window.openBrain when present and only fall back to this old map if
-  // the new one somehow isn't loaded. (This was the bug where «مغز» kept opening
-  // the old map no matter how many updates shipped.)
-  var openView=function(){ if(typeof window.openBrain==='function') return window.openBrain(); return open(); };
+  // Every brain button opens the one 3D brain. open() itself now IS the 3D brain
+  // (see above), so openView is just open — no more "prefer window.openBrain"
+  // dance and no fallback to the old map.
+  var openView=open;
   document.addEventListener('DOMContentLoaded',function(){
     var c=el('brainMapClose'); if(c)c.addEventListener('click',close);
     var b=el('brainMapBtn'); if(b)b.addEventListener('click',openView);

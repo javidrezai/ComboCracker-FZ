@@ -91,8 +91,24 @@ function makeTelegram(opts) {
       }
       try {
         await api('sendChatAction', { chat_id: from, action: 'typing' }).catch(() => {});
-        const reply = await onMessage(m.text, from);
-        if (reply) await send(reply, from);
+        // A single turn must NEVER be able to freeze the whole bot. If onMessage
+        // hangs (an engine or a web_search that never returns), the poller would
+        // block forever on this one message and every later message would go
+        // unanswered — exactly the "Telegram stopped replying" bug. Race the turn
+        // against a hard timeout so the loop always moves on and the owner always
+        // gets an honest reply instead of silence.
+        const TURN_TIMEOUT_MS = 90000;
+        let timer = null;
+        const reply = await Promise.race([
+          Promise.resolve().then(() => onMessage(m.text, from)),
+          new Promise((resolve) => { timer = setTimeout(() => resolve('__TG_TIMEOUT__'), TURN_TIMEOUT_MS); }),
+        ]);
+        if (timer) clearTimeout(timer);
+        if (reply === '__TG_TIMEOUT__') {
+          try { await send('طول کشید و جواب نرسید — موتورها الان کند یا مشغول‌اند. یک بار دیگر بپرس.', from); } catch (e2) {}
+        } else if (reply) {
+          await send(reply, from);
+        }
       } catch (e) {
         try { await send('خطا: ' + (e.message || 'ناموفق'), from); } catch (e2) {}
       }

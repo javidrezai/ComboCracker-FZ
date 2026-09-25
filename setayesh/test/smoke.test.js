@@ -120,8 +120,15 @@ test('brain: openBrain/closeBrain are exposed on window for brainmap.js', () => 
   assert.ok(/window\.openBrain\s*=\s*openBrain/.test(app), 'window.openBrain must be exposed');
   assert.ok(/window\.closeBrain\s*=\s*closeBrain/.test(app), 'window.closeBrain must be exposed');
   const bm = fs.readFileSync(path.join(ROOT, 'public/brainmap.js'), 'utf8');
-  assert.ok(/window\.openBrain/.test(bm), 'brainmap.js must prefer window.openBrain');
+  // brainmap.js must be self-contained: open the 3D brain iframe directly, with
+  // no dependency on app.js. This is the definitive fix for "the brain button
+  // keeps opening the old file-map".
+  assert.ok(/brainmap3d\.html/.test(bm), 'brainmap.js must open brainmap3d.html directly');
+  assert.ok(/window\.openBrain\s*=\s*open/.test(bm), 'brainmap.js must own window.openBrain');
   assert.ok(fs.existsSync(path.join(ROOT, 'public/brainmap3d.html')), 'brainmap3d.html must exist');
+  // The 3D brain is the engine-brain (core + engines), not a file-map.
+  const b3d = fs.readFileSync(path.join(ROOT, 'public/brainmap3d.html'), 'utf8');
+  assert.ok(/Gemini/.test(b3d) && /Ollama/.test(b3d) && /Brain Core/.test(b3d), 'brainmap3d.html must be the engine-brain');
 });
 
 test('served shell injects the version into asset URLs (no __VER__ left)', async () => {
