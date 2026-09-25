@@ -234,7 +234,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.184';
+const APP_VERSION = '9.9.185';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -903,7 +903,12 @@ app.use(helmet({
       fontSrc: ["'self'", 'data:'],
       connectSrc: ["'self'", 'https://image.pollinations.ai'],
       objectSrc: ["'none'"],
-      frameAncestors: ["'none'"],
+      // The 3D brain (brainmap3d.html) is loaded in a SAME-ORIGIN iframe by the
+      // app. 'none' forbade ALL framing — even the app framing its own page — so
+      // the brain opened to a blank/blocked white page. 'self' allows the app to
+      // frame its OWN pages while still blocking any external site from framing us
+      // (clickjacking protection for cross-origin is preserved).
+      frameAncestors: ["'self'"],
       // This app runs over plain HTTP on your LAN. The two defaults below force
       // browsers to upgrade requests to HTTPS, which breaks phone access
       // (the login POST would go to a non-existent https:// server). Disable them.

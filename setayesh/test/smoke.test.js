@@ -128,7 +128,10 @@ test('brain: openBrain/closeBrain are exposed on window for brainmap.js', () => 
   assert.ok(fs.existsSync(path.join(ROOT, 'public/brainmap3d.html')), 'brainmap3d.html must exist');
   // The 3D brain is the engine-brain (core + engines), not a file-map.
   const b3d = fs.readFileSync(path.join(ROOT, 'public/brainmap3d.html'), 'utf8');
-  assert.ok(/Gemini/.test(b3d) && /Ollama/.test(b3d) && /Brain Core/.test(b3d), 'brainmap3d.html must be the engine-brain');
+  assert.ok(/Gemini/.test(b3d) && /Ollama/.test(b3d) && /(Agent|عامل)/.test(b3d), 'brainmap3d.html must be the engine-brain with the Agent core');
+  // The close button must NOT rely on an inline onclick= attribute — our CSP
+  // (script-src-attr 'none') would make it a dead button. It binds via a script.
+  assert.ok(!/id="closeBtn"[^>]*onclick=/.test(b3d), 'brainmap3d close button must not use an inline onclick attribute');
 });
 
 // Telegram must be able to DELIVER a real file (زیپ بده → an actual document),
@@ -146,6 +149,17 @@ test('telegram: exposes sendDocument for real file delivery', () => {
 // The self-test is the tool that ends blind debugging: /api/diag reports, from
 // the running server, whether the brain, Telegram, engines and file delivery
 // actually work. Guard its shape and the two checks that are deterministic here.
+// The 3D brain loads in a SAME-ORIGIN iframe, so the CSP must allow the app to
+// frame its own pages. frame-ancestors 'none' blocked it → the blank/white brain.
+test('CSP allows same-origin framing so the brain iframe loads', async () => {
+  const r = await fetch(BASE + '/brainmap3d.html');
+  const csp = r.headers.get('content-security-policy') || '';
+  assert.ok(/frame-ancestors 'self'/.test(csp), "CSP must be frame-ancestors 'self', not 'none'");
+  assert.ok(!/frame-ancestors 'none'/.test(csp), "frame-ancestors 'none' blocks the brain iframe");
+  const xfo = r.headers.get('x-frame-options') || '';
+  assert.ok(!/DENY/i.test(xfo), 'X-Frame-Options must not be DENY (would block same-origin frame)');
+});
+
 test('diag self-test reports brain + file delivery working', async () => {
   const d = await (await fetch(BASE + '/api/diag')).json();
   assert.ok(d.selfTest && d.selfTest.checks, 'diag must include a self-test');

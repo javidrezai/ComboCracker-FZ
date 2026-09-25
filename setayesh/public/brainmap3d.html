@@ -1,5 +1,5 @@
 <!doctype html>
-<!-- SETAYESH_BUILD 9.9.184 -->
+<!-- SETAYESH_BUILD 9.9.185 -->
 <html lang="fa" dir="rtl">
 <head>
 <meta charset="utf-8">
@@ -59,7 +59,19 @@ body{background:radial-gradient(120% 90% at 50% 42%,#0a1630 0%,#060a15 45%,#0406
 <canvas id="c" aria-label="مغز سه‌بعدی ستایش"></canvas>
 <div class="labels" id="labels"></div>
 <div class="tip" id="tip" role="dialog" aria-live="polite"></div>
-<button class="close" id="closeBtn" type="button" onclick="(window.parent&&window.parent!==window&&window.parent.postMessage('setayesh-brain-close','*'))||history.back()">✕ بستن</button>
+<button class="close" id="closeBtn" type="button">✕ بستن</button>
+<script>
+// Bound via addEventListener (not an inline onclick= attribute): the app's CSP
+// sets script-src-attr 'none', which blocks inline handler ATTRIBUTES, so an
+// onclick="" here would be a dead button. Tell the parent app to close the
+// brain overlay; if opened standalone, just go back.
+(function(){ var b=document.getElementById('closeBtn'); if(!b)return;
+  b.addEventListener('click', function(){
+    try{ if(window.parent && window.parent!==window){ window.parent.postMessage('setayesh-brain-close','*'); return; } }catch(e){}
+    try{ history.back(); }catch(e){}
+  });
+})();
+</script>
 <div class="hint" id="hint">زوم کن تا نام‌ها و خطوط ظاهر شوند</div>
 <div class="brand">SETAYESH</div>
 <!-- three.js served LOCALLY (r128) so the brain works fully offline — no CDN. -->
@@ -203,8 +215,8 @@ function makeNode([name,u,v,icon,info],kind){
  anchors.push({el:b,p,kind})}
 AI.forEach(n=>makeNode(n,'b'));TL.forEach(n=>makeNode(n,'g'));IO.forEach(n=>makeNode(n,'io'));
 const coreEl=document.createElement('button');coreEl.className='core';coreEl.type='button';
-coreEl.innerHTML='<div><b>Setayesh</b><span>Brain Core</span></div>';
-coreEl.onclick=e=>{e.stopPropagation();showTip(coreEl,'Setayesh Brain Core','مغز مرکزی: پیام را می‌گیرد، از حافظه کمک می‌گیرد، موتور هوش را انتخاب می‌کند و ابزار لازم را اجرا می‌کند.','graph_3','')};
+coreEl.innerHTML='<div><b>عاملِ ستایش</b><span>Agent · هسته</span></div>';
+coreEl.onclick=e=>{e.stopPropagation();showTip(coreEl,'عاملِ ستایش (Agent)','این همان «ایجنت» است: روی همهٔ موتورها سوار می‌شود، پیام را می‌گیرد، از حافظه کمک می‌گیرد، بهترین موتور را انتخاب می‌کند، ابزار لازم را اجرا می‌کند و فایل/جواب را می‌سازد.','graph_3','')};
 labels.appendChild(coreEl);anchors.push({el:coreEl,p:new THREE.Vector3(0,0,RZ+.35),core:true});
 (function(){const c=new THREE.Vector3(0,0,RZ*.25);
  const line=(a,b,hex,o)=>{const g=new THREE.QuadraticBezierCurve3(a,a.clone().add(b).multiplyScalar(.5).multiplyScalar(1.06),b);
