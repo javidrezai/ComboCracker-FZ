@@ -131,6 +131,18 @@ test('brain: openBrain/closeBrain are exposed on window for brainmap.js', () => 
   assert.ok(/Gemini/.test(b3d) && /Ollama/.test(b3d) && /Brain Core/.test(b3d), 'brainmap3d.html must be the engine-brain');
 });
 
+// Telegram must be able to DELIVER a real file (زیپ بده → an actual document),
+// not just talk. Guard the file-delivery surface so it can't silently regress.
+test('telegram: exposes sendDocument for real file delivery', () => {
+  const { makeTelegram } = require(path.join(ROOT, 'telegram.js'));
+  const tg = makeTelegram({ getCfg: () => ({}) });
+  assert.equal(typeof tg.sendDocument, 'function', 'telegram must expose sendDocument');
+  assert.equal(typeof tg.send, 'function');
+  const tsrc = fs.readFileSync(path.join(ROOT, 'telegram.js'), 'utf8');
+  assert.ok(/sendDocument/.test(tsrc) && /FormData/.test(tsrc), 'sendDocument must post multipart to Telegram');
+  assert.ok(/__TG_TIMEOUT__/.test(tsrc), 'a hung turn must not freeze the poller');
+});
+
 test('served shell injects the version into asset URLs (no __VER__ left)', async () => {
   const html = await (await fetch(BASE + '/')).text();
   assert.ok(!html.includes('__VER__'), 'shell still contains the __VER__ placeholder');

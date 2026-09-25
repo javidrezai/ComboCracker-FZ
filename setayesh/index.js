@@ -234,7 +234,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.182';
+const APP_VERSION = '9.9.183';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -6321,6 +6321,7 @@ async function runTelegramTurn(text, chatId) {
     + '۷) هرگز چیزی از خودت نساز. اگر واقعیت را نمی‌دانی، کوتاه بگو «نمی‌دانم» — هرگز جوابِ الکی نده.';
   telegramRules += '\n۸) هرگز از Markdown استفاده نکن (نه **، نه ##، نه بولت). تلگرام ساده است — فقط جملهٔ معمولی.';
   telegramRules += '\n۹) هرگز فهرستِ وب‌سایت/منبع نده و نگو «نمی‌توانم صفحه بخوانم». یا خودت جواب را پیدا کن، یا در یک جملهٔ کوتاه بگو نمی‌دانی — بدون معرفیِ سایت و بدون توضیحِ اینکه چطور خودت پیدا کنی.';
+  telegramRules += '\n۱۰) اگر کاربر فایل/زیپ/کد/اپ/پروژه خواست: حتماً ابزارِ make_files را صدا بزن و واقعاً فایل(ها) را بساز. هرگز فقط «می‌سازم» یا «این کد است…» نگو و هرگز لینک نده — سرور خودش فایلِ ساخته‌شده را همین‌جا در تلگرام برایت می‌فرستد. جوابِ متنی‌ات فقط یک جملهٔ کوتاه باشد که چه فایلی ساختی.';
   if (tags.includes('current')) {
     telegramRules += '\n۵) این سؤال به اطلاعاتِ روز نیاز دارد (هوا، اخبار، قیمت…). '
       + 'اول ابزار web_search را صدا بزن و از نتایجِ واقعی، کوتاه و مستقیم جواب بده (مثلاً فقط دما و وضعیتِ امروز). '
@@ -6351,30 +6352,68 @@ async function runTelegramTurn(text, chatId) {
   const isBrainDump = (eid, r) => eid === 'brain' && (
     /^\s*بر اساس دانش والت/.test(r) || /اولاما در دسترس نیست/.test(r)
   );
+  // Does he want a real FILE (zip/code/app)? If so, only tool-capable CLOUD
+  // engines can build it (local Ollama and the Python brain can't call
+  // make_files), so drop them from the order for a file request.
+  const wantsFile = (() => { try { return wantsFileDelivery(msg); } catch (e) { return false; } })();
+  let engineOrder = order;
+  if (wantsFile) {
+    const capable = order.filter((eid) => eid !== 'local' && eid !== 'brain');
+    if (capable.length) engineOrder = capable;
+  }
+  // Turn a produced download (make_files or autoPackageReply put it in
+  // sideEffects.download) into a Buffer + name we can hand to Telegram.
+  const fileFromDownload = (dl) => {
+    try {
+      if (!dl || !dl.url) return null;
+      const token = decodeURIComponent(String(dl.url).replace('/api/download/', ''));
+      const parts = token.split('/').filter((p) => p && p !== '.' && p !== '..');
+      if (parts.length !== 2) return null;
+      const full = path.resolve(OUT_DIR, parts[0], parts[1]);
+      if (!full.startsWith(path.resolve(OUT_DIR) + path.sep) || !fs.existsSync(full)) return null;
+      const buf = fs.readFileSync(full);
+      if (!buf || !buf.length) return null;
+      return { file: buf, filename: dl.name || path.basename(full) };
+    } catch (e) { return null; }
+  };
   let lastErr = null;
-  for (const eid of order) {
+  for (const eid of engineOrder) {
     const model = modelFor(eid);
     const toolCtx = { preferredId: eid, basePrompt: systemPrompt, message: msg, sideEffects: {}, pinned: false, isAdmin: true, username: adminUser };
     try {
-      const raw = await callWithTools(eid, model, systemPrompt, convo, toolCtx, {});
+      // Per-engine hard timeout so one slow engine can't add minutes to the
+      // reply. The whole turn is also capped in telegram.js; this keeps failover
+      // snappy so a healthy engine is reached fast.
+      const raw = await Promise.race([
+        callWithTools(eid, model, systemPrompt, convo, toolCtx, {}),
+        new Promise((_, rej) => setTimeout(() => rej(Object.assign(new Error('engine timeout'), { status: 0 })), 35000)),
+      ]);
+      // If the model built a file (called make_files), OR the reply carries code
+      // and he asked for a file, package it and SEND THE FILE — not just talk.
+      try { autoPackageReply(msg, raw || '', toolCtx.sideEffects); } catch (e) {}
+      const dl = fileFromDownload(toolCtx.sideEffects && toolCtx.sideEffects.download);
       let reply = stripToolNoise(raw || '');
-      // Owner's standing Telegram rule: never send a link unless he asked for
-      // one. Enforce it in code (the model kept ignoring the prompt and even
-      // hallucinated a fake maps URL), so no stray/invented link ever ships.
       if (reply && !wantsLink(msg)) reply = stripLinks(reply);
-      // Telegram is plain text — strip markdown so "**پررنگ**" doesn't reach جاوید
-      // as literal asterisks. Then the brevity net: drop the greeting/agreement
-      // opener and the GPT-style "anything else?" closer, so the answer is direct
-      // and clean even when the model ignores the prompt rules.
       if (reply) reply = stripMarkdown(reply);
       if (reply) reply = tidyTelegram(reply);
       if (reply && isBrainDump(eid, reply)) { continue; }   // note-dump, not an answer
+      if (dl) {
+        try { noteEngine(eid, true); } catch (e) {}
+        hist.push({ role: 'user', content: msg });
+        hist.push({ role: 'assistant', content: '[فایل ارسال شد: ' + dl.filename + ']' });
+        if (hist.length > TELEGRAM_HISTORY_TURNS) telegramHistory.set(String(chatId || 'default'), hist.slice(-TELEGRAM_HISTORY_TURNS));
+        const caption = (reply && reply.length <= 900) ? reply : ('فایل آماده است: ' + dl.filename);
+        return { text: caption, file: dl.file, filename: dl.filename };
+      }
       if (reply) {
         try { noteEngine(eid, true); } catch (e) {}
         // Remember this exchange (trimmed) for the next follow-up.
         hist.push({ role: 'user', content: msg });
         hist.push({ role: 'assistant', content: reply });
         if (hist.length > TELEGRAM_HISTORY_TURNS) telegramHistory.set(String(chatId || 'default'), hist.slice(-TELEGRAM_HISTORY_TURNS));
+        // He asked for a file but the model only talked — say so honestly instead
+        // of a wall of chatter, and tell him to retry (a capable engine will build it).
+        if (wantsFile) return 'فایل را نساختم چون موتور الان نتوانست — دوباره بگو «زیپ بده» تا بسازم و همین‌جا در تلگرام فایل را بفرستم.';
         return reply;
       }
       // Empty reply — try the next engine.

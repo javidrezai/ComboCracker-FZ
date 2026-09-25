@@ -58,6 +58,30 @@ function makeTelegram(opts) {
     return true;
   }
 
+  // Send a real FILE to Telegram (sendDocument, multipart/form-data). This is
+  // what makes "زیپ بده" on Telegram deliver an actual downloadable file — not a
+  // link, not just talk. Node 18+ has global FormData/Blob/fetch, so no new dep.
+  // `data` is a Buffer; `filename` is what the owner sees; `caption` is optional.
+  async function sendDocument(data, filename, chatId, caption) {
+    if (!configured()) return false;
+    const to = chatId || allowedChat();
+    if (!to || !data || !data.length) return false;
+    const form = new FormData();
+    form.append('chat_id', String(to));
+    if (caption) form.append('caption', String(caption).slice(0, 1000));
+    form.append('document', new Blob([data]), String(filename || 'file.bin'));
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 120000);   // a zip can be a few MB
+    try {
+      const r = await fetch(`https://api.telegram.org/bot${token()}/sendDocument`, {
+        method: 'POST', body: form, signal: ctrl.signal,
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!d || !d.ok) throw new Error((d && d.description) || 'sendDocument failed');
+      return true;
+    } finally { clearTimeout(timer); }
+  }
+
   async function pollOnce(onMessage, onCallback) {
     const updates = await api('getUpdates', { offset, timeout: 25, allowed_updates: ['message', 'callback_query'] }, 30000);
     for (const u of updates || []) {
@@ -106,6 +130,17 @@ function makeTelegram(opts) {
         if (timer) clearTimeout(timer);
         if (reply === '__TG_TIMEOUT__') {
           try { await send('طول کشید و جواب نرسید — موتورها الان کند یا مشغول‌اند. یک بار دیگر بپرس.', from); } catch (e2) {}
+        } else if (reply && typeof reply === 'object' && reply.file && reply.file.length) {
+          // The turn produced a real file (a zip/code file). Send the document,
+          // with the short caption as its message. This is file delivery on
+          // Telegram — a real file, never just a link or talk.
+          try {
+            await sendDocument(reply.file, reply.filename || 'setayesh.zip', from, reply.text || '');
+          } catch (e2) {
+            try { await send('فایل ساخته شد ولی ارسالش به تلگرام نشد: ' + (e2.message || ''), from); } catch (e3) {}
+          }
+        } else if (reply && typeof reply === 'object' && reply.text) {
+          await send(reply.text, from);
         } else if (reply) {
           await send(reply, from);
         }
@@ -129,7 +164,7 @@ function makeTelegram(opts) {
   function stop() { stopFlag = true; }
   function status() { return { configured: configured(), chatSet: !!allowedChat(), polling }; }
 
-  return { configured, send, start, stop, status };
+  return { configured, send, sendDocument, start, stop, status };
 }
 
 module.exports = { makeTelegram };
