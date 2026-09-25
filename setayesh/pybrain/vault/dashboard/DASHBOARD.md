@@ -1,6 +1,6 @@
 # 🧠 داشبورد زندهٔ مغز ستایش
 
-> آخرین به‌روزرسانی: 2026-09-17 12:14:17
+> آخرین به‌روزرسانی: 2026-09-25 05:19:40
 
 ## وضعیت مغز سرور
 - **مدل محلی:** `qwen2.5:7b` — 🔴 آفلاین (Ollama در دسترس نیست)
@@ -12,9 +12,9 @@
 ## نقشهٔ حافظهٔ دائمی
 | بخش | تعداد فایل |
 |-----|-----------|
-| گراف دانش (`knowledge/`) | 15 |
+| گراف دانش (`knowledge/`) | 16 |
 | درس‌های خودآموخته (`lessons/`) | 1 |
-| لاگ‌ها (`logs/`) | 6 |
+| لاگ‌ها (`logs/`) | 11 |
 
 ## نوت‌های گراف دانش
 - knowledge/Ollama.md
@@ -26,6 +26,7 @@
 - knowledge/dev-libraries.md
 - knowledge/embeddings.md
 - knowledge/file-formats.md
+- knowledge/owner-profile.md
 - knowledge/scheduler-and-tools.md
 - knowledge/self-hosting.md
 - knowledge/self-learning.md
@@ -34,7 +35,7 @@
 - knowledge/user-guide.md
 
 ## گراف دانش
-(15 گره، 8 یال)
+(16 گره، 8 یال)
 - **Ollama** → about-setayesh، brain-architecture، embeddings، self-hosting، user-guide
 - **TF-IDF** → embeddings، semantic-recall
 - **about-setayesh** → Ollama
@@ -44,6 +45,7 @@
 - **dev-libraries** → —
 - **embeddings** → TF-IDF، Ollama، semantic-recall
 - **file-formats** → —
+- **owner-profile** → —
 - **scheduler-and-tools** → —
 - **self-hosting** → Ollama
 - **self-learning** → —

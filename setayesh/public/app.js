@@ -1,4 +1,4 @@
-/* SETAYESH_BUILD 9.9.179 */
+/* SETAYESH_BUILD 9.9.180 */
 (function(){
 'use strict';
 
@@ -4021,6 +4021,13 @@ function closeBrain(){
   var h2=document.getElementById('brain2D'); if(h2)h2.remove();
   var bc=document.getElementById('brainCanvas'); if(bc)bc.style.display='block';
 }
+// app.js is wrapped in an IIFE, so openBrain/closeBrain are NOT global by
+// default. brainmap.js (a separate, non-wrapped script) opens the new 3D brain
+// only if it can find window.openBrain — otherwise it falls back to the OLD
+// hexagon map. Exposing them here is what makes the brain button actually show
+// the 3D brain in every browser/device, independent of cache or server state.
+window.openBrain = openBrain;
+window.closeBrain = closeBrain;
 
 function brainInit(){
   if(BRAIN.scene)return;   // once

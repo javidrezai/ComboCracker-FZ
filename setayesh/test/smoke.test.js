@@ -110,6 +110,20 @@ test('frontend build markers match the package version', () => {
   }
 });
 
+// The brain button opens the 3D brain (brainmap3d.html) only via
+// window.openBrain. app.js is wrapped in an IIFE, so unless openBrain/closeBrain
+// are explicitly put on window, brainmap.js can never reach them and always
+// falls back to the OLD hexagon map — the "brain never changes" bug. Guard both
+// the exposure and the 3D asset so this regression cannot come back silently.
+test('brain: openBrain/closeBrain are exposed on window for brainmap.js', () => {
+  const app = fs.readFileSync(path.join(ROOT, 'public/app.js'), 'utf8');
+  assert.ok(/window\.openBrain\s*=\s*openBrain/.test(app), 'window.openBrain must be exposed');
+  assert.ok(/window\.closeBrain\s*=\s*closeBrain/.test(app), 'window.closeBrain must be exposed');
+  const bm = fs.readFileSync(path.join(ROOT, 'public/brainmap.js'), 'utf8');
+  assert.ok(/window\.openBrain/.test(bm), 'brainmap.js must prefer window.openBrain');
+  assert.ok(fs.existsSync(path.join(ROOT, 'public/brainmap3d.html')), 'brainmap3d.html must exist');
+});
+
 test('served shell injects the version into asset URLs (no __VER__ left)', async () => {
   const html = await (await fetch(BASE + '/')).text();
   assert.ok(!html.includes('__VER__'), 'shell still contains the __VER__ placeholder');
