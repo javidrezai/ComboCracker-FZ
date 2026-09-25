@@ -1,5 +1,5 @@
 <!doctype html>
-<!-- SETAYESH_BUILD 9.9.187 -->
+<!-- SETAYESH_BUILD 9.9.188 -->
 <html lang="fa" dir="rtl">
 <head>
 <meta charset="utf-8">
@@ -217,7 +217,11 @@ AI.forEach(n=>makeNode(n,'b'));TL.forEach(n=>makeNode(n,'g'));IO.forEach(n=>make
 const coreEl=document.createElement('button');coreEl.className='core';coreEl.type='button';
 coreEl.innerHTML='<div><b>عاملِ ستایش</b><span>Agent · هسته</span></div>';
 coreEl.onclick=e=>{e.stopPropagation();showTip(coreEl,'عاملِ ستایش (Agent)','این همان «ایجنت» است: روی همهٔ موتورها سوار می‌شود، پیام را می‌گیرد، از حافظه کمک می‌گیرد، بهترین موتور را انتخاب می‌کند، ابزار لازم را اجرا می‌کند و فایل/جواب را می‌سازد.','graph_3','')};
-labels.appendChild(coreEl);anchors.push({el:coreEl,p:new THREE.Vector3(0,0,RZ+.35),core:true});
+// The Agent sits at the EXACT centre (origin) — the seam between the two
+// hemispheres — so it is always dead-centre with a brain on each side, in place
+// of the old name. It is always visible (the centrepiece), even before zoom.
+coreEl.classList.add('on');
+labels.appendChild(coreEl);anchors.push({el:coreEl,p:new THREE.Vector3(0,0,0),core:true});
 (function(){const c=new THREE.Vector3(0,0,RZ*.25);
  const line=(a,b,hex,o)=>{const g=new THREE.QuadraticBezierCurve3(a,a.clone().add(b).multiplyScalar(.5).multiplyScalar(1.06),b);
   netG.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(g.getPoints(14)),new THREE.LineBasicMaterial({color:hex,transparent:true,opacity:o,blending:THREE.AdditiveBlending})))};
@@ -260,7 +264,8 @@ function setRevealed(on){
   if(on===revealed)return;
   revealed=on;
   labels.classList.toggle('on',on);
-  coreEl.classList.toggle('on',on);
+  // The Agent core stays visible at all times (centrepiece); only the peripheral
+  // node names, links and pulses appear on zoom.
   netG.visible=on;
   outerG.visible=on;
   document.getElementById('hint').classList.toggle('gone',on);
@@ -291,7 +296,7 @@ function loop(){const dt=Math.min(clk.getDelta(),.05);
  const w=innerWidth,h=innerHeight;camera.getWorldDirection(dir);
  anchors.forEach(a=>{v.copy(a.p).applyMatrix4(brain.matrixWorld);const face=v.clone().sub(camera.position).normalize().dot(dir);
   v.project(camera);a.el.style.transform='translate('+((v.x*.5+.5)*w)+'px,'+((-v.y*.5+.5)*h)+'px) translate(-50%,-50%)';
-  const vis=revealed&&face>0;a.el.style.opacity=vis?1:0;a.el.style.pointerEvents=vis?'auto':'none'});
+  const vis=a.core?true:(revealed&&face>0);a.el.style.opacity=vis?1:0;a.el.style.pointerEvents=vis?'auto':'none'});
  requestAnimationFrame(loop)}
 resize();loop();
 // Keyboard: Esc closes; arrows / +/- zoom (zoom is how the names & links appear).
