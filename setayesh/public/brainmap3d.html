@@ -1,5 +1,5 @@
 <!doctype html>
-<!-- SETAYESH_BUILD 9.9.190 -->
+<!-- SETAYESH_BUILD 9.9.191 -->
 <html lang="fa" dir="rtl">
 <head>
 <meta charset="utf-8">
@@ -7,217 +7,294 @@
 <title>Setayesh — مغز</title>
 <style>
 :root{
- --ink:#FAFAFA;--ink2:#A1A1AA;--ink3:#71717A;--line:#ffffff18;--panel:rgba(10,15,26,.6);
- --blue:#39b6ff;--gold:#ffab3d;--violet:#a878ff;
- --bg1:#0a1428;--bg2:#04060c;color-scheme:dark;box-sizing:border-box;
+ --ink:#eaf1fb;--ink2:#a7b4cc;--ink3:#6b7a97;
+ --blue:#39b6ff;--blue2:#2a6bff;--gold:#ffab3d;--gold2:#ff7a00;--violet:#a878ff;
+ --bg:#04060c;--card:rgba(10,16,30,.62);--cardL:#39b6ff;--cardR:#ffab3d;--line:#ffffff14;
+ color-scheme:dark;box-sizing:border-box;
  padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
 *,*:before,*:after{box-sizing:inherit}
-html,body{height:100%;margin:0;overflow:hidden;color:var(--ink);
- font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Vazirmatn,Tahoma,system-ui,sans-serif}
-body{background:radial-gradient(120% 90% at 50% 46%,var(--bg1) 0%,#060a15 48%,var(--bg2) 100%)}
+html{height:100%}
+body{margin:0;min-height:100%;color:var(--ink);overflow:auto;
+ font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Vazirmatn,Tahoma,system-ui,sans-serif;
+ background:radial-gradient(120% 80% at 50% 42%,#0a1428 0%,#070c18 45%,var(--bg) 100%)}
 .lat{font-family:"Segoe UI",system-ui,-apple-system,sans-serif;direction:ltr;font-feature-settings:"tnum"}
-#c{position:fixed;inset:0;width:100%;height:100%;display:block;z-index:0;opacity:.85}
-#wires{position:fixed;inset:0;width:100%;height:100%;z-index:1;pointer-events:none}
-#labels{position:fixed;inset:0;z-index:2;pointer-events:none}
-
-.node{position:absolute;left:0;top:0;transform:translate(-50%,-50%);pointer-events:auto;cursor:pointer;white-space:nowrap;
- display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:500;color:var(--ink);
- padding:5px 12px 5px 5px;border-radius:99px;background:var(--panel);backdrop-filter:blur(9px);
- border:1px solid var(--line);box-shadow:0 3px 16px #0007;transition:border-color .2s,background .2s,transform .15s}
-.node .d{width:22px;height:22px;border-radius:50%;flex:none;display:grid;place-items:center;font-size:9.5px;font-weight:700;color:#04121e}
-.node .r{font-size:9px;color:var(--ink3);margin-inline-start:2px}
-.node.b .d{background:linear-gradient(140deg,#2a6bff,#39c0ff)}
-.node.g .d{background:linear-gradient(140deg,#ff7a00,#ffc24d)}
-.node.io .d{background:linear-gradient(140deg,#8a5cff,#c56bff);color:#fff}
-.node:hover,.node:focus-visible{outline:none;border-color:#ffffff66;background:rgba(16,26,46,.82);z-index:9}
-
-.core{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);pointer-events:auto;cursor:pointer;
- width:clamp(112px,12vw,152px);aspect-ratio:1;border-radius:50%;display:grid;place-items:center;text-align:center;
+#c{position:fixed;inset:0;width:100%;height:100%;display:block;z-index:0;opacity:.9}
+.wrap{position:relative;z-index:2;min-height:100%;max-width:1500px;margin:0 auto;
+ display:grid;grid-template-columns:270px 1fr 270px;gap:16px;padding:18px 18px 26px}
+/* Title */
+.head{grid-column:1/-1;text-align:center;margin-bottom:2px}
+.head h1{margin:0;font-size:clamp(26px,3.6vw,44px);font-weight:700;letter-spacing:1px;
+ text-shadow:0 0 24px #39b6ff55}
+.head p{margin:4px 0 0;font-size:12.5px;color:var(--ink2);letter-spacing:.5px}
+/* Cards */
+.col{display:flex;flex-direction:column;gap:14px;min-width:0}
+.card{background:var(--card);backdrop-filter:blur(10px);border:1px solid var(--line);border-radius:16px;
+ padding:13px 14px;box-shadow:0 8px 30px #0006}
+.card.l{border-inline-start:3px solid var(--cardL)} .card.r{border-inline-start:3px solid var(--cardR)}
+.card h3{margin:0 0 9px;font-size:13.5px;font-weight:700;display:flex;align-items:center;gap:8px}
+.card h3 .ic{width:24px;height:24px;border-radius:7px;display:grid;place-items:center;font-size:13px;flex:none;
+ background:linear-gradient(140deg,var(--blue2),var(--blue));box-shadow:0 0 12px #2a9dff55}
+.card.r h3 .ic{background:linear-gradient(140deg,var(--gold2),var(--gold));box-shadow:0 0 12px #ffab3d55;color:#241000}
+.card ul{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px}
+.card li{font-size:12px;color:var(--ink2);display:flex;align-items:center;gap:8px;line-height:1.5}
+.card li b{color:var(--ink);font-weight:500}
+.dot{width:6px;height:6px;border-radius:50%;flex:none;background:var(--blue)}
+.card.r .dot{background:var(--gold)}
+.eng{display:flex;align-items:center;gap:9px;font-size:12px;color:var(--ink)}
+.eng .g{width:20px;height:20px;border-radius:6px;display:grid;place-items:center;font-size:10px;font-weight:700;color:#04121e;flex:none}
+.snippet{margin-top:9px;background:#060b16;border:1px solid var(--line);border-radius:10px;padding:9px 11px;
+ font-family:ui-monospace,Menlo,Consolas,monospace;font-size:10.5px;color:#9fe0b0;direction:ltr;line-height:1.6}
+.snippet .k{color:#7fb0ff}
+/* Center */
+.center{display:flex;flex-direction:column;align-items:center;min-width:0}
+.brainstage{position:relative;width:100%;height:min(56vh,540px);min-height:340px;display:grid;place-items:center}
+.hemL,.hemR{position:absolute;top:6px;font-size:12px;font-weight:700;text-align:center;pointer-events:none}
+.hemL{inset-inline-start:4%;color:var(--blue)}.hemR{inset-inline-end:4%;color:var(--gold)}
+.hemL span,.hemR span{display:block;font-size:10px;font-weight:500;color:var(--ink3);margin-top:2px}
+.core{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:3;
+ width:clamp(120px,15vw,168px);aspect-ratio:1;border-radius:50%;display:grid;place-items:center;text-align:center;cursor:default;
  background:radial-gradient(circle at 50% 42%,#f2f9ff 0,#9ad6ff 26%,#2f7dff 58%,#0a2f7a 100%);
- box-shadow:0 0 0 1px #bfe4ff77,0 0 34px 8px #38b4ff5c,0 0 90px 26px #2a7aff30,inset 0 -8px 22px #0a2f7a99;
+ box-shadow:0 0 0 2px #bfe4ff66,0 0 40px 10px #38b4ff66,0 0 110px 30px #2a7aff33,inset 0 -8px 22px #0a2f7a99;
  color:#04122e;font-weight:700}
-.core::before{content:"";position:absolute;inset:-14px;border-radius:50%;border:1px solid #7fd0ff44;
- animation:ring 3.6s ease-out infinite}
-@keyframes ring{0%{transform:scale(.86);opacity:.7}100%{transform:scale(1.35);opacity:0}}
-.core b{display:block;font-size:clamp(14px,1.5vw,18px);letter-spacing:.2px}
-.core span{display:block;font-size:clamp(8px,.95vw,11px);font-weight:500;opacity:.85;letter-spacing:.5px;margin-top:1px}
-
-.tip{position:fixed;z-index:20;max-width:min(280px,86vw);padding:13px 15px;border-radius:16px;
- background:rgba(9,15,28,.92);backdrop-filter:blur(16px);border:1px solid var(--line);box-shadow:0 20px 50px #000a;
- opacity:0;transform:translateY(6px) scale(.98);transition:.22s cubic-bezier(.2,.8,.2,1);pointer-events:none}
-.tip.on{opacity:1;transform:none}
-.tip .h{display:flex;align-items:center;gap:9px;margin-bottom:6px}
-.tip .h .d{width:26px;height:26px;border-radius:50%;flex:none;display:grid;place-items:center;font-size:11px;color:#fff}
-.tip strong{font-size:14px;font-weight:700}
-.tip p{margin:0;font-size:12.5px;line-height:1.8;color:#c4d4ec}
-
-.col-h{position:fixed;z-index:3;font-size:11px;letter-spacing:1px;color:var(--ink2);pointer-events:none;text-transform:uppercase}
-.col-h.l{inset-inline-start:0;text-align:start}.col-h.r{inset-inline-end:0;text-align:end}
-.close{position:fixed;top:calc(14px + env(safe-area-inset-top,0px));inset-inline-end:14px;z-index:15;height:38px;padding:0 15px;border-radius:19px;
- background:var(--panel);backdrop-filter:blur(10px);border:1px solid var(--line);color:#cfe0ff;cursor:pointer;
+.core::before{content:"";position:absolute;inset:-16px;border-radius:50%;border:1px solid #7fd0ff55;animation:ring 3.8s ease-out infinite}
+@keyframes ring{0%{transform:scale(.85);opacity:.7}100%{transform:scale(1.4);opacity:0}}
+.core b{display:block;font-size:clamp(14px,1.6vw,19px)} .core .en{display:block;font-size:11px;font-weight:600;opacity:.9}
+.core span{display:block;font-size:10px;font-weight:500;opacity:.82;margin-top:1px}
+/* inner name lists flanking the core (over each hemisphere) */
+.names{position:absolute;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;gap:7px;z-index:2;pointer-events:none}
+.namesL{inset-inline-start:12%}.namesR{inset-inline-end:12%}
+.chip{display:flex;align-items:center;gap:7px;font-size:11.5px;font-weight:600;color:#fff;white-space:nowrap;
+ padding:4px 10px 4px 4px;border-radius:99px;background:rgba(8,12,22,.6);border:1px solid var(--line);box-shadow:0 2px 12px #0007}
+.chip .g{width:18px;height:18px;border-radius:50%;flex:none;display:grid;place-items:center;font-size:9px;font-weight:700;color:#04121e}
+.chip.b .g{background:linear-gradient(140deg,#2a6bff,#39c0ff)} .chip.g_ .g{background:linear-gradient(140deg,#ff7a00,#ffc24d)}
+/* I/O + features */
+.io{margin-top:14px;width:100%;background:rgba(8,13,24,.55);border:1px solid var(--line);border-radius:16px;padding:12px}
+.io .t{text-align:center;font-size:12px;color:var(--ink2);margin-bottom:10px}
+.io .row{display:flex;justify-content:center;gap:10px;flex-wrap:wrap}
+.io .item{display:flex;flex-direction:column;align-items:center;gap:5px;min-width:56px}
+.io .b{width:42px;height:42px;border-radius:12px;display:grid;place-items:center;font-size:18px;
+ background:linear-gradient(140deg,#12203c,#0b1526);border:1px solid var(--line);color:var(--blue)}
+.io .item small{font-size:10.5px;color:var(--ink2)}
+.feat{grid-column:1/-1;margin-top:4px;background:rgba(8,13,24,.5);border:1px solid var(--line);border-radius:16px;padding:12px 14px}
+.feat .t{text-align:center;font-size:12px;color:var(--ink2);margin-bottom:10px}
+.feat .row{display:flex;justify-content:center;gap:14px;flex-wrap:wrap}
+.feat .item{display:flex;flex-direction:column;align-items:center;gap:6px;width:110px;text-align:center}
+.feat .b{width:40px;height:40px;border-radius:11px;display:grid;place-items:center;font-size:17px;
+ background:linear-gradient(140deg,#151d33,#0c1424);border:1px solid var(--line);color:var(--violet)}
+.feat .item small{font-size:11px;color:var(--ink);line-height:1.4}
+.foot{grid-column:1/-1;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;
+ color:var(--ink3);font-size:11px;margin-top:4px}
+.foot .lat{color:var(--ink2)}
+.close{position:fixed;top:calc(12px + env(safe-area-inset-top,0px));inset-inline-end:12px;z-index:20;height:36px;padding:0 14px;border-radius:18px;
+ background:rgba(10,18,34,.7);backdrop-filter:blur(10px);border:1px solid var(--line);color:#cfe0ff;cursor:pointer;
  display:flex;align-items:center;gap:6px;font:inherit;font-size:13px}
-.brand{position:fixed;bottom:calc(10px + env(safe-area-inset-bottom,0px));inset-inline:0;text-align:center;
- font-size:10px;letter-spacing:3px;color:#3a4a66;text-transform:uppercase;pointer-events:none;opacity:.5}
-@media (max-width:640px){.node{font-size:11px;padding:4px 9px 4px 4px}.node .d{width:19px;height:19px}.node .r{display:none}}
+@media (max-width:1080px){.wrap{grid-template-columns:1fr 1fr}.center{grid-column:1/-1;order:-1}.names{display:none}}
+@media (max-width:680px){.wrap{grid-template-columns:1fr}.feat .item{width:44%}}
 @media (prefers-reduced-motion:reduce){.core::before{animation:none}}
 </style>
 </head>
 <body>
 <canvas id="c" aria-label="مغز سه‌بعدی ستایش"></canvas>
-<svg id="wires" aria-hidden="true"></svg>
-<div id="labels"></div>
-<div class="tip" id="tip" role="dialog" aria-live="polite"></div>
-<div class="col-h l" id="colL">مغزِ هوش</div>
-<div class="col-h r" id="colR">ابزارها و سیستم</div>
 <button class="close" id="closeBtn" type="button">✕ بستن</button>
-<div class="brand">SETAYESH</div>
+<div class="wrap">
+ <div class="head">
+  <h1>ستایش</h1>
+  <p>دستیارِ هوشمندِ خانواده · نسخه <span class="lat" id="ver">9.9.191</span></p>
+ </div>
+
+ <!-- LEFT column (blue = AI brain) -->
+ <div class="col">
+  <div class="card l"><h3><span class="ic">🧠</span>موتورهای هوش <span class="lat" style="color:var(--ink3);font-weight:500">(9 موتور)</span></h3>
+   <ul>
+    <li class="eng"><span class="g" style="background:#8f7bff">OL</span><b>Ollama</b> <span class="lat" style="color:var(--ink3)">(Local)</span></li>
+    <li class="eng"><span class="g" style="background:#10a37f;color:#fff">AI</span><b>OpenAI</b></li>
+    <li class="eng"><span class="g" style="background:#ff7000;color:#fff">MI</span><b>Mistral</b></li>
+    <li class="eng"><span class="g" style="background:#f55">CB</span><b>Cerebras</b></li>
+    <li class="eng"><span class="g" style="background:#f55036;color:#fff">GQ</span><b>Groq</b></li>
+    <li class="eng"><span class="g" style="background:#4285f4;color:#fff">GE</span><b>Google Gemini</b></li>
+    <li class="eng"><span class="g" style="background:#d97757;color:#fff">CL</span><b>Anthropic Claude</b></li>
+    <li class="eng"><span class="g" style="background:#6467f2;color:#fff">OR</span><b>OpenRouter</b></li>
+    <li class="eng"><span class="g" style="background:#3776ab;color:#fff">PY</span><b>Python Brain</b> <span class="lat" style="color:var(--ink3)">(Local)</span></li>
+   </ul></div>
+  <div class="card l"><h3><span class="ic">🗄️</span>حافظه‌ها <span class="lat" style="color:var(--ink3);font-weight:500">(RAG / Vector)</span></h3>
+   <ul>
+    <li><span class="dot"></span><b>Short-term Memory</b></li>
+    <li><span class="dot"></span><b>Long-term Memory</b></li>
+    <li><span class="dot"></span><b>Vector DB</b></li>
+    <li><span class="dot"></span><b>Knowledge Base</b></li>
+    <li><span class="dot"></span><b>File Memory</b></li>
+    <li><span class="dot"></span><b>Conversation History</b></li>
+   </ul></div>
+  <div class="card l"><h3><span class="ic">⟨⟩</span>کد و توسعه</h3>
+   <ul>
+    <li><span class="dot"></span><b>Python Runtime</b></li>
+    <li><span class="dot"></span><b>Code Execution</b></li>
+    <li><span class="dot"></span><b>Libraries</b> <span class="lat" style="color:var(--ink3)">(13 Lang)</span></li>
+    <li><span class="dot"></span><b>File System</b></li>
+    <li><span class="dot"></span><b>Download / Install</b></li>
+    <li><span class="dot"></span><b>Project Builder</b></li>
+   </ul>
+   <div class="snippet"><span class="k">def</span> setayesh():<br>&nbsp;&nbsp;<span class="k">return</span> "Smart Family Assistant"</div>
+  </div>
+  <div class="card l"><h3><span class="ic">💬</span>ارتباطات</h3>
+   <ul>
+    <li><span class="dot"></span><b>Telegram</b> <span class="lat" style="color:var(--ink3)">(Bot)</span></li>
+    <li><span class="dot"></span><b>Email</b></li>
+    <li><span class="dot"></span><b>Google</b> <span class="lat" style="color:var(--ink3)">(Gmail/Calendar)</span></li>
+    <li><span class="dot"></span><b>Web &amp; Search</b></li>
+    <li><span class="dot"></span><b>Notifications</b></li>
+   </ul></div>
+  <div class="card l"><h3><span class="ic">🛡️</span>امنیت و حریمِ خصوصی</h3>
+   <ul>
+    <li><span class="dot"></span><b>Encrypted Storage</b></li>
+    <li><span class="dot"></span><b>Auth</b> <span class="lat" style="color:var(--ink3)">(Step-up)</span></li>
+    <li><span class="dot"></span><b>NetGuard / Outbound Scan</b></li>
+    <li><span class="dot"></span><b>Self-signed HTTPS</b></li>
+    <li><span class="dot"></span><b>Safe Update &amp; Snapshot</b></li>
+   </ul></div>
+ </div>
+
+ <!-- CENTER: brain + agent core + I/O -->
+ <div class="center">
+  <div class="brainstage">
+   <div class="hemL">مغزِ هوشِ مصنوعی<span class="lat">AI / LLM Brain · Failover</span></div>
+   <div class="hemR">مغزِ ابزارها و سیستم‌ها<span class="lat">Tools / Systems · 62 tools</span></div>
+   <div class="names namesL">
+    <div class="chip b"><span class="g">OR</span>OpenRouter</div>
+    <div class="chip b"><span class="g">AI</span>OpenAI</div>
+    <div class="chip b"><span class="g">MI</span>Mistral</div>
+    <div class="chip b"><span class="g">CL</span>Claude</div>
+    <div class="chip b"><span class="g">PY</span>Python</div>
+   </div>
+   <div class="names namesR">
+    <div class="chip g_"><span class="g">TL</span>Tools</div>
+    <div class="chip g_"><span class="g">DV</span>Devices</div>
+    <div class="chip g_"><span class="g">CD</span>Code</div>
+    <div class="chip g_"><span class="g">FL</span>Files</div>
+    <div class="chip g_"><span class="g">SC</span>Security</div>
+   </div>
+   <div class="core" id="coreEl"><b>عاملِ ستایش</b><span class="en lat">Agent</span><span>مغزِ مرکزی</span></div>
+  </div>
+
+  <div class="io">
+   <div class="t">ورودی و خروجی <span class="lat">(Input / Output)</span></div>
+   <div class="row">
+    <div class="item"><div class="b">💬</div><small>Text</small></div>
+    <div class="item"><div class="b">🎙️</div><small>Voice</small></div>
+    <div class="item"><div class="b">🖼️</div><small>Image</small></div>
+    <div class="item"><div class="b">📄</div><small>File</small></div>
+    <div class="item"><div class="b">🌐</div><small>Web</small></div>
+    <div class="item"><div class="b">🏠</div><small>Device</small></div>
+   </div>
+  </div>
+ </div>
+
+ <!-- RIGHT column (gold = tools/systems) -->
+ <div class="col">
+  <div class="card r"><h3><span class="ic">🧰</span>ابزارها و قابلیت‌ها <span class="lat" style="color:var(--ink3);font-weight:500">(62 ابزار)</span></h3>
+   <ul>
+    <li><span class="dot"></span><b>Home Devices</b> <span class="lat" style="color:var(--ink3)">(TV/Printer/Camera)</span></li>
+    <li><span class="dot"></span><b>Google</b> <span class="lat" style="color:var(--ink3)">(Gmail/Calendar)</span></li>
+    <li><span class="dot"></span><b>Web Search &amp; Research</b></li>
+    <li><span class="dot"></span><b>File Operations</b> <span class="lat" style="color:var(--ink3)">(ZIP/Office/PDF)</span></li>
+    <li><span class="dot"></span><b>Image Generation</b> <span class="lat" style="color:var(--ink3)">(Gemini)</span></li>
+    <li><span class="dot"></span><b>Network &amp; Port Scan</b></li>
+    <li><span class="dot"></span><b>Automation &amp; Scheduler</b></li>
+    <li><span class="dot"></span><b>System / Hardware</b></li>
+   </ul></div>
+  <div class="card r"><h3><span class="ic">📚</span>دانش و یادگیری</h3>
+   <ul>
+    <li><span class="dot"></span><b>Web Research</b> <span class="lat" style="color:var(--ink3)">(with Source)</span></li>
+    <li><span class="dot"></span><b>Self Learning</b></li>
+    <li><span class="dot"></span><b>Fact Extraction</b></li>
+    <li><span class="dot"></span><b>Insight Engine</b> <span class="lat" style="color:var(--ink3)">(BM25)</span></li>
+    <li><span class="dot"></span><b>RAG + Vector Search</b></li>
+   </ul></div>
+  <div class="card r"><h3><span class="ic">📁</span>ورودی/خروجی و فایل‌ها</h3>
+   <ul>
+    <li><span class="dot"></span><b>ZIP / Office / PDF</b></li>
+    <li><span class="dot"></span><b>Image Generation</b></li>
+    <li><span class="dot"></span><b>Format Conversion</b></li>
+    <li><span class="dot"></span><b>File Upload / Download</b></li>
+    <li><span class="dot"></span><b>Real File Transfer</b></li>
+   </ul></div>
+  <div class="card r"><h3><span class="ic">🏠</span>دستگاه‌ها و خانهٔ هوشمند</h3>
+   <ul>
+    <li><span class="dot"></span><b>Smart TV / Printer / Camera</b></li>
+    <li><span class="dot"></span><b>LSC / Tuya / IoT</b></li>
+    <li><span class="dot"></span><b>Network Scan</b></li>
+    <li><span class="dot"></span><b>User Access Control</b></li>
+   </ul></div>
+  <div class="card r"><h3><span class="ic">🔄</span>مدیریت و همگام‌سازی</h3>
+   <ul>
+    <li><span class="dot"></span><b>Multi-Device Sync</b></li>
+    <li><span class="dot"></span><b>Telegram Sync &amp; History</b></li>
+    <li><span class="dot"></span><b>Chat Archive</b></li>
+    <li><span class="dot"></span><b>File Sync</b> <span class="lat" style="color:var(--ink3)">(Downloads)</span></li>
+    <li><span class="dot"></span><b>Multi-User Support</b></li>
+   </ul></div>
+ </div>
+
+ <!-- Key features -->
+ <div class="feat">
+  <div class="t">ویژگی‌های کلیدی</div>
+  <div class="row">
+   <div class="item"><div class="b">🧠</div><small>انسان‌محور و طبیعی</small></div>
+   <div class="item"><div class="b">🛡️</div><small>امن و خصوصی</small></div>
+   <div class="item"><div class="b">⚡</div><small>عمل‌گرا (نه فقط حرف)</small></div>
+   <div class="item"><div class="b">🔄</div><small>همگام‌سازیِ بین دستگاه‌ها</small></div>
+   <div class="item"><div class="b">📈</div><small>یادگیریِ مداوم و رشد</small></div>
+   <div class="item"><div class="b">🌐</div><small>دوزبانه (فارسی/English)</small></div>
+  </div>
+ </div>
+
+ <div class="foot">
+  <div class="lat">Powered by Setayesh · Local · Private · Smart</div>
+  <div>فناوری برای زندگیِ بهتر ❤</div>
+ </div>
+</div>
+
 <script>
-// Close via addEventListener (not an inline onclick= attribute; app CSP blocks those).
-(function(){var b=document.getElementById('closeBtn');if(!b)return;
- b.addEventListener('click',function(){try{if(window.parent&&window.parent!==window){window.parent.postMessage('setayesh-brain-close','*');return;}}catch(e){}try{history.back();}catch(e){}});})();
+// Close via addEventListener (never inline onclick= — app CSP blocks it). Esc too.
+(function(){var b=document.getElementById('closeBtn');function close(){try{if(window.parent&&window.parent!==window){window.parent.postMessage('setayesh-brain-close','*');return;}}catch(e){}try{history.back();}catch(e){}}
+ if(b)b.addEventListener('click',close);addEventListener('keydown',e=>{if(e.key==='Escape')close();});})();
+// Live version (never stale) — same-origin fetch to the app.
+fetch('/api/version').then(r=>r.json()).then(d=>{if(d&&d.version)document.getElementById('ver').textContent=d.version;}).catch(()=>{});
 </script>
+<!-- three.js LOCAL — the two-hemisphere brain backdrop, centred, very slow spin. -->
 <script src="/three.min.js"></script>
 <script>
 (function(){
- const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
- const canvas=document.getElementById('c'),labels=document.getElementById('labels'),tip=document.getElementById('tip'),svg=document.getElementById('wires');
- const NS='http://www.w3.org/2000/svg';
- const BLUE='#39b6ff',GOLD='#ffab3d',VIOLET='#a878ff';
-
- // ENGINES → tidy left column (blue). TOOLS → tidy right column (gold).
- // IO → a row along the bottom. Fixed 2D layout: never one-sided, never overlaps.
- const ENGINES=[
-  ['OpenRouter','OR','دروازه به ده‌ها مدلِ هوشِ دیگر.'],
-  ['OpenAI','AI','مدل‌های GPT؛ یکی از موتورهای Failover.'],
-  ['Ollama','OL','مغزِ محلی، بدونِ اینترنت و خصوصی.'],
-  ['Mistral','MI','موتورِ اروپایی، سریع و ارزان.'],
-  ['Groq','GQ','پرسرعت و رایگان؛ Whisper هم دارد.'],
-  ['Cerebras','CB','بسیار سریع برای جوابِ فوری.'],
-  ['Gemini','GE','موتورِ گوگل؛ تحلیل و ساختِ تصویر.'],
-  ['Claude','CL','استدلال و نوشتنِ دقیق.'],
-  ['Python','PY','مغزِ آفلاین؛ آخرین پشتیبان.']];
- const TOOLS=[
-  ['Tools','TL','۶۲ ابزارِ واقعی که عامل اجرا می‌کند.'],
-  ['Web','WB','جستجو و تحقیق با منبع، اتوماسیونِ وب.'],
-  ['Code','CD','اجرای کد در ۱۳ زبان و ساختِ پروژه.'],
-  ['Files','FL','ZIP، PDF، Word، Excel و تبدیلِ فرمت.'],
-  ['Devices','DV','دستگاه‌های خانه از Home Assistant.'],
-  ['Smart Home','SH','تلویزیون، پرینتر، دوربین، Tuya/LSC.'],
-  ['Memory','ME','حافظهٔ کوتاه‌مدت، بلندمدت و Vector.'],
-  ['Learning','LR','یادگیریِ خودکار و Insight Engine.'],
-  ['Security','SC','Vault، تأییدِ پدر، NetGuard و HTTPS.']];
- const IOS=[['Text','TX','ورودی/خروجیِ متنی.'],['Voice','VC','صدا↔متن.'],['Image','IM','دیدن و ساختِ تصویر.'],
-  ['File','FI','آپلود/دانلودِ فایل.'],['Web','WO','ورودی/خروجی از وب.'],['Device','DO','کنترلِ دستگاه‌ها.']];
-
- // ---- Build the chips (fixed 2D overlay) ---------------------------------
- const chips=[];   // {el, kind, line, pulse, dir, t, v, ax,ay}
- function chip(name,ab,info,kind){
-  const el=document.createElement('div');el.className='node '+kind;
-  const role=kind==='b'?'موتور':kind==='g'?'ابزار':'I/O';
-  el.innerHTML='<span class="d"></span>'+name+'<span class="r">'+role+'</span>';el.querySelector('.d').textContent=ab;
-  el.addEventListener('click',e=>{e.stopPropagation();showTip(el,name,info,kind)});labels.appendChild(el);
-  const col=kind==='b'?BLUE:kind==='g'?GOLD:VIOLET;
-  const ln=document.createElementNS(NS,'line');ln.setAttribute('stroke',col);ln.setAttribute('stroke-width','1');
-  ln.setAttribute('stroke-opacity','.28');svg.appendChild(ln);
-  const pu=document.createElementNS(NS,'circle');pu.setAttribute('r','3');pu.setAttribute('fill',col);svg.appendChild(pu);
-  const c={el,kind,ln,pu,dir:chips.length%2?1:-1,t:Math.random(),v:.10+Math.random()*.08,ax:0,ay:0};
-  chips.push(c);return c;
- }
- ENGINES.forEach(([n,a,i])=>chip(n,a,i,'b'));
- TOOLS.forEach(([n,a,i])=>chip(n,a,i,'g'));
- IOS.forEach(([n,a,i])=>chip(n,a,i,'io'));
-
- // Agent core — fixed dead centre, always visible.
- const coreEl=document.createElement('div');coreEl.className='core';
- coreEl.innerHTML='<b>عاملِ ستایش</b><span class="lat">Setayesh · Agent</span>';
- coreEl.addEventListener('click',e=>{e.stopPropagation();showTip(coreEl,'عاملِ ستایش (Agent)','هستهٔ مرکزی که روی همهٔ موتورها سوار است: پیام را می‌گیرد، از حافظه کمک می‌گیرد، بهترین موتور را انتخاب می‌کند، ابزارِ لازم را اجرا می‌کند و فایل/جوابِ نهایی را می‌سازد.','b')});
- labels.appendChild(coreEl);
-
- function showTip(el,t,d,kind){const col=kind==='b'?BLUE:kind==='g'?GOLD:VIOLET;
-  tip.innerHTML='<div class="h"><span class="d" style="background:'+col+'">●</span><strong>'+t+'</strong></div><p>'+d+'</p>';
-  tip.classList.add('on');const r=el.getBoundingClientRect();let x=r.left+r.width/2-140;x=Math.max(8,Math.min(innerWidth-288,x));
-  let y=r.bottom+10;if(y>innerHeight-130)y=r.top-130;tip.style.left=x+'px';tip.style.top=Math.max(8,y)+'px';
-  clearTimeout(showTip.t);showTip.t=setTimeout(()=>tip.classList.remove('on'),5200)}
- addEventListener('pointerdown',e=>{if(e.target===canvas)tip.classList.remove('on')});
-
- // ---- Layout: two even columns + bottom row; agent centre ----------------
- let cx=0,cy=0;
- function layout(){
-  const W=innerWidth,H=innerHeight;cx=W/2;cy=H/2;
-  svg.setAttribute('viewBox','0 0 '+W+' '+H);svg.setAttribute('width',W);svg.setAttribute('height',H);
-  const eng=chips.filter(c=>c.kind==='b'),tol=chips.filter(c=>c.kind==='g'),io=chips.filter(c=>c.kind==='io');
-  const leftX=Math.max(96,W*0.16), rightX=Math.min(W-96,W*0.84);
-  const top=H*0.12, bot=H*0.86, span=bot-top;
-  const place=(arr,x)=>arr.forEach((c,i)=>{const y=arr.length>1?top+i*(span/(arr.length-1)):cy;
-    c.el.style.left=x+'px';c.el.style.top=y+'px';c.ax=x;c.ay=y});
-  place(eng,leftX);place(tol,rightX);
-  const iy=H*0.93, ix0=W*0.30, ix1=W*0.70;
-  io.forEach((c,i)=>{const x=io.length>1?ix0+i*((ix1-ix0)/(io.length-1)):cx;
-   c.el.style.left=x+'px';c.el.style.top=iy+'px';c.ax=x;c.ay=iy});
-  // column headers
-  const cl=document.getElementById('colL'),cr=document.getElementById('colR');
-  cl.style.top=(top-30)+'px';cl.style.insetInlineStart=(leftX-40)+'px';
-  cr.style.top=(top-30)+'px';cr.style.insetInlineEnd=(W-rightX-40)+'px';
-  // wire endpoints: from a point just inside each chip toward the centre
-  chips.forEach(c=>{const dx=cx-c.ax,dy=cy-c.ay,L=Math.hypot(dx,dy)||1;const ux=dx/L,uy=dy/L;
-   const x1=c.ax+ux*40,y1=c.ay+uy*18;const x2=cx-ux*66,y2=cy-uy*66;
-   c.ln.setAttribute('x1',x1);c.ln.setAttribute('y1',y1);c.ln.setAttribute('x2',x2);c.ln.setAttribute('y2',y2);
-   c._p1={x:x1,y:y1};c._p2={x:x2,y:y2}});
- }
- addEventListener('resize',layout);
-
- // ---- 3D brain backdrop (centred, slow rotation, ambience only) ----------
+ if(!window.THREE)return;const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
+ const canvas=document.getElementById('c');
  const renderer=new THREE.WebGLRenderer({canvas,antialias:true,alpha:true});
  renderer.setPixelRatio(Math.min(devicePixelRatio,2));
- const scene=new THREE.Scene();scene.fog=new THREE.FogExp2(0x04060c,.032);
- const camera=new THREE.PerspectiveCamera(44,1,.1,100);
- const world=new THREE.Group();scene.add(world);
+ const scene=new THREE.Scene();scene.fog=new THREE.FogExp2(0x04060c,.03);
+ const camera=new THREE.PerspectiveCamera(44,1,.1,100);const world=new THREE.Group();scene.add(world);
  function glow(){const c=document.createElement('canvas');c.width=c.height=64;const x=c.getContext('2d');
-  const r=x.createRadialGradient(32,32,0,32,32,32);r.addColorStop(0,'#fff');r.addColorStop(.32,'rgba(255,255,255,.5)');
-  r.addColorStop(1,'rgba(255,255,255,0)');x.fillStyle=r;x.fillRect(0,0,64,64);return new THREE.CanvasTexture(c)}
- const G=glow();
- const RX=2.0,RY=2.6,RZ=1.6,GAP=.12;
+  const r=x.createRadialGradient(32,32,0,32,32,32);r.addColorStop(0,'#fff');r.addColorStop(.32,'rgba(255,255,255,.5)');r.addColorStop(1,'rgba(255,255,255,0)');x.fillStyle=r;x.fillRect(0,0,64,64);return new THREE.CanvasTexture(c)}
+ const G=glow();const RX=2.0,RY=2.55,RZ=1.55,GAP=.12;
  const nz=(x,y,z)=>Math.sin(x*2.3+Math.sin(y*1.9+z))+Math.sin(y*2.9+Math.cos(z*2.1+x))+Math.sin(z*2.5+Math.sin(x*1.7-y));
- function surf(side,dx,dy,dz,k){k=k||1;const f=1+.045*nz(dx*3,dy*3,dz*3);
-  return new THREE.Vector3(side*(GAP+RX*Math.pow(dx,.85)*f*k),RY*dy*f*k,RZ*dz*f*k)}
+ function surf(side,dx,dy,dz,k){k=k||1;const f=1+.045*nz(dx*3,dy*3,dz*3);return new THREE.Vector3(side*(GAP+RX*Math.pow(dx,.85)*f*k),RY*dy*f*k,RZ*dz*f*k)}
  function hemi(side,hex){const col=new THREE.Color(hex),hot=new THREE.Color(0xffffff),deep=col.clone().multiplyScalar(.32);
-  const N=innerWidth<700?5200:9000,P=[],C=[];
-  for(let i=0;i<N;i++){const u=Math.random()*2-1,t=Math.random()*6.283,s=Math.sqrt(1-u*u);
-   const dx=Math.abs(s*Math.cos(t)),dy=u,dz=s*Math.sin(t);const g=Math.sin(nz(dx*4.2,dy*4.2,dz*4.2)*3.2);
-   if(Math.abs(g)<.16&&Math.random()<.85)continue;const depth=Math.random()<.16?.8+Math.random()*.18:1;
-   const p=surf(side,dx,dy,dz,depth);P.push(p.x,p.y,p.z);
-   const c=depth<1?deep.clone():col.clone().lerp(hot,Math.max(0,g)*.3);C.push(c.r,c.g,c.b)}
-  const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(P,3));
-  geo.setAttribute('color',new THREE.Float32BufferAttribute(C,3));
+  const N=innerWidth<800?4200:7600,P=[],C=[];
+  for(let i=0;i<N;i++){const u=Math.random()*2-1,t=Math.random()*6.283,s=Math.sqrt(1-u*u);const dx=Math.abs(s*Math.cos(t)),dy=u,dz=s*Math.sin(t);
+   const g=Math.sin(nz(dx*4.2,dy*4.2,dz*4.2)*3.2);if(Math.abs(g)<.16&&Math.random()<.85)continue;const depth=Math.random()<.16?.8+Math.random()*.18:1;
+   const p=surf(side,dx,dy,dz,depth);P.push(p.x,p.y,p.z);const c=depth<1?deep.clone():col.clone().lerp(hot,Math.max(0,g)*.3);C.push(c.r,c.g,c.b)}
+  const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(P,3));geo.setAttribute('color',new THREE.Float32BufferAttribute(C,3));
   world.add(new THREE.Points(geo,new THREE.PointsMaterial({size:.042,map:G,vertexColors:true,transparent:true,opacity:.9,depthWrite:false,blending:THREE.AdditiveBlending})));
-  const lm=new THREE.LineBasicMaterial({color:hex,transparent:true,opacity:.24,blending:THREE.AdditiveBlending});
-  for(let j=0;j<46;j++){let d=new THREE.Vector3(Math.random(),Math.random()*2-1,Math.random()*2-1).normalize();d.x=Math.abs(d.x);
-   const pts=[];let a=Math.random()*6.28;
-   for(let s=0;s<20;s++){pts.push(surf(side,d.x,d.y,d.z,1.004));a+=nz(d.x*5,d.y*5,d.z*5)*.55;
-    d.add(new THREE.Vector3(Math.cos(a),Math.sin(a),Math.sin(a*.7)).multiplyScalar(.055)).normalize();d.x=Math.abs(d.x)}
+  const lm=new THREE.LineBasicMaterial({color:hex,transparent:true,opacity:.22,blending:THREE.AdditiveBlending});
+  for(let j=0;j<42;j++){let d=new THREE.Vector3(Math.random(),Math.random()*2-1,Math.random()*2-1).normalize();d.x=Math.abs(d.x);const pts=[];let a=Math.random()*6.28;
+   for(let s=0;s<18;s++){pts.push(surf(side,d.x,d.y,d.z,1.004));a+=nz(d.x*5,d.y*5,d.z*5)*.55;d.add(new THREE.Vector3(Math.cos(a),Math.sin(a),Math.sin(a*.7)).multiplyScalar(.055)).normalize();d.x=Math.abs(d.x)}
    world.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),lm))}}
  hemi(-1,0x39b6ff);hemi(1,0xffab3d);
- world.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(new THREE.CatmullRomCurve3([new THREE.Vector3(0,RY*.9,.3),new THREE.Vector3(0,0,RZ*.5),new THREE.Vector3(0,-RY*.9,.3)]).getPoints(36)),new THREE.LineBasicMaterial({color:0xeaf2ff,transparent:true,opacity:.3,blending:THREE.AdditiveBlending})));
-
- let camDist=9;
- function resize3(){const w=innerWidth,h=innerHeight;renderer.setSize(w,h,false);camera.aspect=w/h;
-  const vf=Math.tan(THREE.MathUtils.degToRad(camera.fov/2));camDist=Math.max(RY*1.2/vf,(RX+GAP)*1.35/(vf*camera.aspect))+RZ+1.2;camera.updateProjectionMatrix()}
- addEventListener('resize',resize3);
-
- // ---- One animation loop: slow brain spin + travelling wire pulses -------
+ let camDist=9;function resize(){const w=innerWidth,h=innerHeight;renderer.setSize(w,h,false);camera.aspect=w/h;
+  const vf=Math.tan(THREE.MathUtils.degToRad(camera.fov/2));camDist=Math.max(RY*1.25/vf,(RX+GAP)*1.4/(vf*camera.aspect))+RZ+1.4;camera.updateProjectionMatrix()}
+ addEventListener('resize',resize);
  let th=0;const clk=new THREE.Clock();
- function loop(){const dt=Math.min(clk.getDelta(),.05);
-  if(!reduce)th-=(2*Math.PI/60/60)*.1;                       // very slow spin
-  camera.position.set(Math.sin(th)*camDist,0,Math.cos(th)*camDist);camera.lookAt(0,0,0);
-  renderer.render(scene,camera);
-  chips.forEach(c=>{if(!c._p1)return;if(!reduce)c.t=(c.t+c.v*dt)%1;
-   const t=c.dir>0?c.t:1-c.t;const x=c._p1.x+(c._p2.x-c._p1.x)*t,y=c._p1.y+(c._p2.y-c._p1.y)*t;
-   c.pu.setAttribute('cx',x);c.pu.setAttribute('cy',y);
-   const edge=Math.min(t,1-t);c.pu.setAttribute('opacity',Math.max(.15,Math.min(1,edge*6)).toFixed(2))});
-  requestAnimationFrame(loop)}
- resize3();layout();loop();
- // Esc closes; +/- and arrows nudge the backdrop zoom (labels stay fixed).
- addEventListener('keydown',e=>{if(e.key==='Escape'){(window.parent&&window.parent!==window&&window.parent.postMessage('setayesh-brain-close','*'))||history.back();}});
+ function loop(){const dt=Math.min(clk.getDelta(),.05);if(!reduce)th-=(2*Math.PI/60/60)*.08;
+  camera.position.set(Math.sin(th)*camDist,0,Math.cos(th)*camDist);camera.lookAt(0,0,0);renderer.render(scene,camera);requestAnimationFrame(loop)}
+ resize();loop();
 })();
 </script>
 </body>
