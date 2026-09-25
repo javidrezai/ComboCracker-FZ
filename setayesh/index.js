@@ -234,7 +234,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.183';
+const APP_VERSION = '9.9.184';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -1326,8 +1326,80 @@ app.get('/api/diag', (req, res) => {
     },
     bakedBundlePresent: fs.existsSync(path.join(__dirname, 'assets.generated.js')),
     bakedBundleDisabled: fs.existsSync(path.join(__dirname, 'assets.generated.js.disabled')),
+    // The self-test: the truth about the parts جاوید keeps hitting, straight from
+    // HIS running server, so we never debug blind again. No secrets — only
+    // whether each piece works, and the real reason when it doesn't.
+    selfTest: selfTestReport(),
   });
 });
+
+// A no-secrets health snapshot of the things the owner actually complains about:
+// which brain the button opens, whether Telegram is live, which engines are
+// usable, and whether file delivery works end-to-end (a real zip is built and
+// re-opened). Everything here is derived from THIS process's live state.
+function selfTestReport() {
+  const out = { ok: true, checks: {} };
+  const fail = (k, msg) => { out.ok = false; out.checks[k] = { ok: false, note: msg }; };
+  const pass = (k, extra) => { out.checks[k] = Object.assign({ ok: true }, extra || {}); };
+
+  // 1) Brain — the button must open the 3D engine-brain, not the old file-map.
+  try {
+    const bm = fs.readFileSync(path.join(__dirname, 'public', 'brainmap.js'), 'utf8');
+    const owns = /window\.openBrain\s*=\s*open/.test(bm) && /brainmap3d\.html/.test(bm);
+    const has3d = fs.existsSync(path.join(__dirname, 'public', 'brainmap3d.html'));
+    if (owns && has3d) pass('brain', { opens: '3D engine-brain (brainmap3d.html)' });
+    else fail('brain', !has3d ? 'brainmap3d.html غایب است' : 'brainmap.js هنوز مغزِ سه‌بعدی را باز نمی‌کند');
+  } catch (e) { fail('brain', 'خواندن brainmap.js نشد: ' + e.message); }
+
+  // 2) Telegram — configured? chat whitelisted? actively polling?
+  try {
+    const st = telegram.status();
+    if (!st.configured) fail('telegram', 'توکنِ ربات تنظیم نشده (مرکز کنترل ← تلگرام)');
+    else if (!st.chatSet) fail('telegram', 'Chat ID ثبت نشده — یک پیام به ربات بده تا شناسه‌ات را بدهد');
+    else if (!st.polling) fail('telegram', 'ربات در حال گوش‌دادن نیست (polling خاموش) — برنامه را ری‌استارت کن');
+    else pass('telegram', { note: 'وصل و در حال گوش‌دادن' });
+  } catch (e) { fail('telegram', 'وضعیتِ تلگرام خوانده نشد: ' + e.message); }
+
+  // 3) Engines — how many are configured and how many are usable right now, plus
+  // the real reason for any that are set but currently unusable (the exact thing
+  // that makes "زیپ بده" fail: a dead/'429 quota' key).
+  try {
+    const now = Date.now();
+    const ids = Object.keys(PROVIDERS).filter((id) => id !== 'brain' && id !== 'local');
+    const configured = ids.filter((id) => { try { return isConfigured(id); } catch (e) { return false; } });
+    const detail = {};
+    let usable = 0;
+    for (const id of configured) {
+      const h = engineHealth[id] || {};
+      const cooling = (h.cooldownUntil || 0) > now;
+      const ok = !cooling && !h.quarantined;
+      if (ok) usable++;
+      detail[id] = ok ? 'usable'
+        : (h.quarantined ? ('quarantined' + (h.lastStatus ? ' (' + h.lastStatus + ')' : ''))
+          : ('cooling' + (h.lastStatus ? ' (' + h.lastStatus + ')' : '')));
+    }
+    const localOn = (() => { try { return isConfigured('local'); } catch (e) { return false; } })();
+    const brainOn = (() => { try { return isConfigured('brain'); } catch (e) { return false; } })();
+    if (configured.length === 0 && !localOn && !brainOn) fail('engines', 'هیچ موتوری تنظیم نشده — یک کلید API اضافه کن');
+    else if (usable === 0 && !localOn && !brainOn) fail('engines', 'همهٔ کلیدها الان از کار افتاده‌اند (منقضی/سقف) — در مرکز کنترل نو کن: ' + JSON.stringify(detail));
+    else pass('engines', { configured: configured.length, usableNow: usable, localOn, brainOn, detail });
+  } catch (e) { fail('engines', 'بررسیِ موتورها نشد: ' + e.message); }
+
+  // 4) File delivery — build a real zip on disk and re-open it. This proves
+  // "زیپ بده" can actually produce a file here (writable OUT_DIR, working zipper).
+  try {
+    const dir = newJobDir();
+    const entries = [{ name: 'selftest.txt', data: 'ok ' + Date.now() }];
+    const zipPath = path.join(dir, 'selftest.zip');
+    fs.writeFileSync(zipPath, buildZip(entries));
+    const good = verifyDownloadFile(zipPath, 1);
+    try { fs.rmSync(dir, { recursive: true, force: true }); } catch (e) {}
+    if (good) pass('fileDelivery', { note: 'زیپِ آزمایشی ساخته و بازخوانی شد' });
+    else fail('fileDelivery', 'زیپِ آزمایشی ساخته شد ولی سالم باز نشد');
+  } catch (e) { fail('fileDelivery', 'ساختِ فایل روی این سیستم نشد: ' + e.message); }
+
+  return out;
+}
 
 // ---- Setayesh's face (the brain cover + the app logos) -------------------
 // The owner picks it: either one of the generated "luxury" looks (made free by
@@ -6263,6 +6335,27 @@ async function runTelegramTurn(text, chatId) {
     const p = pendingApprovals();
     if (!p.length) return 'هیچ درخواستِ تأییدی در انتظار نیست.';
     return 'درخواست‌های در انتظارِ تأیید:\n' + p.map((a) => `• ${a.title}\n  تأیید: /approve ${a.id}   رد: /reject ${a.id}`).join('\n');
+  }
+  // Self-test from the phone: «/diag» or «وضعیت»/«تست» → a short, honest report of
+  // what works and what doesn't on the running server (brain, telegram, engines,
+  // file delivery). This is how جاوید gets ground truth without a browser.
+  if (/^\/diag$/i.test(msg) || /^(وضعیت|تست|سلامت|چکاپ)$/.test(msg)) {
+    try {
+      const r = selfTestReport();
+      const line = (k, label) => {
+        const c = r.checks[k] || {};
+        const mark = c.ok ? '✅' : '❌';
+        let extra = c.note || '';
+        if (k === 'engines' && c.ok) extra = `${c.usableNow} از ${c.configured} موتور آماده`;
+        return `${mark} ${label}${extra ? ' — ' + extra : ''}`;
+      };
+      return `وضعیتِ ستایش (نسخه ${APP_VERSION}):\n`
+        + line('brain', 'مغز') + '\n'
+        + line('telegram', 'تلگرام') + '\n'
+        + line('engines', 'موتورها') + '\n'
+        + line('fileDelivery', 'ساختِ فایل') + '\n'
+        + (r.ok ? 'همه‌چیز سالم است.' : 'موردِ قرمز را از مرکز کنترل درست کن.');
+    } catch (e) { return 'وضعیت خوانده نشد: ' + (e.message || ''); }
   }
   // Clear-chats command (owner asked for a way to clear chats from Telegram).
   // "/clear" or a plain "چت‌ها را پاک کن" wipes EVERYTHING: the Telegram

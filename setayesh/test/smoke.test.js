@@ -143,6 +143,20 @@ test('telegram: exposes sendDocument for real file delivery', () => {
   assert.ok(/__TG_TIMEOUT__/.test(tsrc), 'a hung turn must not freeze the poller');
 });
 
+// The self-test is the tool that ends blind debugging: /api/diag reports, from
+// the running server, whether the brain, Telegram, engines and file delivery
+// actually work. Guard its shape and the two checks that are deterministic here.
+test('diag self-test reports brain + file delivery working', async () => {
+  const d = await (await fetch(BASE + '/api/diag')).json();
+  assert.ok(d.selfTest && d.selfTest.checks, 'diag must include a self-test');
+  const c = d.selfTest.checks;
+  for (const k of ['brain', 'telegram', 'engines', 'fileDelivery']) {
+    assert.ok(c[k] && typeof c[k].ok === 'boolean', 'self-test must cover ' + k);
+  }
+  assert.equal(c.brain.ok, true, 'brain must open the 3D engine-brain');
+  assert.equal(c.fileDelivery.ok, true, 'file delivery must build+verify a zip here');
+});
+
 test('served shell injects the version into asset URLs (no __VER__ left)', async () => {
   const html = await (await fetch(BASE + '/')).text();
   assert.ok(!html.includes('__VER__'), 'shell still contains the __VER__ placeholder');
