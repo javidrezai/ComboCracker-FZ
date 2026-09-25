@@ -1,4 +1,4 @@
-/* SETAYESH_BUILD 9.9.180 */
+/* SETAYESH_BUILD 9.9.181 */
 (function(){
 'use strict';
 
@@ -1427,7 +1427,9 @@ async function enterApp(){
       { var _sb=$('settingsBtn'); if(_sb)_sb.style.display='none'; }
       // One brain button, on the main page (topbar) — the sidebar copy is gone.
       { var _bm=$('brainMapBtn'); if(_bm)_bm.style.display='none'; }
-      { var _bt=$('brainTopBtn'); if(_bt)_bt.style.display=CFG.isAdmin?'inline-flex':'none'; }
+      // The brain view is open to EVERY member (the owner's request), not just
+      // the admin — the topbar brain button always shows.
+      { var _bt=$('brainTopBtn'); if(_bt)_bt.style.display='inline-flex'; }
       $('learnBtn').style.display=CFG.isAdmin?'grid':'none';
       $('ccBtn').style.display=CFG.isAdmin?'grid':'none';
       // The admin keeps the full interface — every tool where it was. Only
@@ -1916,9 +1918,10 @@ setInterval(refreshBoardBadge, 120000);
 document.addEventListener('visibilitychange',function(){ if(!document.hidden){refreshBoardBadge(); if(token)syncChatsFromServer();} });
 /* Keep every device/login-link on this account converged without the owner
    having to switch tabs: while the page is visible and logged in, pull+merge the
-   server chats every 25s (the server merge is last-write-wins, so this is safe
-   and cheap). This is the fix for "chats aren't the same on phone and PC". */
-setInterval(function(){ if(!document.hidden && token) syncChatsFromServer(); }, 25000);
+   server chats every 8s (the server merge is last-write-wins, so this is safe
+   and cheap on a LAN). The owner asked it to "auto-match with the server every
+   few moments" — this is the fix for "chats aren't the same on phone and PC". */
+setInterval(function(){ if(!document.hidden && token) syncChatsFromServer(); }, 8000);
 
 /* ===== Control centre (admin): engines, users, privacy, capabilities ===== */
 var CC = { settings:null, dirty:{} };
@@ -4322,7 +4325,8 @@ function tidySidebar(){
   // rows are flex; the foot .ibtn buttons are grid (matching the init).
   var admin=!!(CFG&&CFG.isAdmin);
   ['toolkitBtn','devicesBtn','boardBtn'].forEach(function(id){ var e=$(id); if(e)e.style.setProperty('display','flex','important'); });
-  if($('brainMapBtn'))$('brainMapBtn').style.setProperty('display', admin?'flex':'none','important');
+  // Brain map/view is open to everyone (owner's request), so it shows for all.
+  if($('brainMapBtn'))$('brainMapBtn').style.setProperty('display','flex','important');
   ['adminBtn','ccBtn','learnBtn'].forEach(function(id){ var e=$(id); if(e)e.style.setProperty('display', admin?'grid':'none','important'); });
 }
 
@@ -4368,9 +4372,11 @@ function openSheet(){
   var admin=!!(CFG&&CFG.isAdmin);
   // shBrain lives here too: on a phone the top-right brain button is squeezed
   // out of the cramped topbar, so بابا reported "the brain isn't visible on the
-  // phone". The thumb-reachable drawer is where a phone user looks — show it to
-  // the admin here as well as in the topbar.
-  ['shBrain','shCC','shLearn','shUsers','shConnectors','shComms','shAdminTitle'].forEach(function(id){
+  // phone". The thumb-reachable drawer is where a phone user looks. The brain is
+  // open to EVERY member (owner's request), so shBrain always shows; the rest of
+  // this row (control centre, learn, users, connectors…) stays admin-only.
+  { var _shb=$('shBrain'); if(_shb)_shb.style.display=''; }
+  ['shCC','shLearn','shUsers','shConnectors','shComms','shAdminTitle'].forEach(function(id){
     var e=$(id); if(e)e.style.display=admin?'':'none';
   });
   $('sheet').classList.add('on'); $('sheetScrim').classList.add('on');

@@ -234,7 +234,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.180';
+const APP_VERSION = '9.9.181';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -806,6 +806,18 @@ function isAdmin(username) {
 function deviceLevelOf(username) {
   if (isAdmin(username)) return 2;
   return deviceLevels.get(username) ?? 0;
+}
+
+// Access level (سطح دسترسی) — the owner's tier, where LOWER means MORE freedom
+// (the opposite of deviceLevel): 0 = admin (no restrictions at all, per the
+// owner's standing rule), 1 = an adult member, 2 = a child (most protected).
+// This is a distinct concept from deviceLevel (hardware control) and never
+// weakens it; it exists so the whole house shares one clear access ladder.
+const ACCESS_ADMIN = 0, ACCESS_ADULT = 1, ACCESS_CHILD = 2;
+function accessLevelOf(username) {
+  if (isAdmin(username)) return ACCESS_ADMIN;
+  if (safeUsers.has(username)) return ACCESS_CHILD;
+  return ACCESS_ADULT;
 }
 // Express guard: `requireDeviceLevel(1)` for anything that only reads,
 // `requireDeviceLevel(2)` for anything that changes a device.
@@ -1414,6 +1426,9 @@ app.get('/api/config', requireAuth, (req, res) => {
     // every call — this value is a convenience, never the guard.
     deviceLevel: deviceLevelOf(req.username),
     deviceLevelLabel: DEVICE_LEVELS[deviceLevelOf(req.username)],
+    // Access tier (0 admin / 1 adult / 2 child) — see accessLevelOf. The brain
+    // view is open to everyone regardless of tier (the owner's request).
+    accessLevel: accessLevelOf(req.username),
     net: localLanIps().map(ip => `http://${ip}:${PORT}`),
   });
 });

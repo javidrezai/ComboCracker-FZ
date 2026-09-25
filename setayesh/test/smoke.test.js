@@ -883,6 +883,24 @@ test('level 2 may touch, and the level is what decides — not the admin flag', 
   assert.equal((await api('/api/admin/users', { token: u })).status, 403);
 });
 
+// Access tier (سطح دسترسی), the owner's ladder where LOWER = MORE freedom:
+// admin 0, adult 1, child 2. Distinct from deviceLevel and never weakening it.
+test('access level: admin 0, adult 1, child 2', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  // Admin.
+  const adminCfg = await (await api('/api/config', { token })).json();
+  assert.equal(adminCfg.accessLevel, 0, 'admin must be access level 0');
+  // Adult (ordinary account, safe=false).
+  const adult = await mkUser(token, 'acctadult', 'pass12345');
+  const adultCfg = await (await api('/api/config', { token: adult })).json();
+  assert.equal(adultCfg.accessLevel, 1, 'an adult member must be access level 1');
+  // Child (safe account).
+  await api('/api/admin/users', { method: 'POST', token, body: { username: 'acctkid', password: 'pass12345', safe: true } });
+  const kid = (await (await api('/api/login', { method: 'POST', body: { username: 'acctkid', password: 'pass12345' } })).json()).token;
+  const kidCfg = await (await api('/api/config', { token: kid })).json();
+  assert.equal(kidCfg.accessLevel, 2, 'a child (safe) account must be access level 2');
+});
+
 test('the father cannot be demoted out of his own permission system', async () => {
   const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
   const r = await api('/api/admin/device-level', { method: 'POST', token, body: { username: 'admin', level: 0 } });
