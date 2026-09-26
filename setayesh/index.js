@@ -100,6 +100,7 @@ const net = require('net');
 const { versionGreater, localLanIps } = require('./netutil');
 const { readZip, crc32, buildZip } = require('./ziputil');
 const { wantsFileDelivery, extractCodeFiles } = require('./autopack');
+const breachcheck = require('./breachcheck');
 const guardrail = require('./autonomy');
 const core = require('./core');
 const { isUpdatablePath, checkJsSyntax } = require('./srcguard');
@@ -234,7 +235,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.191';
+const APP_VERSION = '9.9.192';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -1506,6 +1507,8 @@ app.get('/api/config', requireAuth, (req, res) => {
     // Access tier (0 admin / 1 adult / 2 child) — see accessLevelOf. The brain
     // view is open to everyone regardless of tier (the owner's request).
     accessLevel: accessLevelOf(req.username),
+    // Deep Mode state (admin toggle) so the UI can show it on/off.
+    deepMode: deepModeOn(),
     net: localLanIps().map(ip => `http://${ip}:${PORT}`),
   });
 });
@@ -2830,6 +2833,28 @@ async function dispatchTool(name, input, ctx) {
         return await netguard.networkStatus({});
       case 'emergency_internet':
         return await netguard.emergencyPlan();
+      case 'check_breach': {
+        // Legitimate breach check (Have I Been Pwned). Admin-only — it is about
+        // the owner's own credentials. No dark web, nothing illegal.
+        if (!ctx.isAdmin) return { error: 'بررسیِ نشتِ اطلاعات فقط برای حسابِ مدیر است.' };
+        const out = {};
+        try {
+          if (input.password) {
+            const p = await breachcheck.pwnedPassword(String(input.password));
+            out.password = p.count > 0
+              ? { exposed: true, count: p.count, note: `این رمز در ${p.count} رخنهٔ شناخته‌شده دیده شده — فوراً عوضش کن و جای دیگری استفاده نکن.` }
+              : { exposed: false, note: 'این رمز در رخنه‌های شناخته‌شده پیدا نشد (ولی باز هم رمزِ قوی و یکتا بهتر است).' };
+          }
+          if (input.email) {
+            const e = await breachcheck.emailBreaches(String(input.email), cfg.KEY_HIBP);
+            if (e.needsKey) out.email = { needsKey: true, note: 'برای بررسیِ ایمیل، کلیدِ Have I Been Pwned لازم است — در «مرکز کنترل» کلیدِ HIBP را اضافه کن. (بررسیِ رمز بدونِ کلید کار می‌کند.)' };
+            else if (e.notFound) out.email = { exposed: false, note: 'این ایمیل در رخنه‌های شناخته‌شده پیدا نشد.' };
+            else out.email = { exposed: true, count: e.count, breaches: e.breaches.map((b) => ({ name: b.Title, date: b.BreachDate, leaked: b.DataClasses })), note: `این ایمیل در ${e.count} رخنه بوده — رمزهایی که آنجا استفاده کردی را عوض کن.` };
+          }
+          if (!input.password && !input.email) return { error: 'یک رمز یا ایمیل بده تا بررسی کنم.' };
+          return out;
+        } catch (e) { return { error: 'بررسی نشد: ' + (e.message || 'خطای نامشخص') }; }
+      }
 
       // ---- files on this machine -------------------------------------------
       // Every one of these is admin-gated in toolsFor(); bigfile.js refuses
@@ -2943,6 +2968,8 @@ function toolsFor(ctx) {
     // The self-map is just descriptions, so the admin can always ask "where is
     // X / what does Y do" even when code self-editing is switched off.
     if (t.name === 'self_map') return !!(ctx && ctx.isAdmin);
+    // Breach check is about the owner's own credentials — admin only.
+    if (t.name === 'check_breach') return !!(ctx && ctx.isAdmin);
     if (t.name === 'read_own_source' || t.name === 'propose_change') {
       return !!(ctx && ctx.isAdmin) && SELF_EDIT_ENABLED;
     }
@@ -2989,7 +3016,7 @@ function toolsFor(ctx) {
 async function callAnthropicWithTools(providerId, model, systemPrompt, messages, ctx) {
   const tools = toolsFor(ctx);
   let convo = [...messages];
-  for (let round = 0; round < 4; round++) {
+  for (let round = 0; round < deepRounds(); round++) {
     const res = await fetchWithTimeout(`${baseUrlFor(providerId)}/messages`, {
       method: 'POST',
       timeoutMs: providerTimeout(providerId),
@@ -3043,7 +3070,7 @@ async function callOpenAiWithTools(providerId, model, systemPrompt, messages, ct
   if (providerId === 'openrouter') headers['X-Title'] = 'Setayesh AI';
 
   let convo = [{ role: 'system', content: systemPrompt }, ...messages];
-  for (let round = 0; round < 4; round++) {
+  for (let round = 0; round < deepRounds(); round++) {
     const res = await fetchWithTimeout(`${baseUrlFor(providerId)}/chat/completions`, {
       method: 'POST',
       timeoutMs: providerTimeout(providerId),
@@ -3332,6 +3359,35 @@ function smartModeOn() {
   return !/^(0|false|no|off|manual|خاموش|دستی)$/i.test(String(cfg.ENGINE_MODE || 'smart').trim());
 }
 
+// Deep Mode — "هوشِ عمیق". OFF by default. When ON, a hard/multi-step request is
+// steered to the strongest REASONING engine (its best model, not the fast one)
+// and given a bigger tool-call budget + a plan-then-execute instruction, so the
+// agent can actually carry a complex job to the end. Everyday chat is unchanged
+// (it would only burn quota), so deep only kicks in for genuinely complex asks.
+function deepModeOn() {
+  return /^(1|true|yes|on|روشن)$/i.test(String(cfg.DEEP_MODE || '').trim());
+}
+// Strongest reasoning engines first — used only when Deep Mode wants depth.
+const DEEP_ENGINE_ORDER = ['anthropic', 'openai', 'gemini', 'openrouter', 'groq', 'cerebras', 'mistral'];
+function bestDeepEngine(opts) {
+  opts = opts || {};
+  for (const id of DEEP_ENGINE_ORDER) {
+    if (isConfigured(id) && engineUsable(id) && !(opts.needsVision && !PROVIDERS[id].vision)) return id;
+  }
+  // fall back to the normal ranking if none of the preferred set is usable
+  const ranked = rankEngines(opts.tags || ['general'], { needsVision: opts.needsVision });
+  return ranked[0] || null;
+}
+// Is this a request that deserves deep treatment? Long, or clearly multi-step.
+function wantsDeep(message, tags) {
+  if (!deepModeOn()) return false;
+  const m = String(message || '');
+  if (m.length > 320) return true;
+  if (Array.isArray(tags) && (tags.includes('code') || tags.includes('tools'))) return true;
+  return /\b(plan|design|architect|refactor|analy[sz]e|step[- ]by[- ]step|multi[- ]step)\b|بساز.*پروژه|پروژه.*بساز|تحلیل|برنامه[‌ ]?ریزی|قدم[ ‌]به[ ‌]قدم|چند\s*مرحله|طراحی\s*کن|کاملش?\s*کن/i.test(m);
+}
+function deepRounds() { return deepModeOn() ? 8 : 4; }
+
 // The active watcher behind smart mode. It re-tests ONLY the engines that are
 // currently sidelined (cooling or quarantined) with one tiny request — a
 // recovered one is cleared and rejoins the rotation automatically. Healthy
@@ -3439,6 +3495,30 @@ app.post('/api/admin/engine-health/reset', requireAuth, requireAdmin, (req, res)
   }
   saveEngineHealth();
   res.json({ ok: true });
+});
+
+// Deep Mode toggle — takes effect immediately (updates the live cfg) and is
+// persisted so it survives a restart.
+app.post('/api/admin/deep-mode', requireAuth, requireAdmin, (req, res) => {
+  const on = /^(1|true|yes|on|روشن)$/i.test(String((req.body || {}).on));
+  cfg.DEEP_MODE = on ? '1' : '0';
+  try { writeConfigFile({ DEEP_MODE: cfg.DEEP_MODE }); } catch (e) {}
+  res.json({ ok: true, deepMode: deepModeOn() });
+});
+
+// Breach check — legitimate "has my password/email leaked?" via Have I Been
+// Pwned. Password check is keyless + privacy-preserving; email needs the HIBP key.
+app.post('/api/admin/breach/password', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const p = await breachcheck.pwnedPassword(String((req.body || {}).password || ''));
+    res.json({ ok: true, exposed: p.count > 0, count: p.count });
+  } catch (e) { res.status(502).json({ error: e.message || 'بررسی نشد' }); }
+});
+app.post('/api/admin/breach/email', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const e = await breachcheck.emailBreaches(String((req.body || {}).email || ''), cfg.KEY_HIBP);
+    res.json(Object.assign({ ok: true }, e));
+  } catch (err) { res.status(502).json({ error: err.message || 'بررسی نشد' }); }
 });
 
 // Approval gateway — list pending/recent requests and decide them from the app.
@@ -3568,7 +3648,14 @@ function resolveTarget(providerId, model, username, opts) {
   // a file, the calendar, the mailbox) or read an image. Those always need a
   // tool/vision-capable cloud engine.
   const canLocal = !opts.needsVision && !tags.includes('tools') && !tags.includes('current') && !tags.includes('vision');
-  if (!pin && !asked) {
+  // Deep Mode: a hard/multi-step ask goes to the strongest reasoning engine,
+  // ahead of the normal Gemini-first order — but only when nothing was pinned or
+  // explicitly picked, and only for genuinely complex requests.
+  const deep = wantsDeep(opts.message, tags);
+  if (!pin && !asked && deep) {
+    const de = bestDeepEngine({ tags, needsVision: opts.needsVision });
+    if (de && isConfigured(de)) id = de;
+  } else if (!pin && !asked) {
     if (localFirst && canLocal && isConfigured('local') && engineUsable('local')) {
       id = 'local';                     // owner opted into on-device-first
     } else {
@@ -3612,9 +3699,15 @@ function resolveTarget(providerId, model, username, opts) {
     const pm = models.find((m) => m.id === picked);
     if (pm && pm.best === 'code' && generalModel) picked = generalModel;
   }
-  const chosen = picked || autoModel || (models[0] || {}).id;
+  // Deep Mode picks the engine's STRONGEST model (not the fast/cheap general
+  // one) when the owner hasn't pinned a specific model — that is the whole point
+  // of "deep". Only applies to a known strong model that this engine actually has.
+  const DEEP_MODELS = { anthropic: 'claude-sonnet-5', openai: 'gpt-4o' };
+  let deepModel = null;
+  if (deep && !picked && DEEP_MODELS[id] && models.some((m) => m.id === DEEP_MODELS[id])) deepModel = DEEP_MODELS[id];
+  const chosen = picked || deepModel || autoModel || (models[0] || {}).id;
   if (!chosen) throw Object.assign(new Error('مدلی انتخاب نشده است.'), { userFacing: true });
-  return { id, model: chosen, pinned: !!pin };
+  return { id, model: chosen, pinned: !!pin, deep };
 }
 
 
@@ -3872,7 +3965,7 @@ app.post('/api/chat', requireAuth, chatLimiter, upload.array('files', 8), async 
   let target;
   try {
     target = resolveTarget((req.body.provider || '').toLowerCase(), req.body.model, req.username,
-      { tags: askTags, needsVision: hasImage });
+      { tags: askTags, needsVision: hasImage, message });
   } catch (err) {
     return res.status(400).json({ error: err.message });
   }
@@ -3965,6 +4058,18 @@ app.post('/api/chat', requireAuth, chatLimiter, upload.array('files', 8), async 
     // Observe usage shape (not content) so Setayesh can suggest improvements.
     try { noteUsage('mode', req.body.mode || 'chat'); noteUsage('event', 'chat'); } catch (e) {}
     let systemPrompt = promptFor(req.username, req.body.mode, safe, req.body.codelib, message);
+    // Deep Mode: for a genuinely complex ask, tell the model to work like a
+    // careful agent — plan the steps, use the tools to actually do them, check
+    // the result, then answer. This pairs with the stronger engine/model and the
+    // larger tool-call budget resolveTarget/deepRounds() already gave this turn.
+    if (wantsDeep(message, askTags)) {
+      systemPrompt += '\n\n=== حالتِ عمیق (Deep Mode) ===\n'
+        + 'این یک کارِ سخت/چندمرحله‌ای است. مثلِ یک عاملِ دقیق کار کن:\n'
+        + '۱) اول در ذهنت نقشهٔ کوتاهِ مراحل را بکش.\n'
+        + '۲) هر مرحله را با ابزارهای واقعی انجام بده (کد را اجرا کن، فایل را بساز، وب را جستجو کن) — فقط حرف نزن.\n'
+        + '۳) نتیجهٔ هر مرحله را بررسی کن؛ اگر خطا بود، خودت درست کن و دوباره امتحان کن.\n'
+        + '۴) وقتی کار واقعاً تمام و درست شد، جوابِ نهاییِ تمیز را بده (و اگر فایل خواست، با make_files تحویل بده).';
+    }
     // Awareness: every turn, run the internal search engine on the question and
     // fold the few most relevant things Setayesh already knows (long-term memory,
     // past chats, the knowledge vault, her own repos) into the prompt — so she
@@ -6361,6 +6466,18 @@ async function runTelegramTurn(text, chatId) {
         + line('fileDelivery', 'ساختِ فایل') + '\n'
         + (r.ok ? 'همه‌چیز سالم است.' : 'موردِ قرمز را از مرکز کنترل درست کن.');
     } catch (e) { return 'وضعیت خوانده نشد: ' + (e.message || ''); }
+  }
+  // Deep Mode from Telegram: "/deep on" / "/deep off" (or حالت عمیق روشن/خاموش).
+  {
+    const dm = /^\/deep\s+(on|off)$/i.exec(msg) || /حالت.?عمیق.*(روشن|خاموش)/.exec(msg);
+    if (dm) {
+      const on = /on|روشن/i.test(dm[1]);
+      cfg.DEEP_MODE = on ? '1' : '0';
+      try { writeConfigFile({ DEEP_MODE: cfg.DEEP_MODE }); } catch (e) {}
+      return on ? 'حالتِ عمیق روشن شد — کارهای سخت به قوی‌ترین موتور می‌روند و چندمرحله‌ای پیش می‌روند (کمی کندتر و پرهزینه‌تر).'
+                : 'حالتِ عمیق خاموش شد — همه‌چیز مثلِ قبل، سریع و کم‌هزینه.';
+    }
+    if (/^\/deep$/i.test(msg)) return 'حالتِ عمیق الان ' + (deepModeOn() ? 'روشن' : 'خاموش') + ' است. برای تغییر: «/deep on» یا «/deep off».';
   }
   // Clear-chats command (owner asked for a way to clear chats from Telegram).
   // "/clear" or a plain "چت‌ها را پاک کن" wipes EVERYTHING: the Telegram

@@ -208,6 +208,17 @@ const TOOLS_SPEC = [
     },
   },
   {
+    name: 'check_breach',
+    description: "Check whether a PASSWORD or an EMAIL has appeared in known public data breaches, using legitimate public services (Have I Been Pwned). The password check is privacy-preserving (k-anonymity: only the first 5 chars of the SHA-1 hash leave the machine) and needs no key. The email check needs the owner's HIBP API key. Use when the user asks 'has my password/email leaked?', 'is X a safe password?', or wants a breach check. Never invent a result — report exactly what the service returns.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        password: { type: 'string', description: 'A password to test for exposure (optional).' },
+        email: { type: 'string', description: 'An email address to look up in breaches (optional; needs the HIBP key).' },
+      },
+    },
+  },
+  {
     name: 'web_search',
     description: "Search the internet and get back result titles, URLs, and snippets. Use this to find a specific page, current information, documentation, a library, a price, or anything that may have changed since your training. Follow up with web_fetch on the most promising result to read it properly.",
     input_schema: {

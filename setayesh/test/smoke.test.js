@@ -778,6 +778,38 @@ test('joining a network needs the owner to name the network he approves', async 
   assert.equal(wrong.needsApproval, true, 'approving one network must not approve another');
 });
 
+test('breach check: parses the pwned-passwords range response (k-anonymity)', () => {
+  const bc = require(path.join(ROOT, 'breachcheck.js'));
+  // "password" → SHA1 upper: 5BAA61E4C9B93F3F0682250B6CF8331B7EE68FD8;
+  // prefix 5BAA6, suffix 1E4C9B93F3F0682250B6CF8331B7EE68FD8.
+  assert.equal(bc.sha1Upper('password'), '5BAA61E4C9B93F3F0682250B6CF8331B7EE68FD8');
+  const body = '1E4C9B93F3F0682250B6CF8331B7EE68FD8:99999\r\nFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF:3';
+  assert.equal(bc.parseRange(body, '1E4C9B93F3F0682250B6CF8331B7EE68FD8'), 99999, 'must find the matching suffix count');
+  assert.equal(bc.parseRange(body, '0000000000000000000000000000000000'), 0, 'a suffix that is not present means not exposed');
+  // Password check via an injected fake fetch — no real network in the test.
+  return bc.pwnedPassword('password', { fetch: async () => ({ ok: true, text: async () => body }) })
+    .then((r) => { assert.equal(r.count, 99999); assert.equal(r.prefix, '5BAA6'); });
+});
+
+test('deep mode: toggles on and off and /api/config reflects it', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  let r = await (await api('/api/admin/deep-mode', { method: 'POST', token, body: { on: true } })).json();
+  assert.equal(r.deepMode, true, 'deep mode should turn on');
+  let cfg = await (await api('/api/config', { token })).json();
+  assert.equal(cfg.deepMode, true, 'config must report deep mode on');
+  r = await (await api('/api/admin/deep-mode', { method: 'POST', token, body: { on: false } })).json();
+  assert.equal(r.deepMode, false, 'deep mode should turn off');
+  cfg = await (await api('/api/config', { token })).json();
+  assert.equal(cfg.deepMode, false, 'config must report deep mode off');
+});
+
+test('breach check: email lookup asks for a key when none is set', async () => {
+  const bc = require(path.join(ROOT, 'breachcheck.js'));
+  const r = await bc.emailBreaches('someone@example.com', '');
+  assert.equal(r.needsKey, true, 'without an HIBP key it must say so, not pretend');
+  await assert.rejects(() => bc.emailBreaches('not-an-email', 'k'), /ایمیل/);
+});
+
 test('the file threat scanner catches a program disguised as a document', () => {
   const netguard = require(path.join(ROOT, 'netguard.js'));
   const p = path.join(tmp, 'invoice.pdf');

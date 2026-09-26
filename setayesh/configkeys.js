@@ -20,6 +20,8 @@ const EDITABLE_KEYS = {
   KEY_OPENAI:    { secret: true,  label: 'OpenAI' },
   KEY_BRAVE:     { secret: true,  label: 'Brave Search' },
   KEY_TAVILY:    { secret: true,  label: 'Tavily Search' },
+  KEY_HIBP:      { secret: true,  label: 'Have I Been Pwned — کلید (اختیاری، برای بررسیِ نشتِ ایمیل؛ بررسیِ رمز بدونِ کلید کار می‌کند)' },
+  DEEP_MODE:     { secret: false, label: 'حالتِ عمیق (Deep Mode): کارهای سخت را به قوی‌ترین موتور می‌سپارد و چندمرحله‌ای پیش می‌برد (۱=روشن، ۰=خاموش)' },
   PROVIDER:      { secret: false, label: 'موتور پیش‌فرض' },
   ENABLE_LOCAL:  { secret: false, label: 'موتور محلی (Ollama)' },
   ENABLE_RESEARCH: { secret: false, label: 'تحقیق و یادگیریِ خودکار (۱=همیشه روشن، ۰=خاموش)' },
