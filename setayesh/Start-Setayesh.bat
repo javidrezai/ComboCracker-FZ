@@ -9,6 +9,16 @@ echo      Starting Setayesh AI
 echo   ============================================
 echo.
 
+rem --- Warn if running from OneDrive: it reverts updated files, so updates
+rem     never stick. Point to the one-click fix. ---
+echo "%~dp0" | findstr /I "OneDrive" >nul
+if not errorlevel 1 (
+  echo   [!] WARNING: Setayesh is inside a OneDrive folder.
+  echo       OneDrive keeps restoring the old files, so updates will NOT stay.
+  echo       Fix it once: double-click  Move-Out-Of-OneDrive.bat  in this folder.
+  echo.
+)
+
 rem --- Node.js must be installed ---
 where node >nul 2>nul
 if errorlevel 1 (
