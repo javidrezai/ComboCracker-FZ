@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- SETAYESH_BUILD 9.9.198 -->
+<!-- SETAYESH_BUILD 9.9.199 -->
 <html lang="fa" dir="rtl">
 <head>
 <meta charset="UTF-8">
@@ -352,6 +352,13 @@
   <button class="sheet-item" id="shChats">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
     <span class="si-txt" data-i18n="sb_chats">گفتگوهای قبلی</span>
+  </button>
+  <!-- Agent command centre — admin only. The top-right «عامل» button is squeezed
+       out of the cramped phone topbar, so it must live in the thumb drawer too,
+       exactly like shBrain. Shown for the admin in openSheet(). -->
+  <button class="sheet-item" id="shAgent" style="display:none">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/></svg>
+    <span class="si-txt"><span data-i18n="sb_agent">عاملِ ستایش</span><span class="si-sub" data-i18n="sb_agent_s">حالتِ عمیق، نشتِ اطلاعات، مغز، شخصی‌سازی</span></span>
   </button>
 
   <button class="sheet-item" id="shAttach">
@@ -1212,7 +1219,14 @@
 <style>
 .apanel{position:fixed;inset:0;z-index:650;display:none;background:rgba(4,6,12,.72);backdrop-filter:blur(6px)}
 .apanel.on{display:flex;align-items:flex-start;justify-content:center}
-.apanel .sheet{margin-top:min(8vh,70px);width:min(560px,94vw);max-height:86vh;overflow:auto;
+.apanel .sheet{
+ /* Neutralize the GLOBAL mobile bottom-drawer ".sheet" (position:fixed;bottom:0;
+    transform:translateY(103%)) — the agent/customization panels reuse the class
+    name but are centered dialogs, not a slide-up drawer. Without this the sheet
+    inherited translateY(103%) and was shoved off-screen, so opening the عامل
+    panel showed only the dark overlay (the "black screen"). */
+ position:relative;transform:none;bottom:auto;inset-inline:auto;z-index:auto;
+ margin-top:min(8vh,70px);width:min(560px,94vw);max-height:86vh;overflow:auto;
  background:radial-gradient(120% 60% at 50% 0,#0d1830,#0a1120 60%);border:1px solid #ffffff14;border-radius:22px;
  box-shadow:0 30px 80px #000a;padding:20px 20px 22px}
 .apanel .ah{display:flex;align-items:center;gap:12px;margin-bottom:16px}

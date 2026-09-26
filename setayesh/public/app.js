@@ -1,4 +1,4 @@
-/* SETAYESH_BUILD 9.9.198 */
+/* SETAYESH_BUILD 9.9.199 */
 (function(){
 'use strict';
 
@@ -299,7 +299,7 @@ function authHeaders(extra){var h={Authorization:'Bearer '+token};if(extra)for(v
    member's disabled list in CFG.disabledFeatures. We hide the mapped elements.
    Toolbox tabs (tk:*) are filtered in buildTkTabs. */
 var FEATURE_ELS={
-  brain:['brainTopBtn','brainMapBtn','shBrain'], agent:['agentTopBtn'],
+  brain:['brainTopBtn','brainMapBtn','shBrain'], agent:['agentTopBtn','shAgent'],
   toolkit:['toolkitBtn'], devices:['devicesBtn','shDevices'], board:['boardBtn','shBoard'],
   learn:['learnBtn','shLearn'], cc:['ccBtn','shCC'], compare:['cmpBtn'],
   search:['searchBtn'], voice:['micBtn'], files:['attachBtn']
@@ -4404,7 +4404,7 @@ function openSheet(){
   // open to EVERY member (owner's request), so shBrain always shows; the rest of
   // this row (control centre, learn, users, connectors…) stays admin-only.
   { var _shb=$('shBrain'); if(_shb)_shb.style.display=''; }
-  ['shCC','shLearn','shUsers','shConnectors','shComms','shAdminTitle'].forEach(function(id){
+  ['shAgent','shCC','shLearn','shUsers','shConnectors','shComms','shAdminTitle'].forEach(function(id){
     var e=$(id); if(e)e.style.display=admin?'':'none';
   });
   $('sheet').classList.add('on'); $('sheetScrim').classList.add('on');
@@ -4474,6 +4474,7 @@ $('langBtnLogin').addEventListener('click',switchLang);
 
 // ===== Brain wiring =====
 $('shBrain').addEventListener('click',function(){ sheetGo(openBrain); });
+(function(){ var s=$('shAgent'); if(s)s.addEventListener('click',function(){ sheetGo(openAgentPanel); }); })();
 (function(){ var b=$('brainTopBtn'); if(b)b.addEventListener('click',openBrain); })();
 
 /* ===== Agent panel: one clean hub — Deep Mode, breach check, brain ===== */
