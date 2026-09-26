@@ -218,6 +218,15 @@ app.set('trust proxy', 1); // correct client IPs when behind a tunnel
 const IS_PACKAGED = Boolean(process.pkg);
 const DATA_DIR = IS_PACKAGED ? path.dirname(process.execPath) : __dirname;
 
+// Self-update health. PENDING_UPDATE_FILE records the version we just wrote to
+// disk so the next boot can PROVE the update actually took effect. ON_ONEDRIVE
+// flags the classic cause of "installs but stays the old version": running the
+// app from a OneDrive-synced folder, where OneDrive can revert the updated files
+// during sync. updateHealth is surfaced to the admin (update panel + /api/diag).
+const PENDING_UPDATE_FILE = path.join(DATA_DIR, '.setayesh-pending-update.json');
+const ON_ONEDRIVE = /onedrive/i.test(DATA_DIR);
+const updateHealth = { onedrive: ON_ONEDRIVE, folder: DATA_DIR, warning: null, lastActivated: null };
+
 const PORT = Number(process.env.PORT) || 3000;
 const HOST = process.env.SETAYESH_HOST || '0.0.0.0';
 
@@ -236,7 +245,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.195';
+const APP_VERSION = '9.9.196';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -1387,6 +1396,10 @@ app.get('/api/diag', (req, res) => {
     },
     bakedBundlePresent: fs.existsSync(path.join(__dirname, 'assets.generated.js')),
     bakedBundleDisabled: fs.existsSync(path.join(__dirname, 'assets.generated.js.disabled')),
+    // Update health: is the app in OneDrive (updates can get reverted), and did
+    // the last install actually activate?
+    onOneDrive: ON_ONEDRIVE,
+    updateWarning: updateHealth.warning,
     // The self-test: the truth about the parts جاوید keeps hitting, straight from
     // HIS running server, so we never debug blind again. No secrets — only
     // whether each piece works, and the real reason when it doesn't.
@@ -7661,9 +7674,37 @@ async function applyUpdateZip(zipPath, who, opts) {
   if (verifyFail.length) {
     nightLog(`هشدار: ${verifyFail.length} فایل درست نوشته نشد: ${verifyFail.slice(0, 8).join('، ')}${verifyFail.length > 8 ? '…' : ''}`, 'error');
   } else {
+    // Record what we JUST installed, so the very next boot can prove whether the
+    // new version actually took effect. This is what catches the "installs but
+    // stays the old version" failure (OneDrive reverting the file, a stale
+    // relaunch) and turns it into a loud, specific message instead of silence.
+    try { fs.writeFileSync(PENDING_UPDATE_FILE, JSON.stringify({ version: info.version, at: Date.now(), from: __dirname }), { mode: 0o600 }); } catch (e) {}
     nightLog(`نسخه ${info.version} نصب شد (${info.verified} فایل، همه تأیید شدند) — ری‌استارت برای فعال شدن.`, 'ok', `version ${info.version} installed (${info.verified} files verified) - restart to activate`);
   }
   return info;
+}
+
+// On boot: did the update that was written last time actually take effect? This
+// is the truth check for "I installed it but it's still the old version".
+function verifyPendingUpdate() {
+  let pend = null;
+  try { pend = JSON.parse(fs.readFileSync(PENDING_UPDATE_FILE, 'utf8')); } catch (e) { return; }
+  if (!pend || !pend.version) { try { fs.unlinkSync(PENDING_UPDATE_FILE); } catch (e) {} return; }
+  if (String(pend.version) === String(APP_VERSION)) {
+    updateHealth.warning = null; updateHealth.lastActivated = APP_VERSION;
+    nightLog(`✓ نسخه ${APP_VERSION} با موفقیت فعال شد.`, 'ok', `version ${APP_VERSION} is now live`);
+    try { fs.unlinkSync(PENDING_UPDATE_FILE); } catch (e) {}
+    return;
+  }
+  // The files were written and verified, yet the running version is still the old
+  // one. Name the real cause and the real fix instead of leaving him guessing.
+  const cause = ON_ONEDRIVE
+    ? 'اپ داخلِ پوشهٔ OneDrive است و OneDrive فایل‌های به‌روزشده را برگردانده. اپ را از OneDrive به یک پوشهٔ معمولی منتقل کن (مثلاً C:\\setayesh) و دوباره نصب کن.'
+    : 'فایل‌ها نوشته شدند ولی نسخهٔ در حالِ اجرا هنوز قدیمی است — یا برنامه واقعاً ری‌استارت نشد، یا فایل‌ها قفل/برگردانده شده‌اند. برنامه را کاملاً ببند و دوباره Start بزن.';
+  updateHealth.warning = `به‌روزرسانی به ${pend.version} نوشته شد ولی نسخهٔ در حالِ اجرا هنوز ${APP_VERSION} است. ${cause}`;
+  nightLog(`هشدار: نصبِ ${pend.version} فعال نشد — هنوز ${APP_VERSION} اجراست. ${cause}`, 'error',
+    `update to ${pend.version} did NOT take effect — still running ${APP_VERSION}. ${ON_ONEDRIVE ? 'App is in OneDrive; move it out.' : 'Restart did not load the new files.'}`);
+  // keep the marker so the panel keeps warning until it is genuinely resolved
 }
 
 function scanUpdatesFolder() {
@@ -7714,6 +7755,9 @@ app.get('/api/admin/auto-update', requireAuth, requireAdmin, (req, res) => {
     currentVersion: APP_VERSION,
     pending, installed: installed.slice(-5), rejected: rejected.slice(-5),
     restartSupported: RESTART_SUPPORTED,
+    // The truth about whether the last install actually took effect + the
+    // OneDrive warning, so the panel can show it in red instead of pretending.
+    health: updateHealth,
     log: (night.log || []).slice(-10),
   });
 });
@@ -9042,6 +9086,10 @@ server.listen(PORT, HOST, () => {
 
   // Start answering Telegram (no-op unless a bot token is configured).
   try { telegram.start(runTelegramTurn, handleTelegramCallback); if (telegram.configured()) console.log('   Telegram: bot polling started ✓'); } catch (e) {}
+  // Prove whether the last install actually activated, and warn loudly if the app
+  // is in a OneDrive folder (where updates silently get reverted).
+  try { verifyPendingUpdate(); } catch (e) {}
+  if (ON_ONEDRIVE) console.log('   ⚠ App is inside a OneDrive folder — updates can be reverted by sync. Move it to e.g. C:\\setayesh.');
 });
 
 // Build / drop the in-memory TLS handler that the net front dispatches TLS
