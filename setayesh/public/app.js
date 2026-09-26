@@ -1,4 +1,4 @@
-/* SETAYESH_BUILD 9.9.192 */
+/* SETAYESH_BUILD 9.9.193 */
 (function(){
 'use strict';
 
@@ -1430,6 +1430,9 @@ async function enterApp(){
       // The brain view is open to EVERY member (the owner's request), not just
       // the admin — the topbar brain button always shows.
       { var _bt=$('brainTopBtn'); if(_bt)_bt.style.display='inline-flex'; }
+      // «عامل» — one handy hub (Deep Mode + breach check + brain). Admin only,
+      // since its controls are the admin's (security + engine behaviour).
+      { var _ag=$('agentTopBtn'); if(_ag)_ag.style.display=CFG.isAdmin?'inline-flex':'none'; }
       $('learnBtn').style.display=CFG.isAdmin?'grid':'none';
       $('ccBtn').style.display=CFG.isAdmin?'grid':'none';
       // The admin keeps the full interface — every tool where it was. Only
@@ -4447,6 +4450,60 @@ $('langBtnLogin').addEventListener('click',switchLang);
 // ===== Brain wiring =====
 $('shBrain').addEventListener('click',function(){ sheetGo(openBrain); });
 (function(){ var b=$('brainTopBtn'); if(b)b.addEventListener('click',openBrain); })();
+
+/* ===== Agent panel: one clean hub — Deep Mode, breach check, brain ===== */
+function openAgentPanel(){
+  var p=$('agentPanel'); if(!p)return; p.classList.add('on');
+  // Reflect current Deep Mode state from the live config.
+  var tg=$('deepToggle'), st=$('deepState');
+  var on=!!(CFG&&CFG.deepMode);
+  if(tg)tg.checked=on; if(st)st.textContent=on?'روشن — کارهای سخت به قوی‌ترین موتور می‌روند':'خاموش — سریع و کم‌هزینه';
+}
+function closeAgentPanel(){ var p=$('agentPanel'); if(p)p.classList.remove('on'); }
+(function(){
+  var ag=$('agentTopBtn'); if(ag)ag.addEventListener('click',openAgentPanel);
+  var ax=$('agentClose'); if(ax)ax.addEventListener('click',closeAgentPanel);
+  var pnl=$('agentPanel'); if(pnl)pnl.addEventListener('click',function(e){ if(e.target===pnl)closeAgentPanel(); });
+  // Deep Mode toggle
+  var tg=$('deepToggle'); if(tg)tg.addEventListener('change',function(){
+    var st=$('deepState'); if(st)st.textContent='در حالِ ذخیره…';
+    adminFetch('/api/admin/deep-mode',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({on:tg.checked})})
+      .then(function(d){ if(CFG)CFG.deepMode=!!d.deepMode; if(st)st.textContent=d.deepMode?'روشن — کارهای سخت به قوی‌ترین موتور می‌روند':'خاموش — سریع و کم‌هزینه'; })
+      .catch(function(){ tg.checked=!tg.checked; if(st)st.textContent='ذخیره نشد — دوباره امتحان کن'; });
+  });
+  // Breach: password
+  function pwGo(){
+    var v=$('pwCheck').value||''; var res=$('pwRes');
+    if(!v){ res.className='res info'; res.textContent='یک رمز بنویس تا بررسی کنم.'; return; }
+    res.className='res info'; res.textContent='در حالِ بررسی…';
+    adminFetch('/api/admin/breach/password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:v})})
+      .then(function(d){ if(d.exposed){ res.className='res bad'; res.textContent='⚠ این رمز در '+d.count.toLocaleString('fa')+' رخنهٔ شناخته‌شده دیده شده — فوراً عوضش کن و جای دیگری استفاده نکن.'; }
+        else { res.className='res ok'; res.textContent='✓ این رمز در رخنه‌های شناخته‌شده پیدا نشد (باز هم رمزِ قوی و یکتا بهتر است).'; } })
+      .catch(function(e){ res.className='res bad'; res.textContent='بررسی نشد: '+(e.message||''); });
+  }
+  var pwBtn=$('pwBtn'); if(pwBtn)pwBtn.addEventListener('click',pwGo);
+  var pwIn=$('pwCheck'); if(pwIn)pwIn.addEventListener('keydown',function(e){ if(e.key==='Enter')pwGo(); });
+  // Breach: email
+  function emGo(){
+    var v=($('emCheck').value||'').trim(); var res=$('emRes');
+    if(!v){ res.className='res info'; res.textContent='یک ایمیل بنویس تا بررسی کنم.'; return; }
+    res.className='res info'; res.textContent='در حالِ بررسی…';
+    adminFetch('/api/admin/breach/email',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:v})})
+      .then(function(d){
+        if(d.needsKey){ res.className='res info'; res.textContent='برای بررسیِ ایمیل، کلیدِ Have I Been Pwned لازم است — در «مرکز کنترل ← تنظیمات» کلیدِ HIBP را اضافه کن.'; return; }
+        if(d.notFound||d.count===0){ res.className='res ok'; res.textContent='✓ این ایمیل در رخنه‌های شناخته‌شده پیدا نشد.'; return; }
+        var names=(d.breaches||[]).slice(0,8).map(function(b){return b.Title||b.Name;}).join('، ');
+        res.className='res bad'; res.textContent='⚠ این ایمیل در '+d.count+' رخنه بوده: '+names+' — رمزهایی که آنجا استفاده کردی را عوض کن.';
+      })
+      .catch(function(e){ res.className='res bad'; res.textContent='بررسی نشد: '+(e.message||''); });
+  }
+  var emBtn=$('emBtn'); if(emBtn)emBtn.addEventListener('click',emGo);
+  var emIn=$('emCheck'); if(emIn)emIn.addEventListener('keydown',function(e){ if(e.key==='Enter')emGo(); });
+  // Brain
+  var abr=$('agentBrainBtn'); if(abr)abr.addEventListener('click',function(){ closeAgentPanel(); if(typeof openBrain==='function')openBrain(); });
+  // Esc closes the panel
+  document.addEventListener('keydown',function(e){ if(e.key==='Escape'){ var p=$('agentPanel'); if(p&&p.classList.contains('on'))closeAgentPanel(); } });
+})();
 // FIX: these elements are defined further down the page (lines 6101-6132),
 // so they do not exist yet while this script runs. Wiring them here threw
 // "Cannot read properties of null" and killed everything below it -

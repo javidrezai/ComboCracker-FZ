@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- SETAYESH_BUILD 9.9.192 -->
+<!-- SETAYESH_BUILD 9.9.193 -->
 <html lang="fa" dir="rtl">
 <head>
 <meta charset="UTF-8">
@@ -193,6 +193,10 @@
       <button class="tbtn" id="brainTopBtn" title="مغز" style="display:none">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a4 4 0 00-4 4 3 3 0 00-2 5.5A3.5 3.5 0 007 18a3 3 0 005 2 3 3 0 005-2 3.5 3.5 0 001-6.5A3 3 0 0016 6a4 4 0 00-4-4z"/><path d="M12 2v20"/></svg>
         <span data-i18n="brainMap">مغز ستایش</span>
+      </button>
+      <button class="tbtn" id="agentTopBtn" title="عامل ستایش" style="display:none">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><circle cx="12" cy="12" r="9"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/></svg>
+        <span>عامل</span>
       </button>
       <button class="tbtn" id="settingsBtnTop" title="Settings">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06A1.65 1.65 0 005 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06A1.65 1.65 0 019 4.6a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
@@ -1203,6 +1207,82 @@
     background:rgba(8,11,24,.94);backdrop-filter:blur(12px);border:1px solid rgba(123,92,255,.35);border-radius:16px;padding:16px;box-shadow:0 20px 60px rgba(0,0,0,.6)"></div>
 </div>
 <script src="/brainmap.js?v=__VER__"></script>
+
+<!-- ===== Agent panel: one handy hub — Deep Mode, breach check, brain ===== -->
+<style>
+#agentPanel{position:fixed;inset:0;z-index:650;display:none;background:rgba(4,6,12,.72);backdrop-filter:blur(6px)}
+#agentPanel.on{display:flex;align-items:flex-start;justify-content:center}
+#agentPanel .sheet{margin-top:min(8vh,70px);width:min(560px,94vw);max-height:86vh;overflow:auto;
+ background:radial-gradient(120% 60% at 50% 0,#0d1830,#0a1120 60%);border:1px solid #ffffff14;border-radius:22px;
+ box-shadow:0 30px 80px #000a;padding:20px 20px 22px}
+#agentPanel .ah{display:flex;align-items:center;gap:12px;margin-bottom:16px}
+#agentPanel .ah .orb{width:44px;height:44px;border-radius:50%;flex:none;
+ background:radial-gradient(circle at 50% 40%,#f2f9ff,#9ad6ff 30%,#2f7dff 65%,#0a2f7a);box-shadow:0 0 24px #38b4ff66}
+#agentPanel .ah b{font-size:17px;font-weight:700}#agentPanel .ah span{display:block;font-size:11.5px;color:#8fa3c4}
+#agentPanel .ax{margin-inline-start:auto;width:34px;height:34px;border-radius:10px;background:#ffffff10;border:1px solid #ffffff1a;color:#cfe0ff;cursor:pointer;font-size:17px}
+#agentPanel .sec{background:#0a121f;border:1px solid #ffffff12;border-radius:16px;padding:15px 16px;margin-bottom:13px}
+#agentPanel .sec h4{margin:0 0 4px;font-size:14px;font-weight:700;display:flex;align-items:center;gap:8px}
+#agentPanel .sec .d{font-size:11.5px;color:#8fa3c4;margin-bottom:11px;line-height:1.6}
+#agentPanel .sec .ic{width:26px;height:26px;border-radius:8px;display:grid;place-items:center;flex:none;font-size:14px}
+#agentPanel .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+#agentPanel input[type=text],#agentPanel input[type=password]{flex:1;min-width:150px;height:40px;border-radius:11px;
+ background:#060b16;border:1px solid #ffffff1a;color:#eaf1fb;padding:0 12px;font:inherit;font-size:13px;outline:none}
+#agentPanel input:focus{border-color:#39b6ff88}
+#agentPanel .btn{height:40px;padding:0 16px;border-radius:11px;border:none;cursor:pointer;font:inherit;font-size:13px;font-weight:600;color:#04121e;
+ background:linear-gradient(140deg,#39c0ff,#2a6bff)}
+#agentPanel .btn.gold{background:linear-gradient(140deg,#ffc24d,#ff7a00);color:#241000}
+#agentPanel .btn.ghost{background:#ffffff10;border:1px solid #ffffff1a;color:#cfe0ff}
+#agentPanel .res{margin-top:10px;font-size:12.5px;line-height:1.7;border-radius:11px;padding:10px 12px;display:none}
+#agentPanel .res.ok{display:block;background:#0e2417;border:1px solid #34d39955;color:#a7f3cf}
+#agentPanel .res.bad{display:block;background:#2a1114;border:1px solid #fb718555;color:#fecdd3}
+#agentPanel .res.info{display:block;background:#0e1a2e;border:1px solid #39b6ff44;color:#bfe0ff}
+/* toggle switch */
+.tgl{position:relative;width:52px;height:30px;flex:none;cursor:pointer}
+.tgl input{opacity:0;width:0;height:0}
+.tgl .sl{position:absolute;inset:0;border-radius:99px;background:#26314a;transition:.2s;border:1px solid #ffffff14}
+.tgl .sl:before{content:"";position:absolute;width:22px;height:22px;border-radius:50%;left:3px;top:3px;background:#cfe0ff;transition:.2s}
+.tgl input:checked + .sl{background:linear-gradient(140deg,#39c0ff,#2a6bff)}
+.tgl input:checked + .sl:before{transform:translateX(22px);background:#fff}
+</style>
+<div id="agentPanel">
+  <div class="sheet">
+    <div class="ah">
+      <div class="orb"></div>
+      <div><b>عاملِ ستایش</b><span>مرکزِ فرمان — همه‌چیز یک‌جا و ساده</span></div>
+      <button class="ax" id="agentClose" type="button" title="بستن">✕</button>
+    </div>
+
+    <div class="sec">
+      <h4><span class="ic" style="background:linear-gradient(140deg,#2a6bff,#39c0ff)">⚡</span>حالتِ عمیق (Deep Mode)</h4>
+      <div class="d">برای کارهای سخت و چندمرحله‌ای، عامل به قوی‌ترین موتور می‌رود و تا آخر پیش می‌برد. برای چتِ ساده خودش خاموش می‌ماند تا هزینه/سهمیه هدر نرود.</div>
+      <div class="row">
+        <label class="tgl"><input type="checkbox" id="deepToggle"><span class="sl"></span></label>
+        <span id="deepState" style="font-size:13px;color:#a7b4cc">در حالِ بارگذاری…</span>
+      </div>
+    </div>
+
+    <div class="sec">
+      <h4><span class="ic" style="background:linear-gradient(140deg,#7b5cff,#c56bff)">🛡️</span>بررسیِ نشتِ اطلاعات</h4>
+      <div class="d">با سرویسِ قانونیِ Have I Been Pwned. رمز روی خودِ دستگاه بررسی می‌شود (خودِ رمز هرگز بیرون نمی‌رود). برای ایمیل، کلیدِ HIBP در مرکز کنترل لازم است.</div>
+      <div class="row">
+        <input type="password" id="pwCheck" placeholder="یک رمز برای بررسی…" autocomplete="off">
+        <button class="btn" id="pwBtn" type="button">بررسیِ رمز</button>
+      </div>
+      <div class="res" id="pwRes"></div>
+      <div class="row" style="margin-top:11px">
+        <input type="text" id="emCheck" placeholder="ایمیل برای بررسی…" autocomplete="off" dir="ltr">
+        <button class="btn gold" id="emBtn" type="button">بررسیِ ایمیل</button>
+      </div>
+      <div class="res" id="emRes"></div>
+    </div>
+
+    <div class="sec">
+      <h4><span class="ic" style="background:linear-gradient(140deg,#34d399,#22d3ee)">🧠</span>مغزِ عامل</h4>
+      <div class="d">نمای زندهٔ مغز و موتورها، با عامل در مرکز.</div>
+      <div class="row"><button class="btn ghost" id="agentBrainBtn" type="button">نمایشِ مغز</button></div>
+    </div>
+  </div>
+</div>
 
 <script src="/three.min.js"></script>
 <script src="/brain3d-globe.js?v=__VER__"></script>
