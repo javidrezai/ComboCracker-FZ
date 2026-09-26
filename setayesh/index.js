@@ -105,6 +105,7 @@ const featurelib = require('./features');
 const guardrail = require('./autonomy');
 const core = require('./core');
 const { isUpdatablePath, checkJsSyntax } = require('./srcguard');
+const { prunePlan } = require('./rollbackutil');
 const { sanitizeHistory, maskSecret } = require('./textutil');
 const { ALLOWED_IMAGE_TYPES, MAX_FILE_BYTES, MAX_TEXT_CHARS, TEXT_EXTENSIONS, OFFICE_EXTENSIONS, classifyFile, clampText } = require('./filekind');
 const { guessDueDate, detectCommitment, extractFacts } = require('./factextract');
@@ -245,7 +246,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.197';
+const APP_VERSION = '9.9.198';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -5838,11 +5839,17 @@ const ROLLBACK_DIR = path.join(DATA_DIR, 'rollback');
 const ROLLBACK_KEEP = 20;
 function pruneRollback() {
   try {
-    const files = fs.readdirSync(ROLLBACK_DIR)
-      .map((f) => ({ f, t: fs.statSync(path.join(ROLLBACK_DIR, f)).mtimeMs }))
-      .sort((a, b) => b.t - a.t);
-    for (const { f } of files.slice(ROLLBACK_KEEP)) {
-      try { fs.unlinkSync(path.join(ROLLBACK_DIR, f)); } catch (e) {}
+    const entries = fs.readdirSync(ROLLBACK_DIR)
+      .map((f) => {
+        let st; try { st = fs.statSync(path.join(ROLLBACK_DIR, f)); } catch (e) { return null; }
+        return { name: f, mtime: st.mtimeMs, dir: st.isDirectory() };
+      })
+      .filter(Boolean);
+    // prunePlan (rollbackutil): keep the newest KEEP files, drop every directory
+    // — a stray whole-tree copy (node_modules and all) is what ballooned this
+    // folder to tens of GB, and the old fs.unlinkSync could never remove it.
+    for (const name of prunePlan(entries, ROLLBACK_KEEP)) {
+      try { fs.rmSync(path.join(ROLLBACK_DIR, name), { recursive: true, force: true }); } catch (x) {}
     }
   } catch (e) {}
 }
@@ -9089,6 +9096,10 @@ server.listen(PORT, HOST, () => {
   // Prove whether the last install actually activated, and warn loudly if the app
   // is in a OneDrive folder (where updates silently get reverted).
   try { verifyPendingUpdate(); } catch (e) {}
+  // Sweep the rollback folder on every boot so a stray whole-tree copy (which
+  // used to be impossible to auto-remove and could grow to tens of GB) is
+  // reclaimed even on an install that never runs a self-edit.
+  try { pruneRollback(); } catch (e) {}
   if (ON_ONEDRIVE) console.log('   ⚠ App is inside a OneDrive folder — updates can be reverted by sync. Move it to e.g. C:\\setayesh.');
 });
 

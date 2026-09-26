@@ -45,8 +45,11 @@ echo   Copying files... this downloads any OneDrive "online-only" files and
 echo   may take a few minutes. Please wait.
 echo.
 rem  /E all subfolders, /MT multithread, /R:1 /W:1 don't hang on a locked file,
-rem  skip the noisy per-file log. Exclude runtime state and old logs.
-robocopy "%SRC%" "%DEST%" /E /MT:16 /R:1 /W:1 /NFL /NDL /NP /XF "*.log" /XD "updates\installed" "updates\rejected" >nul
+rem  skip the noisy per-file log. Exclude old logs AND the heavy regenerable
+rem  folders (rollback/backups/portable/scratch/old-updates/build-cache) so the
+rem  fresh copy is small and fast - the app rebuilds these by itself.
+robocopy "%SRC%" "%DEST%" /E /MT:16 /R:1 /W:1 /NFL /NDL /NP /XF "*.log" ^
+  /XD "rollback" "backups" "Setayesh-Portable" "workspace" "updates\installed" "updates\rejected" ".cache" >nul
 
 if not exist "%DEST%\index.js" (
   echo.

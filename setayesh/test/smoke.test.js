@@ -1685,6 +1685,34 @@ test('srcguard blocks unsafe update paths and catches bad JS', async () => {
   assert.match(await sg.checkJsSyntax('const = ;', 'bad.js'), /bad\.js/, 'broken JS is reported');
 });
 
+test('rollbackutil prunePlan keeps newest files and always drops directories', () => {
+  const { prunePlan } = require(path.join(ROOT, 'rollbackutil.js'));
+  // 3 files newest→oldest, keep 2 → the oldest file is removed.
+  const files = [
+    { name: 'a', mtime: 300, dir: false },
+    { name: 'b', mtime: 200, dir: false },
+    { name: 'c', mtime: 100, dir: false },
+  ];
+  assert.deepEqual(prunePlan(files, 2), ['c'], 'oldest file beyond keep=2 is pruned');
+  assert.deepEqual(prunePlan(files, 5), [], 'nothing pruned when under the keep count');
+  // A stray directory (e.g. a Setayesh-Portable whole-tree copy) is ALWAYS
+  // removed, no matter how new — this is the 35 GB bug the old prune could not fix.
+  const withDir = [
+    { name: 'Setayesh-Portable', mtime: 999, dir: true },
+    { name: 'a', mtime: 300, dir: false },
+    { name: 'b', mtime: 200, dir: false },
+  ];
+  assert.deepEqual(prunePlan(withDir, 20).sort(), ['Setayesh-Portable'], 'newest entry still pruned because it is a directory');
+  // Directories do not count against the file keep budget.
+  const mixed = [
+    { name: 'dir1', mtime: 500, dir: true },
+    { name: 'f1', mtime: 400, dir: false },
+    { name: 'f2', mtime: 300, dir: false },
+    { name: 'f3', mtime: 200, dir: false },
+  ];
+  assert.deepEqual(prunePlan(mixed, 2).sort(), ['dir1', 'f3'], 'keep 2 files + drop the dir + the oldest file');
+});
+
 test('textutil sanitizeHistory and maskSecret behave', () => {
   const tu = require(path.join(ROOT, 'textutil.js'));
   const h = tu.sanitizeHistory('[{"role":"user","content":"hi"},{"role":"system","content":"x"},{"role":"assistant","content":"yo"}]');
