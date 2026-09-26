@@ -246,7 +246,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.200';
+const APP_VERSION = '9.9.201';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -3958,11 +3958,18 @@ function voiceBlock(username) {
     + 'هر پاسخ باید کاملاً یک‌دست و فقط به یک زبان باشد. هرگز دو زبان را در یک جمله یا یک پاسخ قاطی نکن، '
     + 'و هرگز از زبان سومی (چینی، تایلندی و…) حتی یک کلمه استفاده نکن. '
     + 'تنها استثنا: نامِ خاصِ فنی که معادل فارسیِ رایج ندارد (مثل نام یک برنامه یا کتابخانه) — همان را همان‌طور بنویس.';
-  if (!isChild && CHAT_NAME[cl]) {
-    block = `\n\n*** زبان گفتگو (مهم — بر پیش‌فرض انگلیسی مقدم است) ***
-این کاربر زبان گفتگویش را **${CHAT_NAME[cl]}** انتخاب کرده. همیشه به همین زبان جواب بده، مگر اینکه خودش صریحاً به زبان دیگری بنویسد و بخواهد به همان زبان جواب بگیرد. حتی اگر پیام کوتاه، مبهم یا تک‌کلمه بود، باز هم ${CHAT_NAME[cl]} جواب بده — نه انگلیسی.` + PURITY + block;
-  } else if (!isChild) {
-    block = PURITY + block;
+  // AUTO language (جاوید: «هر زبانی نوشتی با همان زبان جواب بده»). The reply
+  // MIRRORS the language of the user's latest message — Persian→Persian,
+  // English→English — detected from that message alone. Only when the message
+  // is too short/ambiguous to tell do we fall back to the member's preferred
+  // chat language (or Persian for an adult with no choice).
+  if (!isChild) {
+    const defName = CHAT_NAME[cl] || 'فارسی';
+    const AUTO = '\n\n*** زبانِ پاسخ: خودکار — آینه‌ی زبانِ کاربر (مهم، بر پیش‌فرضِ انگلیسی مقدم است) ***\n'
+      + 'به هر زبانی که کاربر در «آخرین پیامش» نوشته، دقیقاً به همان زبان جواب بده: '
+      + 'فارسی → فارسی، انگلیسی → English، آلمانی → Deutsch. زبان را فقط از همان آخرین پیام تشخیص بده، نه از پیام‌های قبلی. '
+      + `اگر پیام آن‌قدر کوتاه یا مبهم بود که زبانش معلوم نشد، به ${defName} جواب بده.`;
+    block = AUTO + PURITY + block;
   }
 
   // The language the member wants things WRITTEN in — letters, e-mail, a

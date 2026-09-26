@@ -1,4 +1,4 @@
-/* SETAYESH_BUILD 9.9.200 */
+/* SETAYESH_BUILD 9.9.201 */
 (function(){
 'use strict';
 
@@ -4489,7 +4489,7 @@ function openAgentPanel(){
   // Reflect current Deep Mode state from the live config.
   var tg=$('deepToggle'), st=$('deepState');
   var on=!!(CFG&&CFG.deepMode);
-  if(tg)tg.checked=on; if(st)st.textContent=on?'روشن — کارهای سخت به قوی‌ترین موتور می‌روند':'خاموش — سریع و کم‌هزینه';
+  if(tg)tg.checked=on; if(st)st.textContent=on?(lang==='en'?'On — hard tasks go to the strongest engine':'روشن — کارهای سخت به قوی‌ترین موتور می‌روند'):(lang==='en'?'Off — fast and cheap':'خاموش — سریع و کم‌هزینه');
 }
 function closeAgentPanel(){ var p=$('agentPanel'); if(p)p.classList.remove('on'); }
 ready(function(){
@@ -4500,34 +4500,36 @@ ready(function(){
   var tg=$('deepToggle'); if(tg)tg.addEventListener('change',function(){
     var st=$('deepState'); if(st)st.textContent='در حالِ ذخیره…';
     adminFetch('/api/admin/deep-mode',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({on:tg.checked})})
-      .then(function(d){ if(CFG)CFG.deepMode=!!d.deepMode; if(st)st.textContent=d.deepMode?'روشن — کارهای سخت به قوی‌ترین موتور می‌روند':'خاموش — سریع و کم‌هزینه'; })
-      .catch(function(){ tg.checked=!tg.checked; if(st)st.textContent='ذخیره نشد — دوباره امتحان کن'; });
+      .then(function(d){ if(CFG)CFG.deepMode=!!d.deepMode; if(st)st.textContent=d.deepMode?(lang==='en'?'On — hard tasks go to the strongest engine':'روشن — کارهای سخت به قوی‌ترین موتور می‌روند'):(lang==='en'?'Off — fast and cheap':'خاموش — سریع و کم‌هزینه'); })
+      .catch(function(){ tg.checked=!tg.checked; if(st)st.textContent=(lang==='en'?'Not saved — try again':'ذخیره نشد — دوباره امتحان کن'); });
   });
   // Breach: password
   function pwGo(){
+    var en=lang==='en';
     var v=$('pwCheck').value||''; var res=$('pwRes');
-    if(!v){ res.className='res info'; res.textContent='یک رمز بنویس تا بررسی کنم.'; return; }
-    res.className='res info'; res.textContent='در حالِ بررسی…';
+    if(!v){ res.className='res info'; res.textContent=en?'Type a password to check.':'یک رمز بنویس تا بررسی کنم.'; return; }
+    res.className='res info'; res.textContent=en?'Checking…':'در حالِ بررسی…';
     adminFetch('/api/admin/breach/password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:v})})
-      .then(function(d){ if(d.exposed){ res.className='res bad'; res.textContent='⚠ این رمز در '+d.count.toLocaleString('fa')+' رخنهٔ شناخته‌شده دیده شده — فوراً عوضش کن و جای دیگری استفاده نکن.'; }
-        else { res.className='res ok'; res.textContent='✓ این رمز در رخنه‌های شناخته‌شده پیدا نشد (باز هم رمزِ قوی و یکتا بهتر است).'; } })
-      .catch(function(e){ res.className='res bad'; res.textContent='بررسی نشد: '+(e.message||''); });
+      .then(function(d){ if(d.exposed){ res.className='res bad'; var n=d.count.toLocaleString(en?'en':'fa'); res.textContent=en?('⚠ This password appears in '+n+' known breaches — change it now and do not reuse it.'):('⚠ این رمز در '+n+' رخنهٔ شناخته‌شده دیده شده — فوراً عوضش کن و جای دیگری استفاده نکن.'); }
+        else { res.className='res ok'; res.textContent=en?'✓ This password was not found in known breaches (a strong, unique password is still best).':'✓ این رمز در رخنه‌های شناخته‌شده پیدا نشد (باز هم رمزِ قوی و یکتا بهتر است).'; } })
+      .catch(function(e){ res.className='res bad'; res.textContent=(en?'Not checked: ':'بررسی نشد: ')+(e.message||''); });
   }
   var pwBtn=$('pwBtn'); if(pwBtn)pwBtn.addEventListener('click',pwGo);
   var pwIn=$('pwCheck'); if(pwIn)pwIn.addEventListener('keydown',function(e){ if(e.key==='Enter')pwGo(); });
   // Breach: email
   function emGo(){
+    var en=lang==='en';
     var v=($('emCheck').value||'').trim(); var res=$('emRes');
-    if(!v){ res.className='res info'; res.textContent='یک ایمیل بنویس تا بررسی کنم.'; return; }
-    res.className='res info'; res.textContent='در حالِ بررسی…';
+    if(!v){ res.className='res info'; res.textContent=en?'Type an email to check.':'یک ایمیل بنویس تا بررسی کنم.'; return; }
+    res.className='res info'; res.textContent=en?'Checking…':'در حالِ بررسی…';
     adminFetch('/api/admin/breach/email',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:v})})
       .then(function(d){
-        if(d.needsKey){ res.className='res info'; res.textContent='برای بررسیِ ایمیل، کلیدِ Have I Been Pwned لازم است — در «مرکز کنترل ← تنظیمات» کلیدِ HIBP را اضافه کن.'; return; }
-        if(d.notFound||d.count===0){ res.className='res ok'; res.textContent='✓ این ایمیل در رخنه‌های شناخته‌شده پیدا نشد.'; return; }
-        var names=(d.breaches||[]).slice(0,8).map(function(b){return b.Title||b.Name;}).join('، ');
-        res.className='res bad'; res.textContent='⚠ این ایمیل در '+d.count+' رخنه بوده: '+names+' — رمزهایی که آنجا استفاده کردی را عوض کن.';
+        if(d.needsKey){ res.className='res info'; res.textContent=en?'Email lookup needs a Have I Been Pwned key — add the HIBP key in Control centre → Settings.':'برای بررسیِ ایمیل، کلیدِ Have I Been Pwned لازم است — در «مرکز کنترل ← تنظیمات» کلیدِ HIBP را اضافه کن.'; return; }
+        if(d.notFound||d.count===0){ res.className='res ok'; res.textContent=en?'✓ This email was not found in known breaches.':'✓ این ایمیل در رخنه‌های شناخته‌شده پیدا نشد.'; return; }
+        var names=(d.breaches||[]).slice(0,8).map(function(b){return b.Title||b.Name;}).join(en?', ':'، ');
+        res.className='res bad'; res.textContent=en?('⚠ This email appeared in '+d.count+' breaches: '+names+' — change the passwords you used there.'):('⚠ این ایمیل در '+d.count+' رخنه بوده: '+names+' — رمزهایی که آنجا استفاده کردی را عوض کن.');
       })
-      .catch(function(e){ res.className='res bad'; res.textContent='بررسی نشد: '+(e.message||''); });
+      .catch(function(e){ res.className='res bad'; res.textContent=(en?'Not checked: ':'بررسی نشد: ')+(e.message||''); });
   }
   var emBtn=$('emBtn'); if(emBtn)emBtn.addEventListener('click',emGo);
   var emIn=$('emCheck'); if(emIn)emIn.addEventListener('keydown',function(e){ if(e.key==='Enter')emGo(); });
@@ -4560,7 +4562,7 @@ function renderCustScope(){
   if(nonAdmin.length){
     var sel=document.createElement('select'); sel.style.cssText='height:34px;border-radius:11px;background:#060b16;border:1px solid #ffffff1a;color:#eaf1fb;padding:0 10px;font:inherit;font-size:12.5px';
     var o0=document.createElement('option'); o0.value=''; o0.textContent='— یک کاربرِ خاص —'; sel.appendChild(o0);
-    nonAdmin.forEach(function(m){ var o=document.createElement('option'); o.value=m.username; o.textContent=m.username+' (سطح '+m.accessLevel+')'; if(CUST.scope.type==='user'&&CUST.scope.key===m.username)o.selected=true; sel.appendChild(o); });
+    nonAdmin.forEach(function(m){ var o=document.createElement('option'); o.value=m.username; o.textContent=m.username+(lang==='en'?' (level ':' (سطح ')+m.accessLevel+')'; if(CUST.scope.type==='user'&&CUST.scope.key===m.username)o.selected=true; sel.appendChild(o); });
     sel.addEventListener('change',function(){ CUST.scope=sel.value?{type:'user',key:sel.value}:{type:'level',key:'1'}; renderCustScope(); renderCustFeatures(); });
     box.appendChild(sel);
   }

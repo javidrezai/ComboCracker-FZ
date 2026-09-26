@@ -17,6 +17,26 @@
 // just isn't in the dictionary yet.
 
 window.__FA2EN = {
+  // — Agent panel (عامل) — full coverage so EN mode has zero Persian —
+  'عاملِ ستایش':'Setayesh agent','مرکزِ فرمان — همه‌چیز یک‌جا و ساده':'Command centre — everything in one place',
+  'حالتِ عمیق (Deep Mode)':'Deep Mode',
+  'برای کارهای سخت و چندمرحله‌ای، عامل به قوی‌ترین موتور می‌رود و تا آخر پیش می‌برد. برای چتِ ساده خودش خاموش می‌ماند تا هزینه/سهمیه هدر نرود.':'For hard, multi-step tasks the agent uses the strongest engine and sees it through. For simple chat it stays off so cost/quota is not wasted.',
+  'خاموش — سریع و کم‌هزینه':'Off — fast and cheap','روشن — کارهای سخت به قوی‌ترین موتور می‌روند':'On — hard tasks go to the strongest engine',
+  'در حالِ بارگذاری…':'Loading…','در حالِ ذخیره…':'Saving…','ذخیره نشد — دوباره امتحان کن':'Not saved — try again',
+  'در حالِ بررسی…':'Checking…','بررسیِ نشتِ اطلاعات':'Breach check',
+  'با سرویسِ قانونیِ Have I Been Pwned. رمز روی خودِ دستگاه بررسی می‌شود (خودِ رمز هرگز بیرون نمی‌رود). برای ایمیل، کلیدِ HIBP در مرکز کنترل لازم است.':'Uses the legitimate Have I Been Pwned service. The password is checked on your device (it never leaves). Email lookup needs an HIBP key in the control centre.',
+  'یک رمز برای بررسی…':'A password to check…','بررسیِ رمز':'Check password','ایمیل برای بررسی…':'An email to check…','بررسیِ ایمیل':'Check email',
+  'مغزِ عامل':'Agent brain','نمای زندهٔ مغز و موتورها، با عامل در مرکز.':'A live view of the brain and engines, with the agent at the centre.','نمایشِ مغز':'Show brain',
+  'شخصی‌سازی و دسترسی':'Personalize & access','تعیین کن هر کاربر یا هر سطح (بزرگسال/کودک) کدام دکمه‌ها و ابزارها را ببیند. ادمین همیشه همه‌چیز را دارد.':'Choose which buttons and tools each user or level (adult/child) can see. Admin always has everything.','باز کردنِ مرکزِ شخصی‌سازی':'Open personalization centre',
+  'بررسی نشد: سرویسِ بررسیِ رمز جواب نداد':'Not checked: the password service did not respond','یک رمز بنویس تا بررسی کنم.':'Type a password to check.','یک ایمیل بنویس تا بررسی کنم.':'Type an email to check.',
+  // — Customization centre (مرکزِ شخصی‌سازی) —
+  'مرکزِ شخصی‌سازی':'Personalization centre','دکمه‌ها و دسترسی‌ها — برای هر سطح و هر کاربر':'Buttons & access — per level and per user',
+  'اول یک هدف را انتخاب کن، بعد دکمه‌ها را روشن/خاموش کن. «ذخیره» را بزن.':'First pick a target, then toggle buttons on/off. Then press Save.',
+  'بزرگسال (سطح ۱)':'Adult (level 1)','کودک (سطح ۲)':'Child (level 2)','— یک کاربرِ خاص —':'— a specific user —',
+  'دکمه‌های اصلی':'Main buttons','نوشتن و ورودی':'Compose & input','بارگذاری نشد — دوباره امتحان کن.':'Could not load — try again.',
+  // — feature labels (UI_FEATURES, shown in the customization centre) —
+  'مغز':'Brain','عامل':'Agent','جعبه‌ابزار':'Toolbox','دستگاه‌ها':'Devices','تابلو':'Board','یادگیری/آموزش':'Learning','مقایسهٔ موتورها':'Compare engines','جستجوی چت':'Chat search','میکروفون/صدا':'Mic / voice','پیوستِ فایل':'Attach file',
+  'مدیریت رمزها':'Password manager','رمزساز':'Password maker','رمزگذار':'Encryptor','آزمایشگاه هش':'Hash lab','اسکن وب‌سایت':'Website scan','اسکن شبکه':'Network scan','بررسی پورت':'Port check','گواهی SSL':'SSL certificate','اتصال موبایل':'Mobile link','سخت‌افزار':'Hardware','بلوتوث':'Bluetooth','کابل و سریال':'Cable & serial','بلوتوث/کابلِ گوشی':'Phone Bluetooth/cable','حافظه':'Memory','گرامر و لحن':'Grammar & tone','کتابخانه‌ها':'Libraries','راهنمای محافظت':'Protection guide','آموزش امنیت':'Security lessons','ایمیل و تلگرام':'Email & Telegram','افزونه‌ها':'Extensions',
   // — common actions / words —
   'ذخیره':'Save','ذخیره شد':'Saved','ذخیره شد ✓':'Saved ✓','ذخیره شد.':'Saved.','ذخیره نشد':'Not saved',
   'بستن':'Close','حذف':'Delete','لغو':'Cancel','انصراف':'Cancel','بازگشت':'Back','باز کردن':'Open',
