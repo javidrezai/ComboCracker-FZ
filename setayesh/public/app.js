@@ -1,4 +1,4 @@
-/* SETAYESH_BUILD 9.9.194 */
+/* SETAYESH_BUILD 9.9.195 */
 (function(){
 'use strict';
 
@@ -293,6 +293,30 @@ function wireCopy(root){
 
 /* ================= auth ================= */
 function authHeaders(extra){var h={Authorization:'Bearer '+token};if(extra)for(var k in extra)h[k]=extra[k];return h;}
+
+/* ===== Customization Center: hide buttons/tools turned off for this member =====
+   The admin sets these per access-level and per user; the server returns this
+   member's disabled list in CFG.disabledFeatures. We hide the mapped elements.
+   Toolbox tabs (tk:*) are filtered in buildTkTabs. */
+var FEATURE_ELS={
+  brain:['brainTopBtn','brainMapBtn','shBrain'], agent:['agentTopBtn'],
+  toolkit:['toolkitBtn'], devices:['devicesBtn','shDevices'], board:['boardBtn','shBoard'],
+  learn:['learnBtn','shLearn'], cc:['ccBtn','shCC'], compare:['cmpBtn'],
+  search:['searchBtn'], voice:['micBtn'], files:['attachBtn']
+};
+function featureOff(id){ return !!(CFG&&CFG.disabledFeatures&&CFG.disabledFeatures.indexOf(id)>=0); }
+function applyFeatures(){
+  if(!CFG||!CFG.disabledFeatures)return;
+  Object.keys(FEATURE_ELS).forEach(function(fid){
+    var off=featureOff(fid);
+    FEATURE_ELS[fid].forEach(function(elid){
+      var e=$(elid); if(!e)return;
+      if(off){ e.style.setProperty('display','none','important'); e.dataset.featHidden='1'; }
+      // Only reveal what WE hid — never fight the normal admin-only/visibility logic.
+      else if(e.dataset.featHidden){ e.style.removeProperty('display'); delete e.dataset.featHidden; }
+    });
+  });
+}
 /* A download <a href>/window.open can't send the Authorization header, so a GET
    file link carries the session token as ?auth=… instead (the server accepts it
    for GET only). This is what makes the ZIP/file download actually work — on the
@@ -1451,6 +1475,7 @@ async function enterApp(){
       collapseSidebarModes();
       if(window.innerWidth<=860) tidySidebar();
       if(!CFG.isAdmin) simplifyForFamily();
+      applyFeatures();   // Customization Center: hide what the admin turned off
       showVersion();
       if(CFG.isAdmin){ startNotifications(); checkIntegrity(); autoDetectLocalEngine(); }
       loadFace();   // every account sees the chosen face on the logos
@@ -2537,7 +2562,7 @@ function refreshConfig(){
     if(!c)return;
     CFG=c;
     if(!CFG.providers.some(function(p){return p.id===provider;})){ provider=CFG.defaultProvider; model=CFG.defaultModel; }
-    try{ buildModelPicker(); buildCompareChips(); }catch(e){}
+    try{ buildModelPicker(); buildCompareChips(); applyFeatures(); }catch(e){}
   }).catch(function(){});
 }
 /* Obsidian + GitHub connectors. Obsidian is a local folder we can find on our
@@ -4504,6 +4529,84 @@ function closeAgentPanel(){ var p=$('agentPanel'); if(p)p.classList.remove('on')
   // Esc closes the panel
   document.addEventListener('keydown',function(e){ if(e.key==='Escape'){ var p=$('agentPanel'); if(p&&p.classList.contains('on'))closeAgentPanel(); } });
 })();
+
+/* ===== Customization Center: per-level & per-user feature toggles ===== */
+var CUST={features:[],levels:{},users:{},members:[],scope:{type:'level',key:'1'}};
+function openCustPanel(){
+  var p=$('custPanel'); if(!p)return;
+  adminFetch('/api/admin/features').then(function(d){
+    CUST.features=d.features||[]; CUST.levels=d.levels||{}; CUST.users=d.users||{}; CUST.members=d.members||[];
+    CUST.scope={type:'level',key:'1'};
+    renderCustScope(); renderCustFeatures(); p.classList.add('on');
+  }).catch(function(){});
+}
+function closeCustPanel(){ var p=$('custPanel'); if(p)p.classList.remove('on'); }
+function renderCustScope(){
+  var box=$('custScope'); box.innerHTML='';
+  function chip(label,active,cb){ var b=el('button','btn'+(active?'':' ghost')); b.type='button'; b.style.height='34px'; b.style.fontSize='12.5px'; b.textContent=label; b.addEventListener('click',cb); box.appendChild(b); }
+  chip('بزرگسال (سطح ۱)', CUST.scope.type==='level'&&CUST.scope.key==='1', function(){CUST.scope={type:'level',key:'1'};renderCustScope();renderCustFeatures();});
+  chip('کودک (سطح ۲)', CUST.scope.type==='level'&&CUST.scope.key==='2', function(){CUST.scope={type:'level',key:'2'};renderCustScope();renderCustFeatures();});
+  var nonAdmin=CUST.members.filter(function(m){return !m.admin;});
+  if(nonAdmin.length){
+    var sel=document.createElement('select'); sel.style.cssText='height:34px;border-radius:11px;background:#060b16;border:1px solid #ffffff1a;color:#eaf1fb;padding:0 10px;font:inherit;font-size:12.5px';
+    var o0=document.createElement('option'); o0.value=''; o0.textContent='— یک کاربرِ خاص —'; sel.appendChild(o0);
+    nonAdmin.forEach(function(m){ var o=document.createElement('option'); o.value=m.username; o.textContent=m.username+' (سطح '+m.accessLevel+')'; if(CUST.scope.type==='user'&&CUST.scope.key===m.username)o.selected=true; sel.appendChild(o); });
+    sel.addEventListener('change',function(){ CUST.scope=sel.value?{type:'user',key:sel.value}:{type:'level',key:'1'}; renderCustScope(); renderCustFeatures(); });
+    box.appendChild(sel);
+  }
+}
+function custBaseLevel(){ if(CUST.scope.type==='level')return CUST.scope.key; var m=CUST.members.filter(function(x){return x.username===CUST.scope.key;})[0]; return m?String(m.accessLevel):'1'; }
+function featureDisabledInScope(id){
+  if(CUST.scope.type==='level'){ return (CUST.levels[CUST.scope.key]||[]).indexOf(id)>=0; }
+  var baseOff=(CUST.levels[custBaseLevel()]||[]).indexOf(id)>=0;
+  var ov=CUST.users[CUST.scope.key]||{off:[],on:[]};
+  if((ov.on||[]).indexOf(id)>=0)return false;
+  if((ov.off||[]).indexOf(id)>=0)return true;
+  return baseOff;
+}
+function setFeatureInScope(id,disabled){
+  function rm(a,x){var i=a.indexOf(x);if(i>=0)a.splice(i,1);}
+  if(CUST.scope.type==='level'){
+    var arr=CUST.levels[CUST.scope.key]||(CUST.levels[CUST.scope.key]=[]);
+    if(disabled){ if(arr.indexOf(id)<0)arr.push(id); } else rm(arr,id);
+    return;
+  }
+  var baseOff=(CUST.levels[custBaseLevel()]||[]).indexOf(id)>=0;
+  var ov=CUST.users[CUST.scope.key]||(CUST.users[CUST.scope.key]={off:[],on:[]}); ov.off=ov.off||[]; ov.on=ov.on||[];
+  rm(ov.off,id); rm(ov.on,id);
+  if(disabled){ if(!baseOff)ov.off.push(id); } else { if(baseOff)ov.on.push(id); }
+}
+function renderCustFeatures(){
+  var box=$('custFeatures'); box.innerHTML='';
+  var cats={main:'دکمه‌های اصلی',compose:'نوشتن و ورودی',toolbox:'جعبه‌ابزار'};
+  Object.keys(cats).forEach(function(cat){
+    var items=CUST.features.filter(function(f){return f.cat===cat;});
+    if(!items.length)return;
+    var sec=el('div','sec'); sec.appendChild(el('h4',null,cats[cat]));
+    items.forEach(function(f){
+      var row=el('div','row'); row.style.justifyContent='space-between'; row.style.padding='3px 0';
+      row.appendChild(el('span',null,f.label));
+      var tg=el('label','tgl'); var cb=document.createElement('input'); cb.type='checkbox'; cb.checked=!featureDisabledInScope(f.id);
+      var sl=el('span','sl'); cb.addEventListener('change',function(){ setFeatureInScope(f.id,!cb.checked); });
+      tg.appendChild(cb); tg.appendChild(sl); row.appendChild(tg); sec.appendChild(row);
+    });
+    box.appendChild(sec);
+  });
+}
+function saveCust(){
+  var s=$('custSave'); if(s)s.textContent='در حالِ ذخیره…';
+  adminFetch('/api/admin/features',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({levels:CUST.levels,users:CUST.users})})
+    .then(function(){ if(s)s.textContent='ذخیره'; closeCustPanel(); if(typeof refreshConfig==='function')refreshConfig(); })
+    .catch(function(){ if(s)s.textContent='ذخیره'; });
+}
+(function(){
+  var o=$('custOpenBtn'); if(o)o.addEventListener('click',function(){ closeAgentPanel(); openCustPanel(); });
+  var c=$('custClose'); if(c)c.addEventListener('click',closeCustPanel);
+  var cc=$('custCancel'); if(cc)cc.addEventListener('click',closeCustPanel);
+  var sv=$('custSave'); if(sv)sv.addEventListener('click',saveCust);
+  var p=$('custPanel'); if(p)p.addEventListener('click',function(e){ if(e.target===p)closeCustPanel(); });
+  document.addEventListener('keydown',function(e){ if(e.key==='Escape'){ var pp=$('custPanel'); if(pp&&pp.classList.contains('on'))closeCustPanel(); } });
+})();
 // FIX: these elements are defined further down the page (lines 6101-6132),
 // so they do not exist yet while this script runs. Wiring them here threw
 // "Cannot read properties of null" and killed everything below it -
@@ -4692,6 +4795,7 @@ function buildTkTabs(){
     // Hardware tabs show only for a member Javid opened them to; the server
     // re-checks the level on every call, this just hides a door that won't open.
     if(tab.needLevel&&(deviceLevel()<tab.needLevel))return false;
+    if(featureOff('tk:'+tab.id))return false;           // turned off in Customization Center
     return true;
   }
   function mkBtn(tab){

@@ -101,6 +101,7 @@ const { versionGreater, localLanIps } = require('./netutil');
 const { readZip, crc32, buildZip } = require('./ziputil');
 const { wantsFileDelivery, extractCodeFiles } = require('./autopack');
 const breachcheck = require('./breachcheck');
+const featurelib = require('./features');
 const guardrail = require('./autonomy');
 const core = require('./core');
 const { isUpdatablePath, checkJsSyntax } = require('./srcguard');
@@ -235,7 +236,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.194';
+const APP_VERSION = '9.9.195';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -819,6 +820,60 @@ function accessLevelOf(username) {
   if (isAdmin(username)) return ACCESS_ADMIN;
   if (safeUsers.has(username)) return ACCESS_CHILD;
   return ACCESS_ADULT;
+}
+
+// ---------------- Customization Center: per-level & per-user features --------
+// The admin decides which buttons/tools each member sees — by access level, with
+// per-user exceptions. Enforced in the UI (the button hides); admin-only server
+// routes stay server-gated regardless. Admin is never restricted.
+const UI_FEATURES = [
+  { id: 'brain',   label: 'مغز',            cat: 'main' },
+  { id: 'agent',   label: 'عامل',           cat: 'main' },
+  { id: 'toolkit', label: 'جعبه‌ابزار',      cat: 'main' },
+  { id: 'devices', label: 'دستگاه‌ها',       cat: 'main' },
+  { id: 'board',   label: 'تابلو',          cat: 'main' },
+  { id: 'learn',   label: 'یادگیری/آموزش',   cat: 'main' },
+  { id: 'cc',      label: 'مرکز کنترل',      cat: 'main' },
+  { id: 'compare', label: 'مقایسهٔ موتورها', cat: 'compose' },
+  { id: 'search',  label: 'جستجوی چت',      cat: 'compose' },
+  { id: 'voice',   label: 'میکروفون/صدا',    cat: 'compose' },
+  { id: 'files',   label: 'پیوستِ فایل',     cat: 'compose' },
+  // toolbox tabs (ids match app.js TK tabs, prefixed tk:)
+  { id: 'tk:vault', label: 'مدیریت رمزها', cat: 'toolbox' },
+  { id: 'tk:pw',    label: 'رمزساز',       cat: 'toolbox' },
+  { id: 'tk:enc',   label: 'رمزگذار',      cat: 'toolbox' },
+  { id: 'tk:hash',  label: 'آزمایشگاه هش', cat: 'toolbox' },
+  { id: 'tk:web',   label: 'اسکن وب‌سایت',  cat: 'toolbox' },
+  { id: 'tk:net',   label: 'اسکن شبکه',    cat: 'toolbox' },
+  { id: 'tk:ports', label: 'بررسی پورت',   cat: 'toolbox' },
+  { id: 'tk:ssl',   label: 'گواهی SSL',    cat: 'toolbox' },
+  { id: 'tk:mobile',label: 'اتصال موبایل', cat: 'toolbox' },
+  { id: 'tk:hw',    label: 'سخت‌افزار',     cat: 'toolbox' },
+  { id: 'tk:bt',    label: 'بلوتوث',       cat: 'toolbox' },
+  { id: 'tk:cable', label: 'کابل و سریال', cat: 'toolbox' },
+  { id: 'tk:phonehw',label:'بلوتوث/کابلِ گوشی', cat: 'toolbox' },
+  { id: 'tk:memory',label: 'حافظه',        cat: 'toolbox' },
+  { id: 'tk:lang',  label: 'گرامر و لحن',  cat: 'toolbox' },
+  { id: 'tk:devlibs',label:'کتابخانه‌ها',   cat: 'toolbox' },
+  { id: 'tk:guard', label: 'راهنمای محافظت', cat: 'toolbox' },
+  { id: 'tk:learn', label: 'آموزش امنیت',  cat: 'toolbox' },
+  { id: 'tk:comms', label: 'ایمیل و تلگرام', cat: 'toolbox' },
+  { id: 'tk:ext',   label: 'افزونه‌ها',     cat: 'toolbox' },
+];
+const FEATURE_IDS = UI_FEATURES.map((f) => f.id);
+const FEATURES_FILE = process.env.SETAYESH_FEATURES_FILE || path.join(DATA_DIR, '.setayesh-features.json');
+function loadFeaturesConfig() {
+  try { return featurelib.cleanConfig(JSON.parse(fs.readFileSync(FEATURES_FILE, 'utf8')), FEATURE_IDS); }
+  catch (e) { return { levels: {}, users: {} }; }
+}
+let featuresConfig = loadFeaturesConfig();
+function saveFeaturesConfig(cfgIn) {
+  featuresConfig = featurelib.cleanConfig(cfgIn, FEATURE_IDS);
+  try { fs.writeFileSync(FEATURES_FILE, JSON.stringify(featuresConfig), { mode: 0o600 }); } catch (e) {}
+  return featuresConfig;
+}
+function disabledFeaturesFor(username) {
+  return featurelib.effectiveDisabled(accessLevelOf(username), featuresConfig.levels, featuresConfig.users[username]);
 }
 // Express guard: `requireDeviceLevel(1)` for anything that only reads,
 // `requireDeviceLevel(2)` for anything that changes a device.
@@ -1509,6 +1564,9 @@ app.get('/api/config', requireAuth, (req, res) => {
     accessLevel: accessLevelOf(req.username),
     // Deep Mode state (admin toggle) so the UI can show it on/off.
     deepMode: deepModeOn(),
+    // Which buttons/tools are turned off for THIS member (Customization Center).
+    // The UI hides them; admin is never restricted.
+    disabledFeatures: disabledFeaturesFor(req.username),
     net: localLanIps().map(ip => `http://${ip}:${PORT}`),
   });
 });
@@ -3519,6 +3577,22 @@ app.post('/api/admin/breach/email', requireAuth, requireAdmin, async (req, res) 
     const e = await breachcheck.emailBreaches(String((req.body || {}).email || ''), cfg.KEY_HIBP);
     res.json(Object.assign({ ok: true }, e));
   } catch (err) { res.status(502).json({ error: err.message || 'بررسی نشد' }); }
+});
+
+// Customization Center — read the feature registry + current config + members.
+app.get('/api/admin/features', requireAuth, requireAdmin, (req, res) => {
+  const members = Array.from(users.keys()).map((u) => ({
+    username: u, admin: isAdmin(u), accessLevel: accessLevelOf(u),
+    override: featuresConfig.users[u] || { off: [], on: [] },
+  }));
+  res.json({ features: UI_FEATURES, levels: featuresConfig.levels, users: featuresConfig.users, members });
+});
+// Save the whole feature config (levels + per-user overrides). Validated against
+// the known feature ids, so a stray id can never be stored or enforced.
+app.post('/api/admin/features', requireAuth, requireAdmin, (req, res) => {
+  const body = req.body || {};
+  const saved = saveFeaturesConfig({ levels: body.levels || {}, users: body.users || {} });
+  res.json({ ok: true, levels: saved.levels, users: saved.users });
 });
 
 // Approval gateway — list pending/recent requests and decide them from the app.

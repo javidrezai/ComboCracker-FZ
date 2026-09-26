@@ -791,6 +791,22 @@ test('breach check: parses the pwned-passwords range response (k-anonymity)', ()
     .then((r) => { assert.equal(r.count, 99999); assert.equal(r.prefix, '5BAA6'); });
 });
 
+test('customization: per-level and per-user feature disabling (features.js)', () => {
+  const F = require(path.join(ROOT, 'features.js'));
+  // Admin (level 0) is never restricted.
+  assert.deepEqual(F.effectiveDisabled(0, { '1': ['brain'] }, { off: ['agent'] }), []);
+  // Adult (level 1): the level default applies.
+  assert.deepEqual(F.effectiveDisabled(1, { '1': ['brain'] }, null).sort(), ['brain']);
+  // Per-user override can turn something OFF on top of the level...
+  assert.deepEqual(F.effectiveDisabled(1, { '1': ['brain'] }, { off: ['agent'] }).sort(), ['agent', 'brain']);
+  // ...and turn a level-disabled feature back ON for that one user.
+  assert.deepEqual(F.effectiveDisabled(1, { '1': ['brain'] }, { on: ['brain'] }), []);
+  // cleanConfig drops unknown ids so a stray value can never be enforced.
+  const c = F.cleanConfig({ levels: { '1': ['brain', 'nope'] }, users: { u: { off: ['x'], on: ['agent'] } } }, ['brain', 'agent']);
+  assert.deepEqual(c.levels['1'], ['brain']);
+  assert.deepEqual(c.users.u, { off: [], on: ['agent'] });
+});
+
 test('deep mode: toggles on and off and /api/config reflects it', async () => {
   const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
   let r = await (await api('/api/admin/deep-mode', { method: 'POST', token, body: { on: true } })).json();

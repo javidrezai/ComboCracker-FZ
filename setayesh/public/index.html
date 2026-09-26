@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- SETAYESH_BUILD 9.9.194 -->
+<!-- SETAYESH_BUILD 9.9.195 -->
 <html lang="fa" dir="rtl">
 <head>
 <meta charset="UTF-8">
@@ -1210,32 +1210,32 @@
 
 <!-- ===== Agent panel: one handy hub — Deep Mode, breach check, brain ===== -->
 <style>
-#agentPanel{position:fixed;inset:0;z-index:650;display:none;background:rgba(4,6,12,.72);backdrop-filter:blur(6px)}
-#agentPanel.on{display:flex;align-items:flex-start;justify-content:center}
-#agentPanel .sheet{margin-top:min(8vh,70px);width:min(560px,94vw);max-height:86vh;overflow:auto;
+.apanel{position:fixed;inset:0;z-index:650;display:none;background:rgba(4,6,12,.72);backdrop-filter:blur(6px)}
+.apanel.on{display:flex;align-items:flex-start;justify-content:center}
+.apanel .sheet{margin-top:min(8vh,70px);width:min(560px,94vw);max-height:86vh;overflow:auto;
  background:radial-gradient(120% 60% at 50% 0,#0d1830,#0a1120 60%);border:1px solid #ffffff14;border-radius:22px;
  box-shadow:0 30px 80px #000a;padding:20px 20px 22px}
-#agentPanel .ah{display:flex;align-items:center;gap:12px;margin-bottom:16px}
-#agentPanel .ah .orb{width:44px;height:44px;border-radius:50%;flex:none;
+.apanel .ah{display:flex;align-items:center;gap:12px;margin-bottom:16px}
+.apanel .ah .orb{width:44px;height:44px;border-radius:50%;flex:none;
  background:radial-gradient(circle at 50% 40%,#f2f9ff,#9ad6ff 30%,#2f7dff 65%,#0a2f7a);box-shadow:0 0 24px #38b4ff66}
-#agentPanel .ah b{font-size:17px;font-weight:700}#agentPanel .ah span{display:block;font-size:11.5px;color:#8fa3c4}
-#agentPanel .ax{margin-inline-start:auto;width:34px;height:34px;border-radius:10px;background:#ffffff10;border:1px solid #ffffff1a;color:#cfe0ff;cursor:pointer;font-size:17px}
-#agentPanel .sec{background:#0a121f;border:1px solid #ffffff12;border-radius:16px;padding:15px 16px;margin-bottom:13px}
-#agentPanel .sec h4{margin:0 0 4px;font-size:14px;font-weight:700;display:flex;align-items:center;gap:8px}
-#agentPanel .sec .d{font-size:11.5px;color:#8fa3c4;margin-bottom:11px;line-height:1.6}
-#agentPanel .sec .ic{width:26px;height:26px;border-radius:8px;display:grid;place-items:center;flex:none;font-size:14px}
-#agentPanel .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-#agentPanel input[type=text],#agentPanel input[type=password]{flex:1;min-width:150px;height:40px;border-radius:11px;
+.apanel .ah b{font-size:17px;font-weight:700}.apanel .ah span{display:block;font-size:11.5px;color:#8fa3c4}
+.apanel .ax{margin-inline-start:auto;width:34px;height:34px;border-radius:10px;background:#ffffff10;border:1px solid #ffffff1a;color:#cfe0ff;cursor:pointer;font-size:17px}
+.apanel .sec{background:#0a121f;border:1px solid #ffffff12;border-radius:16px;padding:15px 16px;margin-bottom:13px}
+.apanel .sec h4{margin:0 0 4px;font-size:14px;font-weight:700;display:flex;align-items:center;gap:8px}
+.apanel .sec .d{font-size:11.5px;color:#8fa3c4;margin-bottom:11px;line-height:1.6}
+.apanel .sec .ic{width:26px;height:26px;border-radius:8px;display:grid;place-items:center;flex:none;font-size:14px}
+.apanel .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.apanel input[type=text],.apanel input[type=password]{flex:1;min-width:150px;height:40px;border-radius:11px;
  background:#060b16;border:1px solid #ffffff1a;color:#eaf1fb;padding:0 12px;font:inherit;font-size:13px;outline:none}
-#agentPanel input:focus{border-color:#39b6ff88}
-#agentPanel .btn{height:40px;padding:0 16px;border-radius:11px;border:none;cursor:pointer;font:inherit;font-size:13px;font-weight:600;color:#04121e;
+.apanel input:focus{border-color:#39b6ff88}
+.apanel .btn{height:40px;padding:0 16px;border-radius:11px;border:none;cursor:pointer;font:inherit;font-size:13px;font-weight:600;color:#04121e;
  background:linear-gradient(140deg,#39c0ff,#2a6bff)}
-#agentPanel .btn.gold{background:linear-gradient(140deg,#ffc24d,#ff7a00);color:#241000}
-#agentPanel .btn.ghost{background:#ffffff10;border:1px solid #ffffff1a;color:#cfe0ff}
-#agentPanel .res{margin-top:10px;font-size:12.5px;line-height:1.7;border-radius:11px;padding:10px 12px;display:none}
-#agentPanel .res.ok{display:block;background:#0e2417;border:1px solid #34d39955;color:#a7f3cf}
-#agentPanel .res.bad{display:block;background:#2a1114;border:1px solid #fb718555;color:#fecdd3}
-#agentPanel .res.info{display:block;background:#0e1a2e;border:1px solid #39b6ff44;color:#bfe0ff}
+.apanel .btn.gold{background:linear-gradient(140deg,#ffc24d,#ff7a00);color:#241000}
+.apanel .btn.ghost{background:#ffffff10;border:1px solid #ffffff1a;color:#cfe0ff}
+.apanel .res{margin-top:10px;font-size:12.5px;line-height:1.7;border-radius:11px;padding:10px 12px;display:none}
+.apanel .res.ok{display:block;background:#0e2417;border:1px solid #34d39955;color:#a7f3cf}
+.apanel .res.bad{display:block;background:#2a1114;border:1px solid #fb718555;color:#fecdd3}
+.apanel .res.info{display:block;background:#0e1a2e;border:1px solid #39b6ff44;color:#bfe0ff}
 /* toggle switch */
 .tgl{position:relative;width:52px;height:30px;flex:none;cursor:pointer}
 .tgl input{opacity:0;width:0;height:0}
@@ -1244,7 +1244,7 @@
 .tgl input:checked + .sl{background:linear-gradient(140deg,#39c0ff,#2a6bff)}
 .tgl input:checked + .sl:before{transform:translateX(22px);background:#fff}
 </style>
-<div id="agentPanel">
+<div id="agentPanel" class="apanel">
   <div class="sheet">
     <div class="ah">
       <div class="orb"></div>
@@ -1280,6 +1280,32 @@
       <h4><span class="ic" style="background:linear-gradient(140deg,#34d399,#22d3ee)">🧠</span>مغزِ عامل</h4>
       <div class="d">نمای زندهٔ مغز و موتورها، با عامل در مرکز.</div>
       <div class="row"><button class="btn ghost" id="agentBrainBtn" type="button">نمایشِ مغز</button></div>
+    </div>
+
+    <div class="sec">
+      <h4><span class="ic" style="background:linear-gradient(140deg,#f59e0b,#ef4444)">🎛️</span>شخصی‌سازی و دسترسی</h4>
+      <div class="d">تعیین کن هر کاربر یا هر سطح (بزرگسال/کودک) کدام دکمه‌ها و ابزارها را ببیند. ادمین همیشه همه‌چیز را دارد.</div>
+      <div class="row"><button class="btn ghost" id="custOpenBtn" type="button">باز کردنِ مرکزِ شخصی‌سازی</button></div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Customization Center: per-level & per-user feature toggles ===== -->
+<div id="custPanel" class="apanel">
+  <div class="sheet">
+    <div class="ah">
+      <div class="orb" style="background:radial-gradient(circle at 50% 40%,#fff,#fbbf24 30%,#f59e0b 62%,#7c2d12)"></div>
+      <div><b>مرکزِ شخصی‌سازی</b><span>دکمه‌ها و دسترسی‌ها — برای هر سطح و هر کاربر</span></div>
+      <button class="ax" id="custClose" type="button" title="بستن">✕</button>
+    </div>
+    <div class="sec">
+      <div class="d">اول یک هدف را انتخاب کن، بعد دکمه‌ها را روشن/خاموش کن. «ذخیره» را بزن.</div>
+      <div class="row" id="custScope" style="gap:6px"></div>
+    </div>
+    <div id="custFeatures"></div>
+    <div class="row" style="justify-content:flex-end;margin-top:6px">
+      <button class="btn ghost" id="custCancel" type="button">انصراف</button>
+      <button class="btn" id="custSave" type="button">ذخیره</button>
     </div>
   </div>
 </div>
