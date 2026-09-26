@@ -1713,6 +1713,20 @@ test('rollbackutil prunePlan keeps newest files and always drops directories', (
   assert.deepEqual(prunePlan(mixed, 2).sort(), ['dir1', 'f3'], 'keep 2 files + drop the dir + the oldest file');
 });
 
+test('darkweb watch: cleanEmails / diffNew / namesOf are correct', () => {
+  const dw = require(path.join(ROOT, 'darkweb.js'));
+  // cleanEmails: lowercases, trims, dedupes, drops invalid, caps.
+  assert.deepEqual(dw.cleanEmails([' A@B.com ', 'a@b.com', 'nope', 'x@y.co']), ['a@b.com', 'x@y.co']);
+  assert.equal(dw.cleanEmails(Array.from({ length: 100 }, (_, i) => 'u' + i + '@x.co'), 3).length, 3);
+  // diffNew: only breach names NOT already seen are returned (alert-on-change).
+  const breaches = [{ Name: 'Adobe' }, { Name: 'LinkedIn' }, { Title: 'Canva', Name: 'Canva' }];
+  assert.deepEqual(dw.diffNew(['Adobe'], breaches).sort(), ['Canva', 'LinkedIn']);
+  assert.deepEqual(dw.diffNew(['Adobe', 'LinkedIn', 'Canva'], breaches), [], 'nothing new when all known');
+  assert.deepEqual(dw.diffNew([], breaches).sort(), ['Adobe', 'Canva', 'LinkedIn']);
+  // namesOf: the full current set to store as "seen".
+  assert.deepEqual(dw.namesOf(breaches).sort(), ['Adobe', 'Canva', 'LinkedIn']);
+});
+
 test('textutil sanitizeHistory and maskSecret behave', () => {
   const tu = require(path.join(ROOT, 'textutil.js'));
   const h = tu.sanitizeHistory('[{"role":"user","content":"hi"},{"role":"system","content":"x"},{"role":"assistant","content":"yo"}]');

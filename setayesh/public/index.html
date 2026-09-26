@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- SETAYESH_BUILD 9.9.202 -->
+<!-- SETAYESH_BUILD 9.9.203 -->
 <html lang="fa" dir="rtl">
 <head>
 <meta charset="UTF-8">
@@ -1288,6 +1288,7 @@
         <button class="btn gold" id="emBtn" type="button">بررسیِ ایمیل</button>
       </div>
       <div class="res" id="emRes"></div>
+      <div class="row" style="margin-top:11px"><button class="btn ghost" id="darkwebOpenBtn" type="button">🌒 دیده‌بانِ دارک‌وب (نظارتِ همیشگی)</button></div>
     </div>
 
     <div class="sec">
@@ -1320,6 +1321,36 @@
     <div class="row" style="justify-content:flex-end;margin-top:6px">
       <button class="btn ghost" id="custCancel" type="button">انصراف</button>
       <button class="btn" id="custSave" type="button">ذخیره</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Dark-web watch: monitor the family's own emails for leaks ===== -->
+<div id="darkwebPanel" class="apanel">
+  <div class="sheet">
+    <div class="ah">
+      <div class="orb" style="background:radial-gradient(circle at 50% 40%,#c7d2fe,#6366f1 34%,#3730a3 66%,#020617)"></div>
+      <div><b>دیده‌بانِ دارک‌وب</b><span>مراقبِ نشتِ ایمیل‌های خودت در دارک‌وب</span></div>
+      <button class="ax" id="darkwebClose" type="button" title="بستن">✕</button>
+    </div>
+    <div class="sec">
+      <div class="d">ایمیل‌های خودت و خانواده را اضافه کن. ستایش هر روز چک می‌کند آیا در نشت‌های دارک‌وب دیده شده‌اند و اگر نشتِ تازه‌ای بود هشدار می‌دهد. فقط دادهٔ خودت، با سرویسِ قانونیِ Have I Been Pwned.</div>
+      <div id="darkwebKeyNote" class="res info" style="display:none">برای نظارتِ ایمیل، کلیدِ HIBP لازم است — در «مرکز کنترل ← تنظیمات» اضافه‌اش کن.</div>
+      <div class="row"><label class="tgl"><input type="checkbox" id="darkwebAuto"><span class="sl"></span></label><span id="darkwebAutoTxt" style="font-size:13px;color:#a7b4cc">نظارتِ خودکارِ روزانه</span></div>
+      <div class="row" style="margin-top:11px">
+        <input type="text" id="darkwebNew" placeholder="یک ایمیل برای نظارت…" autocomplete="off" dir="ltr">
+        <button class="btn" id="darkwebAdd" type="button">افزودن</button>
+      </div>
+      <div id="darkwebList" style="margin-top:12px"></div>
+      <div class="row" style="justify-content:space-between;margin-top:12px">
+        <button class="btn ghost" id="darkwebScan" type="button">🔎 بررسیِ حالا</button>
+        <span id="darkwebLast" style="font-size:11.5px;color:#8fa3c4"></span>
+      </div>
+    </div>
+    <div class="sec">
+      <h4><span class="ic" style="background:linear-gradient(140deg,#f43f5e,#f59e0b)">⚠️</span><span>هشدارها</span></h4>
+      <div id="darkwebAlerts" class="d">هنوز هشداری نیست.</div>
+      <div class="row" style="justify-content:flex-end"><button class="btn ghost" id="darkwebClearAlerts" type="button">پاک‌کردنِ هشدارها</button></div>
     </div>
   </div>
 </div>

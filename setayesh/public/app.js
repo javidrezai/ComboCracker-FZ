@@ -1,4 +1,4 @@
-/* SETAYESH_BUILD 9.9.202 */
+/* SETAYESH_BUILD 9.9.203 */
 (function(){
 'use strict';
 
@@ -4621,6 +4621,81 @@ ready(function(){
   var sv=$('custSave'); if(sv)sv.addEventListener('click',saveCust);
   var p=$('custPanel'); if(p)p.addEventListener('click',function(e){ if(e.target===p)closeCustPanel(); });
   document.addEventListener('keydown',function(e){ if(e.key==='Escape'){ var pp=$('custPanel'); if(pp&&pp.classList.contains('on'))closeCustPanel(); } });
+});
+
+/* ===== Dark-web watch: monitor the family's own emails for leaks ===== */
+var DW={emails:[],auto:true,results:{},alerts:[],lastRun:0,needsKey:false};
+function openDarkwebPanel(){
+  var p=$('darkwebPanel'); if(!p)return;
+  p.classList.add('on');           // show at once — never a dead click
+  loadDarkweb();
+}
+function closeDarkwebPanel(){ var p=$('darkwebPanel'); if(p)p.classList.remove('on'); }
+function loadDarkweb(){
+  adminFetch('/api/admin/darkweb').then(function(d){
+    DW.emails=d.emails||[]; DW.auto=d.auto!==false; DW.results=d.results||{}; DW.alerts=d.alerts||[]; DW.lastRun=d.lastRun||0; DW.needsKey=!!d.needsKey;
+    renderDarkweb();
+  }).catch(function(){});
+}
+function fmtWhen(ts){ if(!ts)return ''; try{ return new Date(ts).toLocaleString(lang==='en'?'en':'fa'); }catch(e){ return ''; } }
+function renderDarkweb(){
+  var en=lang==='en';
+  var kn=$('darkwebKeyNote'); if(kn)kn.style.display=DW.needsKey?'':'none';
+  var au=$('darkwebAuto'); if(au)au.checked=!!DW.auto;
+  var last=$('darkwebLast'); if(last)last.textContent=DW.lastRun?((en?'Last check: ':'آخرین بررسی: ')+fmtWhen(DW.lastRun)):'';
+  var box=$('darkwebList'); if(box){ box.innerHTML='';
+    if(!DW.emails.length){ box.appendChild(el('div','d',en?'No email is being watched yet.':'هنوز ایمیلی زیرِ نظر نیست.')); }
+    DW.emails.forEach(function(email){
+      var row=el('div','row'); row.style.justifyContent='space-between'; row.style.alignItems='center'; row.style.padding='7px 0'; row.style.borderBottom='1px solid #ffffff10';
+      var left=el('div'); left.style.minWidth='0'; left.style.flex='1';
+      var nm=el('div',null,email); nm.style.cssText='font-size:12.5px;direction:ltr;text-align:left;font-weight:600';
+      left.appendChild(nm);
+      var r=DW.results[email], sub=el('div'); sub.style.cssText='font-size:11px;margin-top:2px';
+      if(!r){ sub.style.color='#8fa3c4'; sub.textContent=en?'not checked yet':'هنوز بررسی نشده'; }
+      else if(r.error){ sub.style.color='#f7b955'; sub.textContent=(en?'error: ':'خطا: ')+r.error; }
+      else if(r.needsKey){ sub.style.color='#f7b955'; sub.textContent=en?'needs HIBP key':'کلیدِ HIBP لازم است'; }
+      else if(r.count>0){ sub.style.color='#fb7185'; sub.textContent='⚠ '+(en?('in '+r.count+' breaches: '):('در '+r.count+' نشت: '))+(r.breaches||[]).slice(0,6).map(function(b){return b.Title||b.Name;}).join('، '); }
+      else { sub.style.color='#34d399'; sub.textContent=en?'✓ not found in known breaches':'✓ در نشت‌های شناخته‌شده پیدا نشد'; }
+      left.appendChild(sub); row.appendChild(left);
+      var del=el('button','btn ghost',en?'Remove':'حذف'); del.type='button'; del.style.cssText='height:30px;font-size:11.5px;padding:0 10px;flex:none;margin-inline-start:8px';
+      del.addEventListener('click',function(){ DW.emails=DW.emails.filter(function(x){return x!==email;}); saveDarkweb(); });
+      row.appendChild(del); box.appendChild(row);
+    });
+  }
+  var al=$('darkwebAlerts'); if(al){
+    if(!DW.alerts.length){ al.textContent=en?'No alert yet.':'هنوز هشداری نیست.'; al.style.color='#8fa3c4'; }
+    else { al.innerHTML=''; al.style.color='';
+      DW.alerts.slice(0,20).forEach(function(a){
+        var d=el('div'); d.style.cssText='font-size:11.5px;color:#fecaca;margin-bottom:6px;line-height:1.6';
+        d.textContent='⚠ '+a.email+' — '+(a.breaches||[]).slice(0,6).join('، ')+'  ('+fmtWhen(a.at)+')';
+        al.appendChild(d);
+      });
+    }
+  }
+}
+function saveDarkweb(){
+  adminFetch('/api/admin/darkweb',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({emails:DW.emails,auto:DW.auto})})
+    .then(function(d){ DW.emails=d.emails||DW.emails; DW.auto=d.auto!==false; DW.needsKey=!!d.needsKey; renderDarkweb(); }).catch(function(){});
+}
+ready(function(){
+  var ob=$('darkwebOpenBtn'); if(ob)ob.addEventListener('click',function(){ closeAgentPanel(); openDarkwebPanel(); });
+  var cl=$('darkwebClose'); if(cl)cl.addEventListener('click',closeDarkwebPanel);
+  var p=$('darkwebPanel'); if(p)p.addEventListener('click',function(e){ if(e.target===p)closeDarkwebPanel(); });
+  var au=$('darkwebAuto'); if(au)au.addEventListener('change',function(){ DW.auto=au.checked; saveDarkweb(); });
+  function addEmail(){ var i=$('darkwebNew'); var v=(i.value||'').trim().toLowerCase(); if(!v)return; if(DW.emails.indexOf(v)<0)DW.emails.push(v); i.value=''; saveDarkweb(); }
+  var add=$('darkwebAdd'); if(add)add.addEventListener('click',addEmail);
+  var ni=$('darkwebNew'); if(ni)ni.addEventListener('keydown',function(e){ if(e.key==='Enter')addEmail(); });
+  var sc=$('darkwebScan'); if(sc)sc.addEventListener('click',function(){
+    var en=lang==='en'; sc.disabled=true; var old=sc.textContent; sc.textContent=en?'Checking…':'در حالِ بررسی…';
+    adminFetch('/api/admin/darkweb/scan',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})
+      .then(function(){ loadDarkweb(); }).catch(function(){})
+      .then(function(){ sc.disabled=false; sc.textContent=old; });
+  });
+  var ca=$('darkwebClearAlerts'); if(ca)ca.addEventListener('click',function(){
+    adminFetch('/api/admin/darkweb/clear-alerts',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})
+      .then(function(){ DW.alerts=[]; renderDarkweb(); }).catch(function(){});
+  });
+  document.addEventListener('keydown',function(e){ if(e.key==='Escape'){ var pp=$('darkwebPanel'); if(pp&&pp.classList.contains('on'))closeDarkwebPanel(); } });
 });
 // FIX: these elements are defined further down the page (lines 6101-6132),
 // so they do not exist yet while this script runs. Wiring them here threw

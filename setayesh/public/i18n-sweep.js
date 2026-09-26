@@ -29,6 +29,13 @@ window.__FA2EN = {
   'مغزِ عامل':'Agent brain','نمای زندهٔ مغز و موتورها، با عامل در مرکز.':'A live view of the brain and engines, with the agent at the centre.','نمایشِ مغز':'Show brain',
   'شخصی‌سازی و دسترسی':'Personalize & access','تعیین کن هر کاربر یا هر سطح (بزرگسال/کودک) کدام دکمه‌ها و ابزارها را ببیند. ادمین همیشه همه‌چیز را دارد.':'Choose which buttons and tools each user or level (adult/child) can see. Admin always has everything.','باز کردنِ مرکزِ شخصی‌سازی':'Open personalization centre',
   'بررسی نشد: سرویسِ بررسیِ رمز جواب نداد':'Not checked: the password service did not respond','یک رمز بنویس تا بررسی کنم.':'Type a password to check.','یک ایمیل بنویس تا بررسی کنم.':'Type an email to check.',
+  // — Dark-web watch (دیده‌بانِ دارک‌وب) —
+  '🌒 دیده‌بانِ دارک‌وب (نظارتِ همیشگی)':'🌒 Dark-web watch (always on)',
+  'دیده‌بانِ دارک‌وب':'Dark-web watch','مراقبِ نشتِ ایمیل‌های خودت در دارک‌وب':'Watches your own emails for dark-web leaks',
+  'ایمیل‌های خودت و خانواده را اضافه کن. ستایش هر روز چک می‌کند آیا در نشت‌های دارک‌وب دیده شده‌اند و اگر نشتِ تازه‌ای بود هشدار می‌دهد. فقط دادهٔ خودت، با سرویسِ قانونیِ Have I Been Pwned.':'Add your own and your family’s emails. Setayesh checks daily whether they appear in dark-web leaks and alerts you if a new one shows up. Only your own data, via the legitimate Have I Been Pwned service.',
+  'برای نظارتِ ایمیل، کلیدِ HIBP لازم است — در «مرکز کنترل ← تنظیمات» اضافه‌اش کن.':'Email monitoring needs an HIBP key — add it in Control centre → Settings.',
+  'نظارتِ خودکارِ روزانه':'Automatic daily watch','یک ایمیل برای نظارت…':'An email to watch…',
+  '🔎 بررسیِ حالا':'🔎 Check now','هشدارها':'Alerts','هنوز هشداری نیست.':'No alert yet.','پاک‌کردنِ هشدارها':'Clear alerts',
   // — Customization centre (مرکزِ شخصی‌سازی) —
   'مرکزِ شخصی‌سازی':'Personalization centre','دکمه‌ها و دسترسی‌ها — برای هر سطح و هر کاربر':'Buttons & access — per level and per user',
   'اول یک هدف را انتخاب کن، بعد دکمه‌ها را روشن/خاموش کن. «ذخیره» را بزن.':'First pick a target, then toggle buttons on/off. Then press Save.',

@@ -101,6 +101,7 @@ const { versionGreater, localLanIps } = require('./netutil');
 const { readZip, crc32, buildZip } = require('./ziputil');
 const { wantsFileDelivery, extractCodeFiles } = require('./autopack');
 const breachcheck = require('./breachcheck');
+const darkweb = require('./darkweb');
 const featurelib = require('./features');
 const guardrail = require('./autonomy');
 const core = require('./core');
@@ -246,7 +247,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.202';
+const APP_VERSION = '9.9.203';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -3592,6 +3593,94 @@ app.post('/api/admin/breach/email', requireAuth, requireAdmin, async (req, res) 
     res.json(Object.assign({ ok: true }, e));
   } catch (err) { res.status(502).json({ error: err.message || 'بررسی نشد' }); }
 });
+
+// ---------------- Dark-web watch (دیده‌بانِ دارک‌وب) ----------------
+// The SAFE, defensive side of the dark web: Setayesh keeps a small watch-list
+// of the family's OWN emails and asks Have I Been Pwned (which aggregates
+// dark-web dumps) whether any of them show up in a breach. New exposures raise
+// an alert so the owner can change the affected password. It never browses
+// .onion sites or touches anyone else's data — only addresses the admin added,
+// over HTTPS, to a legitimate service. Email lookup needs the owner's HIBP key.
+const DARKWEB_FILE = process.env.SETAYESH_DARKWEB_FILE || path.join(DATA_DIR, '.setayesh-darkweb.json');
+function loadDarkweb() {
+  const d = loadJsonFile(DARKWEB_FILE, null) || {};
+  return {
+    emails: darkweb.cleanEmails(d.emails || []),
+    auto: d.auto !== false,                 // watch runs daily unless turned off
+    seen: (d.seen && typeof d.seen === 'object') ? d.seen : {},
+    results: (d.results && typeof d.results === 'object') ? d.results : {},
+    alerts: Array.isArray(d.alerts) ? d.alerts : [],
+    lastRun: d.lastRun || 0,
+  };
+}
+function saveDarkweb(d) { try { saveJsonFile(DARKWEB_FILE, d); } catch (e) {} }
+let darkwebScanning = false;
+async function runDarkwebScan(opts) {
+  opts = opts || {};
+  const state = loadDarkweb();
+  if (!opts.force && !state.auto) return { skipped: 'auto-off' };
+  if (!state.emails.length) { state.lastRun = Date.now(); saveDarkweb(state); return { skipped: 'no-emails' }; }
+  if (!cfg.KEY_HIBP) { state.lastRun = Date.now(); saveDarkweb(state); return { needsKey: true }; }
+  if (darkwebScanning) return { skipped: 'busy' };
+  darkwebScanning = true;
+  const newlyExposed = [];
+  try {
+    for (const email of state.emails) {
+      try {
+        const r = await breachcheck.emailBreaches(email, cfg.KEY_HIBP);
+        if (r.needsKey) { state.results[email] = { needsKey: true, checkedAt: Date.now() }; continue; }
+        const breaches = r.breaches || [];
+        const fresh = darkweb.diffNew(state.seen[email], breaches);
+        state.seen[email] = darkweb.namesOf(breaches);
+        state.results[email] = { count: breaches.length, breaches, checkedAt: Date.now() };
+        if (fresh.length) newlyExposed.push({ email, breaches: fresh });
+      } catch (e) {
+        state.results[email] = { error: e.message || 'خطا', checkedAt: Date.now() };
+      }
+      await new Promise((r) => setTimeout(r, 1700));   // be gentle with the HIBP rate limit
+    }
+    for (const hit of newlyExposed) {
+      const line = `دیده‌بانِ دارک‌وب: «${hit.email}» در نشتِ جدید دیده شد — ${hit.breaches.slice(0, 6).join('، ')}. رمزِ آن حساب را عوض کن.`;
+      state.alerts.unshift({ at: Date.now(), email: hit.email, breaches: hit.breaches });
+      try { nightLog(line, 'warn', `dark-web watch: new exposure for ${hit.email}`); } catch (e) {}
+    }
+    state.alerts = state.alerts.slice(0, 50);
+    state.lastRun = Date.now();
+    saveDarkweb(state);
+    return { ran: true, checked: state.emails.length, newExposures: newlyExposed.length };
+  } finally { darkwebScanning = false; }
+}
+app.get('/api/admin/darkweb', requireAuth, requireAdmin, (req, res) => {
+  const s = loadDarkweb();
+  res.json({ ok: true, emails: s.emails, auto: s.auto, results: s.results, alerts: s.alerts, lastRun: s.lastRun, needsKey: !cfg.KEY_HIBP });
+});
+app.post('/api/admin/darkweb', requireAuth, requireAdmin, (req, res) => {
+  const s = loadDarkweb();
+  const b = req.body || {};
+  if (Array.isArray(b.emails)) {
+    const clean = darkweb.cleanEmails(b.emails);
+    // drop stored results/seen for emails that were removed
+    const set = new Set(clean);
+    for (const k of Object.keys(s.seen)) if (!set.has(k)) delete s.seen[k];
+    for (const k of Object.keys(s.results)) if (!set.has(k)) delete s.results[k];
+    s.emails = clean;
+  }
+  if (typeof b.auto === 'boolean') s.auto = b.auto;
+  saveDarkweb(s);
+  res.json({ ok: true, emails: s.emails, auto: s.auto, needsKey: !cfg.KEY_HIBP });
+});
+app.post('/api/admin/darkweb/scan', requireAuth, requireAdmin, async (req, res) => {
+  try { res.json(Object.assign({ ok: true }, await runDarkwebScan({ force: true }))); }
+  catch (e) { res.status(502).json({ error: e.message || 'اسکن نشد' }); }
+});
+app.post('/api/admin/darkweb/clear-alerts', requireAuth, requireAdmin, (req, res) => {
+  const s = loadDarkweb(); s.alerts = []; saveDarkweb(s); res.json({ ok: true });
+});
+// Daily watch: first pass ~40s after boot, then every 24h. Guarded inside
+// runDarkwebScan (skips when auto is off, no emails, or no HIBP key). unref()
+// so it never holds the process open.
+setTimeout(() => { runDarkwebScan().catch(() => {}); }, 40 * 1000).unref();
+setInterval(() => { runDarkwebScan().catch(() => {}); }, 24 * 60 * 60 * 1000).unref();
 
 // Customization Center — read the feature registry + current config + members.
 app.get('/api/admin/features', requireAuth, requireAdmin, (req, res) => {
