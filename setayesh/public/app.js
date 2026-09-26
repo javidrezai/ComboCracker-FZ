@@ -1,4 +1,4 @@
-/* SETAYESH_BUILD 9.9.199 */
+/* SETAYESH_BUILD 9.9.200 */
 (function(){
 'use strict';
 
@@ -108,6 +108,12 @@ var searchOn=false;
 
 function $(id){return document.getElementById(id);}
 function el(tag,cls,txt){var e=document.createElement(tag);if(cls)e.className=cls;if(txt!=null)e.textContent=txt;return e;}
+// Run fn once the DOM is parsed. This script tag sits in the <head>/mid-page,
+// BEFORE panels like #agentPanel and #custPanel are defined, so wiring their
+// buttons at load time silently found null and never bound them (the "the
+// panel opens but its buttons do nothing" bug). Anything that queries elements
+// defined lower in the page must go through ready().
+function ready(fn){ if(document.readyState!=='loading'){ fn(); } else { document.addEventListener('DOMContentLoaded',fn); } }
 
 /* ================= markdown + highlighting ================= */
 function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
@@ -4486,7 +4492,7 @@ function openAgentPanel(){
   if(tg)tg.checked=on; if(st)st.textContent=on?'روشن — کارهای سخت به قوی‌ترین موتور می‌روند':'خاموش — سریع و کم‌هزینه';
 }
 function closeAgentPanel(){ var p=$('agentPanel'); if(p)p.classList.remove('on'); }
-(function(){
+ready(function(){
   var ag=$('agentTopBtn'); if(ag)ag.addEventListener('click',openAgentPanel);
   var ax=$('agentClose'); if(ax)ax.addEventListener('click',closeAgentPanel);
   var pnl=$('agentPanel'); if(pnl)pnl.addEventListener('click',function(e){ if(e.target===pnl)closeAgentPanel(); });
@@ -4529,17 +4535,20 @@ function closeAgentPanel(){ var p=$('agentPanel'); if(p)p.classList.remove('on')
   var abr=$('agentBrainBtn'); if(abr)abr.addEventListener('click',function(){ closeAgentPanel(); if(typeof openBrain==='function')openBrain(); });
   // Esc closes the panel
   document.addEventListener('keydown',function(e){ if(e.key==='Escape'){ var p=$('agentPanel'); if(p&&p.classList.contains('on'))closeAgentPanel(); } });
-})();
+});
 
 /* ===== Customization Center: per-level & per-user feature toggles ===== */
 var CUST={features:[],levels:{},users:{},members:[],scope:{type:'level',key:'1'}};
 function openCustPanel(){
   var p=$('custPanel'); if(!p)return;
+  p.classList.add('on');   // show at once — never a dead click if the fetch is slow/fails
   adminFetch('/api/admin/features').then(function(d){
     CUST.features=d.features||[]; CUST.levels=d.levels||{}; CUST.users=d.users||{}; CUST.members=d.members||[];
     CUST.scope={type:'level',key:'1'};
-    renderCustScope(); renderCustFeatures(); p.classList.add('on');
-  }).catch(function(){});
+    renderCustScope(); renderCustFeatures();
+  }).catch(function(){
+    var box=$('custFeatures'); if(box)box.innerHTML='<div class="d" style="color:#f7b955">بارگذاری نشد — دوباره امتحان کن.</div>';
+  });
 }
 function closeCustPanel(){ var p=$('custPanel'); if(p)p.classList.remove('on'); }
 function renderCustScope(){
@@ -4600,14 +4609,14 @@ function saveCust(){
     .then(function(){ if(s)s.textContent='ذخیره'; closeCustPanel(); if(typeof refreshConfig==='function')refreshConfig(); })
     .catch(function(){ if(s)s.textContent='ذخیره'; });
 }
-(function(){
+ready(function(){
   var o=$('custOpenBtn'); if(o)o.addEventListener('click',function(){ closeAgentPanel(); openCustPanel(); });
   var c=$('custClose'); if(c)c.addEventListener('click',closeCustPanel);
   var cc=$('custCancel'); if(cc)cc.addEventListener('click',closeCustPanel);
   var sv=$('custSave'); if(sv)sv.addEventListener('click',saveCust);
   var p=$('custPanel'); if(p)p.addEventListener('click',function(e){ if(e.target===p)closeCustPanel(); });
   document.addEventListener('keydown',function(e){ if(e.key==='Escape'){ var pp=$('custPanel'); if(pp&&pp.classList.contains('on'))closeCustPanel(); } });
-})();
+});
 // FIX: these elements are defined further down the page (lines 6101-6132),
 // so they do not exist yet while this script runs. Wiring them here threw
 // "Cannot read properties of null" and killed everything below it -
