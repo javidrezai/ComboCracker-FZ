@@ -1,4 +1,4 @@
-/* SETAYESH_BUILD 9.9.203 */
+/* SETAYESH_BUILD 9.9.204 */
 (function(){
 'use strict';
 
@@ -116,7 +116,13 @@ function el(tag,cls,txt){var e=document.createElement(tag);if(cls)e.className=cl
 function ready(fn){ if(document.readyState!=='loading'){ fn(); } else { document.addEventListener('DOMContentLoaded',fn); } }
 
 /* ================= markdown + highlighting ================= */
-function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+// Escape for BOTH text and attribute contexts. It must escape the quotes too:
+// inline() puts a URL into href="…" via esc(), and a chat URL may legitimately
+// (or maliciously) contain a double-quote — without escaping it, a crafted URL
+// echoed into chat could break out of the attribute and inject markup (XSS).
+// Escaping " and ' is harmless in text content and closes that hole everywhere
+// esc() feeds an attribute (href, title, data-*).
+function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
 
 var KEYWORDS=('abstract await async break case catch class const continue debugger default delete do else enum export extends '+
 'final finally for from function global goto if implements import in instanceof interface let new package private protected public '+
@@ -2187,7 +2193,7 @@ $('runPathBtn').addEventListener('click',function(){
       box.textContent=(r.stdout||'')+(r.stderr? '\n'+r.stderr : '') || '(بدون خروجی)';
       out.appendChild(box);
     })
-    .catch(function(e){ out.innerHTML='<div class="note err">'+e.message+'</div>'; });
+    .catch(function(e){ out.innerHTML='<div class="note err">'+esc(e.message)+'</div>'; });
 });
 
 function loadCCScripts(){
@@ -2250,7 +2256,7 @@ function runScript(name,btn){
       box.textContent=(r.stdout||'')+(r.stderr? '\n'+r.stderr : '') || '(بدون خروجی)';
       out.appendChild(box);
     })
-    .catch(function(e){ out.innerHTML='<div class="note err">'+e.message+'</div>'; })
+    .catch(function(e){ out.innerHTML='<div class="note err">'+esc(e.message)+'</div>'; })
     .then(function(){ if(btn)btn.disabled=false; });
 }
 

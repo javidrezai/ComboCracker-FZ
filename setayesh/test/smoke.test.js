@@ -1713,6 +1713,22 @@ test('rollbackutil prunePlan keeps newest files and always drops directories', (
   assert.deepEqual(prunePlan(mixed, 2).sort(), ['dir1', 'f3'], 'keep 2 files + drop the dir + the oldest file');
 });
 
+test('client esc() escapes quotes too (attribute-injection XSS guard)', () => {
+  // Pull the real esc() out of app.js and prove it neutralizes a quote — inline()
+  // puts chat URLs into href="…" via esc(), so a URL containing " must not be
+  // able to break out of the attribute. Regression guard for the 9.9.204 fix.
+  const src = fs.readFileSync(path.join(ROOT, 'public/app.js'), 'utf8');
+  const m = src.match(/function esc\(s\)\{return String[\s\S]*?\}/);
+  assert.ok(m, 'esc() found in app.js');
+  // eslint-disable-next-line no-eval
+  const esc = eval('(' + m[0].replace('function esc(s)', 'function(s)') + ')');
+  assert.equal(esc('"'), '&quot;', 'double quote escaped');
+  assert.equal(esc("'"), '&#39;', 'single quote escaped');
+  assert.equal(esc('<b>&"'), '&lt;b&gt;&amp;&quot;');
+  const evil = 'https://x.com/"onmouseover="alert(1)';
+  assert.ok(esc(evil).indexOf('"') === -1, 'no raw quote survives to break href');
+});
+
 test('darkweb watch: cleanEmails / diffNew / namesOf are correct', () => {
   const dw = require(path.join(ROOT, 'darkweb.js'));
   // cleanEmails: lowercases, trims, dedupes, drops invalid, caps.
