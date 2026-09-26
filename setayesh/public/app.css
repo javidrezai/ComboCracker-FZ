@@ -455,6 +455,14 @@ html[data-theme="sunset"] .robot{opacity:.14}
 .tk-badge{font-family:var(--mono);font-size:9.5px;color:#7ee7c7;background:rgba(52,211,153,.11);border:1px solid rgba(52,211,153,.3);
   border-radius:99px;padding:3px 9px;font-weight:500;letter-spacing:.3px}
 .tk-tabs{display:flex;flex-wrap:wrap;gap:5px;padding:12px 14px 6px;flex-shrink:0}
+/* Grouped toolbox tabs — clean, sectioned, not a crowded grid (scoped to #tkTabs
+   so the device tabs, which share .tk-tabs, are untouched). */
+#tkTabs{flex-direction:column;gap:9px;max-height:42vh;overflow-y:auto}
+#tkTabs .tk-group{width:100%}
+#tkTabs .tk-group-h{display:flex;align-items:center;gap:9px;margin:0 2px 7px;font-size:10.5px;font-weight:700;
+  letter-spacing:.5px;text-transform:uppercase;color:var(--dim)}
+#tkTabs .tk-group-h::after{content:"";flex:1;height:1px;background:var(--border)}
+#tkTabs .tk-group-row{display:flex;flex-wrap:wrap;gap:6px}
 .tk-tab{display:flex;align-items:center;gap:7px;padding:7px 12px;border-radius:10px;cursor:pointer;white-space:nowrap;
   background:transparent;border:1px solid transparent;border-bottom:none;color:var(--muted);font-size:12.5px;transition:all .15s}
 .tk-tab svg{width:14px;height:14px}

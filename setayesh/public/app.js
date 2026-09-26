@@ -1,4 +1,4 @@
-/* SETAYESH_BUILD 9.9.193 */
+/* SETAYESH_BUILD 9.9.194 */
 (function(){
 'use strict';
 
@@ -4568,6 +4568,15 @@ var TK={
     {id:'settings',i18n:'tk_settings',icon:'<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09A1.65 1.65 0 008 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06A1.65 1.65 0 004.6 15a1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06A1.65 1.65 0 009 4.6a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06A1.65 1.65 0 0019.4 9c.14.36.47.62.86.7H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"/>'},
     {id:'ext',i18n:'tk_ext',icon:'<path d="M12 2l2 5 5-1-3 4 3 4-5-1-2 5-2-5-5 1 3-4-3-4 5 1z"/>'}
   ],
+  // Clean categories so the toolbox is sectioned, not a crowded grid. Every tab
+  // belongs to exactly ONE group, and each appears once. Empty groups are hidden.
+  groups:[
+    {i18n:'tkg_security', ids:['vault','pw','enc','hash']},
+    {i18n:'tkg_scan',     ids:['web','net','ports','ssl']},
+    {i18n:'tkg_devices',  ids:['devices','mobile','hw','bt','cable','phonehw']},
+    {i18n:'tkg_smart',    ids:['memory','lang','devlibs','guard','learn']},
+    {i18n:'tkg_system',   ids:['comms','settings','ext']}
+  ],
   active:'web'
 };
 function tkT(k){return t(k);}
@@ -4629,7 +4638,9 @@ Object.assign(LANG.fa,{
  tk_comms:'ایمیل و تلگرام',
  tk_settings:'تنظیمات',
  tk_settings_hint:'تنظیمات برنامه: تغییر رمز، ظاهر، زبان و بقیهٔ گزینه‌ها اینجاست.',
- tk_settings_open:'باز کردن تنظیمات'
+ tk_settings_open:'باز کردن تنظیمات',
+ tkg_security:'امنیت و رمز', tkg_scan:'اسکن و بررسی', tkg_devices:'دستگاه‌ها و سخت‌افزار',
+ tkg_smart:'هوش و آموزش', tkg_system:'سیستم و ارتباطات'
 });
 Object.assign(LANG.en,{
  tk_vault:'Passwords',tk_ssl:'SSL cert',tk_guard:'Protection',
@@ -4644,7 +4655,9 @@ Object.assign(LANG.en,{
  tk_comms:'Email & Telegram',
  tk_settings:'Settings',
  tk_settings_hint:'App settings: change your password, appearance, language and the rest.',
- tk_settings_open:'Open settings'
+ tk_settings_open:'Open settings',
+ tkg_security:'Security & passwords', tkg_scan:'Scan & check', tkg_devices:'Devices & hardware',
+ tkg_smart:'Intelligence & learning', tkg_system:'System & connections'
 });
 Object.assign(LANG.fa,{
  tk_pw:'رمزساز',tk_pwHint:'رمز عبور قوی و تصادفی بساز — کاملاً روی دستگاه خودت، هیچ‌جا فرستاده نمی‌شود.',
@@ -4672,17 +4685,37 @@ function closeToolkit(){$('toolkitOverlay').classList.remove('on');}
 
 function buildTkTabs(){
   var box=$('tkTabs');box.innerHTML='';
-  TK.tabs.forEach(function(tab){
-    if(tab.adminOnly&&!(CFG&&CFG.isAdmin))return; // email/telegram settings are admin-only
-    // The hardware tabs appear only for a member Javid has opened them to.
-    // The server checks the level on every call regardless; this just keeps
-    // the interface from showing a door that will not open.
-    if(tab.needLevel&&(deviceLevel()<tab.needLevel))return;
+  var byId={}; TK.tabs.forEach(function(tab){byId[tab.id]=tab;});
+  function canShow(tab){
+    if(!tab)return false;
+    if(tab.adminOnly&&!(CFG&&CFG.isAdmin))return false; // email/telegram/etc. are admin-only
+    // Hardware tabs show only for a member Javid opened them to; the server
+    // re-checks the level on every call, this just hides a door that won't open.
+    if(tab.needLevel&&(deviceLevel()<tab.needLevel))return false;
+    return true;
+  }
+  function mkBtn(tab){
     var b=el('button','tk-tab'+(tab.id===TK.active?' on':''));b.type='button';
     b.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'+tab.icon+'</svg><span>'+esc(t(tab.i18n))+'</span>';
     b.addEventListener('click',function(){showTkTab(tab.id);});
-    box.appendChild(b);
+    return b;
+  }
+  // Render in clean labeled groups; skip empty groups. Any tab not placed in a
+  // group falls into a final "بقیه" section so nothing is ever lost.
+  var placed={};
+  (TK.groups||[]).forEach(function(g){
+    var vis=g.ids.map(function(id){placed[id]=true;return byId[id];}).filter(canShow);
+    if(!vis.length)return;
+    var grp=el('div','tk-group'); var h=el('div','tk-group-h'); h.textContent=t(g.i18n); grp.appendChild(h);
+    var row=el('div','tk-group-row'); vis.forEach(function(tab){row.appendChild(mkBtn(tab));}); grp.appendChild(row);
+    box.appendChild(grp);
   });
+  var leftovers=TK.tabs.filter(function(tab){return !placed[tab.id]&&canShow(tab);});
+  if(leftovers.length){
+    var grp=el('div','tk-group'); var h=el('div','tk-group-h'); h.textContent=(lang==='en'?'More':'بقیه'); grp.appendChild(h);
+    var row=el('div','tk-group-row'); leftovers.forEach(function(tab){row.appendChild(mkBtn(tab));}); grp.appendChild(row);
+    box.appendChild(grp);
+  }
 }
 function showTkTab(id){
   TK.active=id;buildTkTabs();
