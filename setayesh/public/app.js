@@ -1,4 +1,4 @@
-/* SETAYESH_BUILD 9.9.201 */
+/* SETAYESH_BUILD 9.9.202 */
 (function(){
 'use strict';
 
@@ -2604,7 +2604,10 @@ function loadGithub(){
   }).catch(function(e){ st.textContent=e.message; });
 }
 window.loadObsidian=loadObsidian; window.loadGithub=loadGithub;
-(function(){
+// These buttons live in the Control-centre Sync section, which is defined LOWER
+// in index.html than this script — so bind after the DOM is ready, or the
+// handlers attach to nothing (the dead-button bug class). See ready().
+ready(function(){
   var sc=$('obsScan'); if(sc)sc.addEventListener('click',loadObsidian);
   var os_=$('obsSave'); if(os_)os_.addEventListener('click',function(){ saveObsidian(($('obsPath').value||'').trim()); });
   var gs=$('ghSave'); if(gs)gs.addEventListener('click',function(){
@@ -2614,7 +2617,7 @@ window.loadObsidian=loadObsidian; window.loadGithub=loadGithub;
       .then(function(d){ $('ghToken').value=''; if(n){n.style.color='#34d399';n.textContent=d.connected?('وصل شد ✓ '+d.login):'قطع شد';} loadGithub(); })
       .catch(function(e){ if(n){n.style.color='#fb7185';n.textContent=e.message;} });
   });
-})();
+});
 
 /* Autonomous mode: she applies the owner's own in-app instructions herself. */
 function loadAutonomy(){
