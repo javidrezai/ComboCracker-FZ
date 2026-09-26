@@ -5,3 +5,6 @@ dist/*
 .editorconfig
 .env
 .ufbt
+
+# Setayesh versioned delivery bundles — build artifacts, never committed
+SETAYESH-*.zip
