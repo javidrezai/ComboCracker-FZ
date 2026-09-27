@@ -219,6 +219,12 @@ app.set('trust proxy', 1); // correct client IPs when behind a tunnel
 // user files must live next to the .exe instead.
 const IS_PACKAGED = Boolean(process.pkg);
 const DATA_DIR = IS_PACKAGED ? path.dirname(process.execPath) : __dirname;
+// جاوید: «در کنسول هیچ اسمِ مدل/موتور نیاید — بعد از فعال‌سازی بی‌صدا داخلِ موتورها
+// کار کنند.» The console churn (model 404-retries, key rotation, model
+// auto-select) is diagnostic noise. It is now SILENT by default and only prints
+// when SETAYESH_DEBUG=1. dbg() is the quiet channel; ordinary console.* stays.
+const LOG_VERBOSE = /^(1|true|yes|on)$/i.test(String(process.env.SETAYESH_DEBUG || ''));
+function dbg(...args) { if (LOG_VERBOSE) console.warn(...args); }
 
 // Self-update health. PENDING_UPDATE_FILE records the version we just wrote to
 // disk so the next boot can PROVE the update actually took effect. ON_ONEDRIVE
@@ -247,7 +253,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.218';
+const APP_VERSION = '9.9.219';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -605,7 +611,7 @@ function rotateGeminiKey() {
   if (!next || next === keys.gemini) return false;
   keys.gemini = next;
   _geminiReady = null;   // the new key may allow a different model
-  console.warn(`   Gemini key quota hit — rotated to key #${geminiKeyIdx + 1} of ${geminiKeyPool.length}`);
+  dbg(`   Gemini key quota hit — rotated to key #${geminiKeyIdx + 1} of ${geminiKeyPool.length}`);
   return true;
 }
 rebuildGeminiPool();   // build the pool at boot from the config keys
@@ -669,7 +675,7 @@ async function discoverGeminiModel() {
     }
     if (pick && pick !== GEMINI_MODEL) {
       GEMINI_MODEL = pick;
-      console.log('   Gemini model auto-selected:', GEMINI_MODEL);
+      dbg('   Gemini model auto-selected:', GEMINI_MODEL);
     }
   } catch (e) {
     // Don't fail silently — a swallowed discovery error shows up later as a
@@ -1961,12 +1967,12 @@ async function callOpenAiCompatible(providerId, model, systemPrompt, messages, _
                || (body.match(/models\/([A-Za-z0-9.\-]+)\s+for\s+the\s+latest/i) || [])[1];
       if (rec && rec !== before) {
         GEMINI_MODEL = rec;
-        console.warn(`   Gemini 404 on "${before}" — Google recommends "${rec}", switching`);
+        dbg(`   Gemini 404 on "${before}" — Google recommends "${rec}", switching`);
         return callOpenAiCompatible(providerId, GEMINI_MODEL, systemPrompt, messages, true, opts);
       }
       await rediscoverGeminiModel();
       if (GEMINI_MODEL !== before) {
-        console.warn(`   Gemini 404 on "${before}" — retrying with "${GEMINI_MODEL}"`);
+        dbg(`   Gemini 404 on "${before}" — retrying with "${GEMINI_MODEL}"`);
         return callOpenAiCompatible(providerId, GEMINI_MODEL, systemPrompt, messages, true, opts);
       }
       throw Object.assign(new Error('provider error'), { status: res.status, detail: body });
@@ -1987,7 +1993,7 @@ async function callOpenAiCompatible(providerId, model, systemPrompt, messages, _
           .map((m) => m.id)
           .find((id) => id && !tried.includes(id));
         if (next) {
-          console.warn(`   ${PROVIDERS[providerId].label} ${res.status} on "${model}" — retrying with "${next}"`);
+          dbg(`   ${PROVIDERS[providerId].label} ${res.status} on "${model}" — retrying with "${next}"`);
           return callOpenAiCompatible(providerId, next, systemPrompt, messages, _retried,
             Object.assign({}, opts, { _triedModels: tried }));
         }
