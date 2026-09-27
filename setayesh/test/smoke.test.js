@@ -1828,6 +1828,18 @@ test('harmony tool-call text is parsed out and never leaks to the user', () => {
   assert.equal(tn.stripToolNoise('[سایت](https://example.com)'), '[سایت](https://example.com)', 'real https link kept');
 });
 
+test('no-fake-link rule is UNIVERSAL (every user & engine), not admin-only', () => {
+  const src = fs.readFileSync(path.join(ROOT, 'index.js'), 'utf8');
+  // promptFor() builds the prompt for every engine; honestyBlock() must be added
+  // there unconditionally (not inside adminDirectiveBlock), so children/adults
+  // get the "never a fake link" rule too. Regression guard for جاوید's request.
+  assert.ok(/base \+= honestyBlock\(\);/.test(src), 'honestyBlock wired into promptFor');
+  const fn = src.match(/function honestyBlock\(\)\s*\{[\s\S]*?\n\}/);
+  assert.ok(fn, 'honestyBlock defined');
+  assert.ok(!/isAdmin|safeUsers|accessLevel/.test(fn[0]), 'honestyBlock is not gated by role');
+  assert.ok(/sandbox/i.test(fn[0]) && /make_files|build_project/.test(fn[0]), 'names the fake-link ban and the real path');
+});
+
 test('build requests route to a tool-capable engine and trigger file delivery', () => {
   const { classifyQuestion } = require(path.join(ROOT, 'engineselect.js'));
   const ap = require(path.join(ROOT, 'autopack.js'));

@@ -247,7 +247,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.205';
+const APP_VERSION = '9.9.206';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -3987,6 +3987,7 @@ function promptFor(username, modeId, safe, libSel, message, opts) {
   }
   base += voiceBlock(username);
   base += factsBlock();             // things she should KNOW (her own version, today's date)
+  base += honestyBlock();           // UNIVERSAL: no fake links, for EVERY user & engine
   base += adminDirectiveBlock(username);   // for Javid: no questions, no refusals — DO it
   base += ownerDirectivesBlock();   // the admin's own standing instructions to Setayesh
   const tut = TUTORS[(username || '').toLowerCase()];
@@ -3998,6 +3999,18 @@ function promptFor(username, modeId, safe, libSel, message, opts) {
 // the task. This block makes that behaviour explicit so Setayesh stops "only
 // talking" and actually produces the thing. Only for the admin; family/child
 // accounts keep the normal careful behaviour.
+// UNIVERSAL rule — injected into EVERY engine's ("brain's") system prompt for
+// EVERY user (admin, adult, child alike). جاوید: «لینک جعلی به هیچ کسی، هیچ
+// کاربری نده.» The stripToolNoise net enforces this on the OUTPUT of every
+// engine too, so a weak brain that ignores the instruction still cannot ship a
+// fake link to anyone.
+function honestyBlock() {
+  return '\n\n*** قانونِ همیشگی برای همه (هر کاربر، هر موتور) — نقضش ممنوع ***\n'
+    + '- هرگز و برای هیچ‌کس لینکِ جعلی/ساختگی/مجازی نساز: نه `sandbox/…`، نه مسیرِ محلی مثل `./file` یا `C:\\…`، نه هر لینکی که واقعی و قابلِ‌کلیک نیست. تو محیطِ اجرای مجازی/سندباکس نداری.\n'
+    + '- تنها راهِ دادنِ فایل: ابزارِ make_files یا build_project را صدا بزن؛ سرور خودش لینکِ دانلودِ واقعی را زیرِ پیام می‌گذارد. اگر نمی‌توانی فایل بسازی، صادقانه بگو «نمی‌توانم» — هرگز لینکِ الکی نده و وانمود نکن که فایلی ساخته‌ای.\n'
+    + '- چیزی که مطمئن نیستی را به‌عنوان واقعیت جا نزن؛ اگر نمی‌دانی، بگو نمی‌دانم.';
+}
+
 function adminDirectiveBlock(username) {
   if (!isAdmin(username)) return '';
   return '\n\n*** دستورِ ادمین (جاوید) — بالاترین اولویت ***\n'
