@@ -1,4 +1,4 @@
-/* SETAYESH_BUILD 9.9.213 */
+/* SETAYESH_BUILD 9.9.214 */
 (function(){
 'use strict';
 
@@ -2929,7 +2929,17 @@ function loadCCLocalModels(){
           a.addEventListener('click',function(){ if(_localModels.indexOf(m)<0){_localModels.push(m);renderLocalModelChips();} });
           det.appendChild(a);
         });
-      } else det.textContent=(d&&d.hint) ? d.hint : (lang==='en'?'Ollama is not available or has no models (you can add one manually).':'Ollama در دسترس نیست یا مدلی ندارد (می‌توانی دستی اضافه کنی).');
+      } else {
+        det.textContent=(d&&d.hint) ? d.hint : (lang==='en'?'Ollama is not available or has no models (you can add one manually).':'Ollama در دسترس نیست یا مدلی ندارد (می‌توانی دستی اضافه کنی).');
+        // Show EXACTLY which addresses/ports were scanned, so a failed detection
+        // is diagnosable instead of a mystery — جاوید can see it looked in the
+        // right places (and add OLLAMA_HOST if his Ollama is somewhere else).
+        if(d&&d.tried&&d.tried.length){
+          var tr=el('div'); tr.style.cssText='margin-top:8px;font-size:10.5px;color:var(--muted);direction:ltr;line-height:1.7;word-break:break-all';
+          tr.textContent=(lang==='en'?'Scanned: ':'جست‌وجو شد: ')+d.tried.join('  ·  ');
+          det.appendChild(tr);
+        }
+      }
     }
   }).catch(function(e){ var n=$('ccLocalModelsNote'); if(n){n.style.color='#fb7185';n.textContent=e.message;} });
 }

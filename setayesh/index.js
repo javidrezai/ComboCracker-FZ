@@ -247,7 +247,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.213';
+const APP_VERSION = '9.9.214';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -6616,26 +6616,35 @@ function ollamaBase() { return ollamaHosts()[0]; }
 // همه به شکلِ v1 (…/v1) نرمال می‌شوند تا با بقیهٔ کد یکدست باشند.
 function ollamaHosts() {
   const norm = (u) => { let s = String(u || '').trim().replace(/\/+$/, ''); if (!s) return ''; if (!/^https?:\/\//i.test(s)) s = 'http://' + s; if (!/\/v1$/i.test(s)) s += '/v1'; return s; };
-  const raw = String(cfg.OLLAMA_HOSTS || '').split(',').map(norm).filter(Boolean);
-  if (raw.length) return [...new Set(raw)];
-  // AUTO-DISCOVERY (جاوید: «خودش بگرده ببینه چی روی سیستمه و استفاده کند»): with
-  // nothing configured, scan the common local LLM ports — Ollama's default and a
-  // few next ones (a second/third install), plus LM Studio's 1234. Probed in
-  // parallel with a short timeout, so a handful of dead ports cost almost nothing
-  // and whatever is actually running is found and used automatically.
-  // Probe 127.0.0.1 (IPv4) FIRST, then localhost. On Windows, Node's fetch
-  // (undici) resolves `localhost` to ::1 (IPv6) before 127.0.0.1, but Ollama
-  // binds 127.0.0.1 (IPv4) only — so a `localhost` probe gets ECONNREFUSED while
-  // the server is actually up, and Setayesh wrongly showed "اولاما نصب نیست" with
-  // every model as ✗. The numeric IPv4 address always reaches it; localhost is
-  // kept as a fallback for the rare IPv6-only bind (OLLAMA_HOST=[::1]).
   const out = [];
+  // 1) Explicit config wins and is ALWAYS included (never dropped), but we still
+  //    add the auto-scan below so a mis-typed host can't hide a working server.
+  String(cfg.OLLAMA_HOSTS || '').split(',').map(norm).filter(Boolean).forEach((u) => out.push(u));
   const cfgBase = baseUrlFor('local');
   if (cfgBase) out.push(norm(cfgBase));
-  ['11434', '11435', '11436', '11437', '1234'].forEach((p) => {
-    out.push('http://127.0.0.1:' + p + '/v1');
-    out.push('http://localhost:' + p + '/v1');
-  });
+
+  // 2) Honour Ollama's OWN environment variable, OLLAMA_HOST — the standard way
+  //    people move it to another port or bind address on Windows. It may be a
+  //    bare port ("11500"), "host:port", "0.0.0.0:11434", or a full URL. جاوید:
+  //    «هر آدرس و هر درگاهی هست بگیرد». We turn whatever it says into concrete
+  //    probe targets (0.0.0.0 / :: means "all interfaces", so we probe loopback
+  //    and every LAN IP on that port).
+  const scanPorts = new Set(['11434', '11435', '11436', '11437', '11438', '1234']); // Ollama x4 + LM Studio
+  const scanHosts = ['127.0.0.1', 'localhost'];               // IPv4 first (undici resolves localhost→::1 on Windows)
+  try { (localLanIps() || []).forEach((ip) => scanHosts.push(ip)); } catch (e) {}   // the machine's own LAN IPs
+  const envHost = String(process.env.OLLAMA_HOST || cfg.OLLAMA_HOST || '').trim();
+  if (envHost) {
+    const m = /^(?:https?:\/\/)?(\[[^\]]+\]|[^:/]+)?(?::(\d+))?/i.exec(envHost);
+    const h = m && m[1] ? m[1].replace(/^\[|\]$/g, '') : '';
+    const p = m && m[2] ? m[2] : (/^\d+$/.test(envHost) ? envHost : '11434');
+    scanPorts.add(p);
+    if (h && !/^(0\.0\.0\.0|::|\*)$/.test(h)) scanHosts.push(h);   // a real host → probe it; wildcard → covered by the list
+  }
+
+  // 3) Build the full candidate matrix: every host × every port, IPv4 first.
+  //    Probed in parallel with a short timeout, so scanning ~30 dead endpoints
+  //    costs about ONE probe's time and whatever is actually up is found and used.
+  for (const p of scanPorts) for (const h of [...new Set(scanHosts)]) out.push('http://' + h + ':' + p + '/v1');
   return [...new Set(out.map(norm).filter(Boolean))];
 }
 
@@ -6674,6 +6683,7 @@ async function probeAllOllama(opts) {
     running: anyRunning,
     models: merged,
     hosts: results.filter((r) => r.running || r.models.length),   // report servers that actually answered
+    tried: hosts.map((h) => h.replace(/\/v1\/?$/, '')),           // every address:port scanned (for diagnosis)
   };
 }
 async function detectOllamaModels() { return (await probeAllOllama()).models; }
@@ -6689,6 +6699,7 @@ app.get('/api/admin/local-models', requireAuth, requireAdmin, async (req, res) =
     running: all.running,
     servers: all.hosts.map((h) => ({ base: h.base, running: h.running, models: h.models })),
     serverCount: upCount,
+    tried: all.tried,   // every address:port scanned — so a failure shows exactly where it looked
     hint: (upCount > 1 ? `🟢 ${upCount} سرورِ اولاما متصل‌اند. ` : '') + ollama.statusHint({ running: all.running, models: all.models, installed: all.installed }),
   });
 });

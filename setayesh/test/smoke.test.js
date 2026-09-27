@@ -1638,6 +1638,13 @@ test('adding a local model name auto-enables the local engine', async () => {
   const localAfter = (cfg.providers || []).find((p) => p.id === 'local');
   assert.ok(localAfter && localAfter.configured, 'local must be configured now');
   assert.ok((localAfter.models || []).some((m) => m.id === 'qwen2.5'), 'the model must be listed');
+  // Aggressive auto-discovery: the status must report EVERY address:port it
+  // scanned (127.0.0.1 + localhost across several Ollama/LM-Studio ports), so a
+  // failed detection is diagnosable instead of a silent "not available".
+  const st = await (await api('/api/admin/local-models', { token })).json();
+  assert.ok(Array.isArray(st.tried) && st.tried.length >= 8, 'scan reports many candidate endpoints: ' + JSON.stringify(st.tried));
+  assert.ok(st.tried.some((u) => /127\.0\.0\.1:11434/.test(u)), 'the default Ollama endpoint is always scanned');
+  assert.ok(st.tried.some((u) => /:1234/.test(u)), 'LM Studio port is scanned too');
 });
 
 // ---- Full-app audit fix (v9.9.97): connector precondition status ----
