@@ -247,7 +247,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.216';
+const APP_VERSION = '9.9.217';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -4649,13 +4649,17 @@ app.post('/api/chat', requireAuth, chatLimiter, upload.array('files', 8), async 
         '',
         'خودم دوباره امتحان می‌کنم؛ تو هم می‌توانی چند لحظه بعد دوباره بفرستی، یا از «مرکز کنترل ← موتورها» یک موتور دیگر را فعال کنی.',
       ].filter(Boolean).join('\n');
+    // IMPORTANT: this apology is Setayesh's OWN degraded voice — NO engine
+    // produced it. Do NOT stamp it with target.model (e.g. "qwen2.5:7b"): that
+    // made جاوید think Ollama had answered when Ollama isn't even installed.
+    // Label it clearly as offline so the source is never misread.
     res.json({
       reply,
       historyText: message || (req.files || []).map(f => `[file: ${f.originalname}]`).join(' '),
-      provider: target.id,
-      providerLabel: PROVIDERS[target.id].label,
-      model: target.model,
-      degraded: { reason: mapped.error, cooling },
+      provider: 'setayesh',
+      providerLabel: 'ستایش · ⚠️ هیچ موتوری در دسترس نبود',
+      model: 'آفلاین',
+      degraded: { reason: mapped.error, cooling, triedProvider: PROVIDERS[target.id] ? PROVIDERS[target.id].label : target.id, triedModel: target.model },
       elapsedMs: Date.now() - started,
     });
   }
