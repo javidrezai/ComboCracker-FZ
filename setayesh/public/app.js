@@ -1,4 +1,4 @@
-/* SETAYESH_BUILD 9.9.211 */
+/* SETAYESH_BUILD 9.9.212 */
 (function(){
 'use strict';
 
@@ -502,7 +502,7 @@ function renderChatList(){
       saveChats();
     });
     it.appendChild(x);
-    it.addEventListener('click',function(){activeChat=c;setMode(c.mode||'chat');renderChatList();renderThread();closeSidebar();});
+    it.addEventListener('click',function(){activeChat=c;setMode(c.mode||'chat');renderChatList();renderThread(true);closeSidebar();});
     box.appendChild(it);
   });
 }
@@ -598,7 +598,13 @@ function syncChatsFromServer(done){
       _lastChatsT=Math.max(_lastChatsT,d.t||0);
       try{localStorage.setItem(chatsKey(),JSON.stringify({t:_lastChatsT,chats:chats}));}catch(e){}
       if(!activeChat||!byId[String(activeChat.id)])activeChat=chats[0]||null;
-      renderChatList(); renderThread();
+      renderChatList();
+      /* Only rebuild the message thread when the OPEN chat actually changed —
+         otherwise the 8-second sync re-rendered it every time and, combined with
+         the autoscroll, made the page jump ("پرش صفحه"). renderThread() (no
+         force) also now keeps the owner's scroll position if he'd scrolled up. */
+      var sig=threadSig();
+      if(sig!==_lastThreadSig){ _lastThreadSig=sig; renderThread(); }
       /* If we hold anything the server doesn't, push it up now. */
       if(changed||chats.length>d.chats.length)pushChatsToServer(slimChats(),Date.now());
     }
@@ -859,12 +865,30 @@ function welcomeNode(){
   return w;
 }
 
-function renderThread(){
-  var th=$('thread');th.innerHTML='';
+/* renderThread(force):
+   force===true  → always scroll to the bottom (a fresh open / the user just sent).
+   force omitted → only scroll to bottom if the user was ALREADY near the bottom.
+   The 8-second background sync re-renders the thread; without this it yanked the
+   view back to the bottom every few seconds ("پرش صفحه") whenever the owner had
+   scrolled up to read. Now a background refresh keeps his place. */
+/* A cheap fingerprint of the currently-open chat's content, so the background
+   sync can tell whether the thread actually needs re-rendering. */
+var _lastThreadSig='';
+function threadSig(){
+  if(!activeChat||!activeChat.messages)return '';
+  var ms=activeChat.messages,last=ms[ms.length-1]||{};
+  return String(activeChat.id)+':'+ms.length+':'+((last.text||'').length)+':'+(last.model||'')+':'+(activeChat.updated||0);
+}
+function renderThread(force){
+  _lastThreadSig=threadSig();
+  var th=$('thread'),box=$('scroll');
+  var atBottom = force===true || !box || (box.scrollHeight-box.scrollTop-box.clientHeight < 80);
+  var keepTop = box ? box.scrollTop : 0;
+  th.innerHTML='';
   if(!activeChat||!activeChat.messages.length){th.appendChild(welcomeNode());return;}
   activeChat.messages.forEach(function(m){th.appendChild(messageNode(m));});
   wireCopy(th);
-  requestAnimationFrame(function(){$('scroll').scrollTop=$('scroll').scrollHeight;});
+  requestAnimationFrame(function(){ if(!box)return; if(atBottom)box.scrollTop=box.scrollHeight; else box.scrollTop=keepTop; });
 }
 
 function messageNode(m){
@@ -977,6 +1001,7 @@ function pushMessage(m){
   th.appendChild(node);
   wireCopy(node);
   $('scroll').scrollTop=$('scroll').scrollHeight;
+  _lastThreadSig=threadSig();   // keep the sync's fingerprint current, no redundant re-render
   return node;
 }
 
@@ -1513,14 +1538,14 @@ async function enterApp(){
     }
   }catch(e){}
   loadChats();renderChatList();
-  if(chats.length)renderThread();
+  if(chats.length)renderThread(true);
   $('msgBox').focus();
   // Pull this account's conversations from the server FIRST, so a new device
   // (or the phone after the PC) shows the same history — and only create an
   // empty new chat if neither the server nor this device had anything, so the
   // placeholder can never overwrite the shared history.
   syncChatsFromServer(function(){
-    if(!chats.length){ newChat(); } else { renderChatList(); renderThread(); }
+    if(!chats.length){ newChat(); } else { renderChatList(); renderThread(true); }
   });
   // Bring this account's look (theme, text size, language) from the server too.
   syncPrefsFromServer();

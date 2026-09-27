@@ -48,4 +48,22 @@ function cooldownFor(status, detail, streak) {
   return { ms: Math.min(rateLimited ? 120000 : 6 * 3600000, base * grow), noCredit, rateLimited };
 }
 
-module.exports = { classifyQuestion, cooldownFor };
+// Pick the model that FITS the question from an engine's model list — NEVER
+// blindly models[0]. Mistral lists Codestral (a code-completion model) first,
+// so models[0] sent ordinary chat and every FAILED-OVER request to Codestral:
+// English, tool-refusing answers and fake "download" links. Rules:
+//   - a file task (zip/app/game) → the GENERAL model (only it can call tools
+//     and build a real download), even if the ask also looks like code;
+//   - a genuine code question (not a file task) → the code model;
+//   - everything else → the general model.
+// Returns a model id, or '' if the list is empty.
+function pickModel(models, opts) {
+  opts = opts || {};
+  const list = Array.isArray(models) ? models : [];
+  const code = (list.find((m) => m && m.best === 'code') || {}).id;
+  const general = (list.find((m) => m && m.best !== 'code') || list[0] || {}).id;
+  if (opts.code && !opts.fileTask) return code || general || '';
+  return general || code || '';
+}
+
+module.exports = { classifyQuestion, cooldownFor, pickModel };

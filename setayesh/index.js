@@ -110,7 +110,7 @@ const { prunePlan } = require('./rollbackutil');
 const { sanitizeHistory, maskSecret } = require('./textutil');
 const { ALLOWED_IMAGE_TYPES, MAX_FILE_BYTES, MAX_TEXT_CHARS, TEXT_EXTENSIONS, OFFICE_EXTENSIONS, classifyFile, clampText } = require('./filekind');
 const { guessDueDate, detectCommitment, extractFacts } = require('./factextract');
-const { classifyQuestion, cooldownFor } = require('./engineselect');
+const { classifyQuestion, cooldownFor, pickModel } = require('./engineselect');
 const { friendlyProviderError } = require('./providererror');
 const { wantsImage, wantsSearch, wantsCouncil } = require('./intent');
 const { tryCompute, convertUnit, round4 } = require('./mathutil');
@@ -247,7 +247,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.211';
+const APP_VERSION = '9.9.212';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -4454,13 +4454,32 @@ app.post('/api/chat', requireAuth, chatLimiter, upload.array('files', 8), async 
       // ("چه بپرسم؟") is worse than an honest "busy, try again". It only
       // answers when the owner picks it on purpose. Follow the owner's engine
       // order (Gemini first, then the rest), healthy engines ahead of cooling.
-      const alternatives = orderedEngineList({ needsVision, exclude: [target.id, 'brain'] });
+      let alternatives = orderedEngineList({ needsVision, exclude: [target.id, 'brain'] });
+      // Does THIS request want a real file (zip/app/game)? A file task must go
+      // to a tool-capable cloud GENERAL model (handled by the file-delivery pass
+      // above), never a code-completion model and never the local engine (which
+      // can't build files).
+      const wantFileFO = (() => { try { return wantsFileDelivery(message); } catch (e) { return false; } })();
+      // جاوید's rule: «اگر موتورها کار نمیکنن باید بره سراغ لوکالِ اولاما.» When a
+      // cloud engine fails and the question can actually run on-device (no tools,
+      // no live web, no image, not a file build), prefer the local Ollama model
+      // BEFORE trying yet another cloud engine — it's private, has no quota, and
+      // gives a coherent answer in the user's language. Only when the local
+      // engine is installed and usable.
+      const canLocalFO = !needsVision && !wantFileFO
+        && !askTags.includes('tools') && !askTags.includes('current') && !askTags.includes('vision');
+      if (canLocalFO && isConfigured('local') && engineUsable('local')) {
+        alternatives = ['local'].concat(alternatives.filter((x) => x !== 'local'));
+      }
 
       for (const altId of alternatives) {
         try {
           const altStarted = Date.now();
           const altModels = PROVIDERS[altId].models || [];
-          const altModel = ((askTags.includes('code') && altModels.find((m) => m.best === 'code')) || altModels[0] || {}).id;
+          // Pick the model that FITS the question — NEVER blindly models[0]
+          // (Mistral's models[0] is Codestral, a code model that refuses tools
+          // and fakes download links). Shared, unit-tested logic in engineselect.
+          const altModel = pickModel(altModels, { code: askTags.includes('code'), fileTask: wantFileFO });
           if (altId === 'gemini') await ensureGeminiModel();
           const altPrompt = promptFor(req.username, req.body.mode, safe, req.body.codelib, message);
           const altReply = await callWithTools(altId, altModel, altPrompt, messages, toolCtx, callOpts);
@@ -9363,6 +9382,28 @@ function stopHttps() {
 }
 
 // ---------------- Stay alive ----------------
+// Capped log append. error.log had NO ceiling: a fast loop of rejections once
+// grew it to 447 MB, which is what made جاوید's whole folder look enormous. Now
+// the file is rotated to error.log.old once it passes 2 MB (so at most ~4 MB
+// total is ever kept), and appends are O(1) — a runaway can never bloat the
+// install again. Diagnosis still has the last 2 MB, which is plenty.
+const ERROR_LOG_MAX = 2 * 1024 * 1024;
+function appendCappedLog(rel, text) {
+  const file = path.join(DATA_DIR, rel);
+  try {
+    let sz = 0; try { sz = fs.statSync(file).size; } catch (e) {}
+    if (sz > ERROR_LOG_MAX) {
+      try { fs.renameSync(file, file + '.old'); } catch (e) { try { fs.truncateSync(file, 0); } catch (e2) {} }
+    }
+    fs.appendFileSync(file, text);
+  } catch (e) {}
+}
+// One-time rotation at boot so an ALREADY-huge error.log (from before the cap)
+// gets trimmed the moment this version runs — existing installs shrink at once.
+try {
+  const _el = path.join(DATA_DIR, 'error.log');
+  if (fs.statSync(_el).size > ERROR_LOG_MAX) { try { fs.renameSync(_el, _el + '.old'); } catch (e) {} }
+} catch (e) {}
 // A single unhandled error used to take the whole server down, which for a
 // family assistant means it is simply gone until someone notices the black
 // window closed. Log it, keep serving. Genuinely fatal problems (a port
@@ -9370,14 +9411,12 @@ function stopHttps() {
 process.on('uncaughtException', (err) => {
   console.error('\n   ⚠ Unexpected error (server kept running):', err && err.message);
   if (err && err.stack) console.error('   ' + err.stack.split('\n').slice(1, 3).join('\n   '));
-  try { fs.appendFileSync(path.join(DATA_DIR, 'error.log'),
-    `\n[${new Date().toISOString()}] ${err && err.stack ? err.stack : err}\n`); } catch (e) {}
+  appendCappedLog('error.log', `\n[${new Date().toISOString()}] ${err && err.stack ? err.stack : err}\n`);
   try { recordIncident('uncaughtException', err); } catch (e) {}
 });
 process.on('unhandledRejection', (reason) => {
   console.error('   ⚠ Unhandled promise rejection (server kept running):', reason && reason.message ? reason.message : reason);
-  try { fs.appendFileSync(path.join(DATA_DIR, 'error.log'),
-    `\n[${new Date().toISOString()}] rejection: ${reason && reason.stack ? reason.stack : reason}\n`); } catch (e) {}
+  appendCappedLog('error.log', `\n[${new Date().toISOString()}] rejection: ${reason && reason.stack ? reason.stack : reason}\n`);
   try { recordIncident('unhandledRejection', reason); } catch (e) {}
 });
 server.on('error', (err) => {

@@ -641,6 +641,29 @@ test('a rate-limited engine fails over to a healthy one and still answers', asyn
   }
 });
 
+// ---- engineselect.pickModel: never send chat/files to a code model ----
+// Mistral lists Codestral (best:'code') first. models[0] used to send ordinary
+// chat AND every failed-over request there → English, tool-refusing, fake
+// download links. pickModel must choose the GENERAL model unless it's a genuine
+// code question that is NOT a file task.
+test('pickModel: general for chat/files, code only for a real code question', () => {
+  const { pickModel } = require(path.join(ROOT, 'engineselect.js'));
+  const mistral = [{ id: 'codestral-latest', best: 'code' }, { id: 'mistral-large', best: 'general' }];
+  // plain chat → the general model, never Codestral
+  assert.equal(pickModel(mistral, {}), 'mistral-large', 'chat must not go to the code model');
+  // a file/app/game build → general (only it can call tools + build a real zip)
+  assert.equal(pickModel(mistral, { code: true, fileTask: true }), 'mistral-large', 'a file task never uses the code model');
+  // a genuine code question that is NOT a file task → the code model
+  assert.equal(pickModel(mistral, { code: true, fileTask: false }), 'codestral-latest', 'a real code question uses the code model');
+  // an engine with only a general model → that model, whatever the tags
+  assert.equal(pickModel([{ id: 'g', best: 'general' }], { code: true }), 'g');
+  // an engine whose only model is a code model → fall back to it (better than nothing)
+  assert.equal(pickModel([{ id: 'onlycode', best: 'code' }], {}), 'onlycode');
+  // empty / missing list → '' (caller decides), never a throw
+  assert.equal(pickModel([], {}), '');
+  assert.equal(pickModel(null, {}), '');
+});
+
 // ---- Formats and the converter ----
 test('the format registry is served and every entry is well formed', async () => {
   const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
