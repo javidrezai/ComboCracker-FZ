@@ -247,7 +247,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.207';
+const APP_VERSION = '9.9.208';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -4358,6 +4358,29 @@ app.post('/api/chat', requireAuth, chatLimiter, upload.array('files', 8), async 
     // If the owner asked for a file/zip and the engine wrote code but couldn't
     // call make_files, build the download here from that code.
     autoPackageReply(message, reply, toolCtx.sideEffects);
+    // GUARANTEE a real file. جاوید: «از همه موتورها استفاده کند و فایل نهایی را
+    // تحویل دهد.» A code model (Codestral) answers but neither calls make_files
+    // nor emits fenced code — so the user gets a dead "download" text. When the
+    // request wanted a file and none was produced, ask a tool-capable engine for
+    // the files as PURE CODE BLOCKS (every model, even a code model, can do
+    // this), then package them into a real download. One extra pass, only when
+    // needed.
+    if (wantsFileDelivery(message) && !toolCtx.sideEffects.download) {
+      try {
+        const order = orderedEngineList({}).filter((x) => x !== 'local' && x !== 'brain' && isConfigured(x));
+        const engId = order[0] || (isConfigured(target.id) ? target.id : null);
+        if (engId) {
+          const gm = engId === 'gemini' ? GEMINI_MODEL
+            : ((PROVIDERS[engId].models.find((m) => m.best !== 'code') || PROVIDERS[engId].models[0] || {}).id);
+          const sys = 'تو فقط فایل‌ساز هستی. برای همین درخواستِ کاربر، پروژهٔ کاملِ اجراشدنی را بساز و '
+            + 'خروجی را «فقط» به‌صورت بلوک‌های کدِ نشان‌دار (```) بده؛ خطِ اولِ هر بلوک کامنتی با نامِ فایل باشد '
+            + '(مثلاً «<!-- file: index.html -->» یا «// file: script.js»). هیچ توضیح، هیچ لینک، و هیچ متنِ اضافه ننویس.';
+          const freply = await callWithTools(engId, gm, sys,
+            [{ role: 'user', content: String(message || 'یک پروژهٔ کوچکِ کامل بساز') }], toolCtx, callOpts);
+          autoPackageReply(message, freply, toolCtx.sideEffects);
+        }
+      } catch (e) { /* best-effort — never break the reply we already have */ }
+    }
     const historyText = message || (req.files || []).map(f => `[file: ${f.originalname}]`).join(' ');
     res.json({
       reply,

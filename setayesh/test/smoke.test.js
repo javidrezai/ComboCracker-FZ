@@ -1850,6 +1850,12 @@ test('build requests route to a tool-capable engine and trigger file delivery', 
   // A plain chat line must NOT be dragged into tools/file delivery.
   assert.ok(!classifyQuestion('حالت چطوره؟').includes('tools'));
   assert.ok(!ap.wantsFileDelivery('حالت چطوره؟'));
+  // The delivery GUARANTEE relies on extracting named files from fenced code
+  // blocks (the server's file-only re-generation pass). Even a code model can
+  // emit these, so this is what turns any reply into a real zip.
+  const reply = 'بله\n```html\n<!-- file: index.html -->\n<h1>Guess</h1>\n```\n```js\n// file: game.js\nconsole.log(1);\n```';
+  const files = ap.extractCodeFiles(reply);
+  assert.deepEqual(files.map((f) => f.name).sort(), ['game.js', 'index.html'], 'named files pulled from code blocks');
 });
 
 // ---- Dev libraries: download plan is injection-safe (v9.9.105) ----
