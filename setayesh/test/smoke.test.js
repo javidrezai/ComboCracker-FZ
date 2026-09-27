@@ -1655,6 +1655,16 @@ test('adding a local model name auto-enables the local engine', async () => {
   assert.ok(st.tried.some((u) => /:1234/.test(u)), 'LM Studio port is scanned too');
 });
 
+// The weak Python brain must be OFF by default — it kept hijacking real
+// requests with canned answers. It only appears when ENABLE_BRAIN=1 is set.
+test('the Python brain is not a usable engine unless explicitly enabled', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  const cfg = await (await api('/api/config', { token })).json();
+  const brain = (cfg.providers || []).find((p) => p.id === 'brain');
+  // Either it's absent from the engine list, or present but not configured/usable.
+  assert.ok(!brain || !brain.configured, 'brain must not be a usable engine by default');
+});
+
 // ---- Full-app audit fix (v9.9.97): connector precondition status ----
 // A "Google isn't connected yet" call must read as a clean precondition (409),
 // not a scary upstream failure (502) or a crash (500). Found in the route sweep.

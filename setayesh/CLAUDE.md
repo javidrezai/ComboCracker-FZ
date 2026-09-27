@@ -375,10 +375,15 @@ via the app's own self-editing feature.
   (after `three.min.js`), `login-fx.js`, `memory-panel.js`, `connectors-panel.js`.
 - `test/smoke.test.js` — critical-path tests. `Start-Setayesh.bat` / `start.sh` — launchers.
 - `pybrain/` — the standalone Python "Setayesh Brain" (agent loop + Obsidian
-  vault memory, stdlib-only). The Node app exposes it as the keyless engine
-  `brain` (provider kind `brain`): the chat hands the question to
-  `pybrain/brain/server/main.py` and shows the answer. Detected at boot when
-  python is on PATH; disable with `ENABLE_BRAIN=0`.
+  vault memory, stdlib-only). The Node app can expose it as the keyless engine
+  `brain` (provider kind `brain`). **OFF by default since 9.9.216** — it is a
+  weak, rule-based fallback that kept HIJACKING real requests with a canned
+  "Ollama isn't available…" answer (even for "build me a zip"), taking 40+s,
+  while healthy cloud engines sat idle. It now activates ONLY with an explicit
+  `ENABLE_BRAIN=1`. When off, chat uses the real engines (cloud + Ollama) and,
+  if all fail, an honest degraded message — never the toy brain. `resolveTarget`
+  also drops a picked engine that isn't `isConfigured` (a stale selection of a
+  disabled engine falls back to Gemini-first routing instead of erroring).
 
 ## Open roadmap
 Split server `index.js` (3.4); tool-calling for non-Claude engines (3.5).

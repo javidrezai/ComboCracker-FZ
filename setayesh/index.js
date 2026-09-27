@@ -247,7 +247,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.215';
+const APP_VERSION = '9.9.216';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -546,9 +546,16 @@ const BRAIN_MAIN = path.join(DATA_DIR, 'pybrain', 'brain', 'server', 'main.py');
 const BRAIN_DIR = path.join(DATA_DIR, 'pybrain');
 let PYTHON_BIN = null;
 (function detectBrain() {
-  const off = String(cfg.ENABLE_BRAIN != null ? cfg.ENABLE_BRAIN
+  // The Python "brain" is a WEAK, rule-based local fallback. It kept HIJACKING
+  // real requests with a canned "I'm Setayesh, Ollama isn't available…" answer —
+  // even for "build me a zip" — while healthy cloud engines sat idle, and took
+  // 40+ seconds to do it. جاوید: «این مغزِ اسباب‌بازی نباید جواب بدهد.» So it is
+  // now OFF by default and only turns on with an explicit ENABLE_BRAIN=1. When
+  // off, chat uses the real engines (cloud + Ollama); if all of those fail the
+  // user gets an honest message, never the toy brain's canned text.
+  const flag = String(cfg.ENABLE_BRAIN != null ? cfg.ENABLE_BRAIN
     : (process.env.SETAYESH_ENABLE_BRAIN != null ? process.env.SETAYESH_ENABLE_BRAIN : '')).trim().toLowerCase();
-  if (off === '0' || off === 'false' || off === 'off') return;
+  if (!(flag === '1' || flag === 'true' || flag === 'on' || flag === 'yes')) return;
   if (!fs.existsSync(BRAIN_MAIN)) return;
   const { spawnSync } = require('child_process');
   for (const bin of ['python3', 'python']) {
@@ -3872,7 +3879,11 @@ function resolveTarget(providerId, model, username, opts) {
       return { id: stable, model: chosen, label: p.label };
     }
   }
-  const asked = PROVIDERS[providerId] ? providerId : null;   // did the client pick one?
+  // The client's picked engine only counts if it's actually USABLE. A stale
+  // selection pointing at a disabled engine (e.g. the now-off Python brain) or
+  // an unconfigured one must fall back to the normal Gemini-first routing —
+  // never stick to a dead engine or throw "no key".
+  const asked = (PROVIDERS[providerId] && isConfigured(providerId)) ? providerId : null;
   let id = pin ? pin : (asked || DEFAULT_PROVIDER);
 
   // Routing order (updated Sep 2026 on the owner's instruction): a USER QUESTION
