@@ -247,7 +247,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.212';
+const APP_VERSION = '9.9.213';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -5597,6 +5597,52 @@ function clearAllChats(user) {
   return ids.length;
 }
 
+// Chat retention. جاوید: «چت‌ها را هم بعد از دو ماه پاک کند.» This overrides the
+// old "chats never expire" default — at the owner's explicit request. A chat is
+// removed once its LAST activity is older than CHAT_RETENTION_DAYS (default 60 =
+// two months), with a tombstone so no device resurrects it. Set the config to 0
+// to turn expiry off again and keep everything forever, as before.
+function chatRetentionDays() {
+  const raw = cfg.CHAT_RETENTION_DAYS;
+  if (raw === undefined || raw === null || raw === '') return 60;   // default: two months
+  const n = Number(raw);
+  return Number.isFinite(n) && n >= 0 ? n : 60;
+}
+// Remove one user's chats older than the retention window. Returns the count
+// removed. Pure-ish (reads/writes that user's store only); safe to call often.
+function pruneOldChats(user) {
+  const days = chatRetentionDays();
+  if (!days) return 0;                                   // 0 = keep forever
+  const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+  const store = readChats(user);
+  const keep = [], dropped = [];
+  for (const c of store.chats) {
+    const stamp = chatStamp(c);
+    // Only expire a chat with a KNOWN age that is past the window. A chat with
+    // no timestamp (stamp 0) is of unknown age — never delete it on a guess.
+    if (c && c.id && stamp > 0 && stamp < cutoff) dropped.push(String(c.id));
+    else keep.push(c);
+  }
+  if (!dropped.length) return 0;
+  const tombs = new Set([...store.deleted.map(String), ...dropped]);
+  writeChats(user, { t: Date.now(), chats: keep, deleted: [...tombs].slice(-2000) });
+  return dropped.length;
+}
+// Sweep every account. Run at boot and daily. Returns the total removed.
+function pruneOldChatsAll() {
+  let total = 0, accounts = 0;
+  try {
+    fs.mkdirSync(CHATS_DIR, { recursive: true });
+    for (const f of fs.readdirSync(CHATS_DIR)) {
+      if (!/\.json$/.test(f)) continue;
+      const user = decodeURIComponent(f.replace(/\.json$/, ''));
+      try { const n = pruneOldChats(user); if (n) { total += n; accounts++; } } catch (e) {}
+    }
+  } catch (e) {}
+  if (total) { try { reindexInsight(); } catch (e) {} }
+  return { total, accounts, days: chatRetentionDays() };
+}
+
 app.get('/api/chats', requireAuth, (req, res) => {
   const store = readChats(req.username);
   res.json({ t: store.t, chats: store.chats, deleted: store.deleted });
@@ -6077,6 +6123,65 @@ function pruneRollback() {
     }
   } catch (e) {}
 }
+
+// ---------------- Automatic junk cleanup ----------------
+// جاوید: «یک کد بزن تا فایل‌های اضافه و بی‌درد‌بخور را خودش پاک کند، فقط چیزهای
+// مهم را نگه دارد.» This walks the project's OWN folders and removes only
+// recognised throwaway junk (rotated logs, .failed restore copies, __pycache__,
+// .pyc, OS metadata, editor backups) — never source, config, user data, memory,
+// chats, knowledge, the Python brain, or node_modules. The junk classification
+// is the pure, unit-tested ./housekeep; here we only walk and delete.
+const housekeep = require('./housekeep');
+// Folders we NEVER descend into: third-party code, git internals, the heavy
+// Python libs (installed packages, not ours), and the user's private stores.
+const HOUSEKEEP_SKIP = new Set([
+  'node_modules', '.git', 'backups', 'rollback', 'updates', 'patches',
+  '.setayesh-chats', '.setayesh-prefs',
+]);
+function runHousekeeping(opts) {
+  opts = opts || {};
+  const root = DATA_DIR;
+  let removed = 0, freed = 0;
+  const details = [];
+  // Bounded, iterative walk (no unbounded recursion) with a hard node cap so a
+  // pathological tree can never spin the boot. We start at the root and a few
+  // known scratch dirs, skipping everything in HOUSEKEEP_SKIP and any hidden
+  // ".setayesh-*" state store.
+  const stack = [root];
+  let visited = 0;
+  const MAX_NODES = 20000;
+  while (stack.length && visited < MAX_NODES) {
+    const dir = stack.pop();
+    visited++;
+    let ents;
+    try { ents = fs.readdirSync(dir, { withFileTypes: true }); } catch (e) { continue; }
+    // Build the plan for THIS directory's entries (with sizes for the report).
+    const flat = ents.map((d) => {
+      const full = path.join(dir, d.name);
+      let size = 0; try { size = d.isDirectory() ? 0 : fs.statSync(full).size; } catch (e) {}
+      return { name: d.name, isDir: d.isDirectory(), size };
+    });
+    const plan = housekeep.cleanupPlan(flat);
+    for (const r of plan.remove) {
+      const full = path.join(dir, r.name);
+      try {
+        fs.rmSync(full, { recursive: true, force: true });
+        removed++; freed += r.size;
+        if (details.length < 50) details.push(path.relative(root, full));
+      } catch (e) {}
+    }
+    // Descend into remaining sub-dirs that are neither skipped nor themselves junk.
+    const removedNames = new Set(plan.remove.map((r) => r.name));
+    for (const d of ents) {
+      if (!d.isDirectory()) continue;
+      if (removedNames.has(d.name)) continue;
+      if (HOUSEKEEP_SKIP.has(d.name)) continue;
+      if (/^\.setayesh-/.test(d.name)) continue;   // private state stores
+      stack.push(path.join(dir, d.name));
+    }
+  }
+  return { removed, freed, freedHuman: housekeep.humanBytes(freed), details };
+}
 // EDITABLE_SOURCES / READABLE_SOURCES / SELF_MAP (self-edit allowlists + the
 // plain-language project map) are pure data and live in ./sourcemap.
 
@@ -6359,6 +6464,44 @@ app.post('/api/admin/rollback/:name', requireAuth, requireAdmin, (req, res) => {
     const target = sourcePath(rel === 'public/index.html' ? 'public/index.html' : rel);
     fs.writeFileSync(target, fs.readFileSync(from));
     res.json({ ok: true, restored: rel, note: 'برگردانده شد. برنامه را ری‌استارت کن.' });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ---------------- Maintenance: junk cleanup, chat sweep, Telegram wipe -------
+// One-tap housekeeping for جاوید: delete throwaway files, apply the chat
+// retention now, and clear the Telegram conversation memory. All admin-only.
+
+// Delete recognised junk (rotated logs, .failed copies, __pycache__, .pyc, OS
+// metadata) from the app's own folders. Also prunes rollback snapshots. Never
+// touches source, config, user data, memory, chats, knowledge, or the brain.
+app.post('/api/admin/cleanup', requireAuth, requireAdmin, (req, res) => {
+  try {
+    const junk = runHousekeeping();
+    try { pruneRollback(); } catch (e) {}
+    res.json({ ok: true, removed: junk.removed, freed: junk.freed, freedHuman: junk.freedHuman, details: junk.details });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Apply the chat retention window right now, across every account, and report
+// how many were removed and the active window.
+app.post('/api/admin/chats/prune', requireAuth, requireAdmin, (req, res) => {
+  try {
+    const r = pruneOldChatsAll();
+    res.json({ ok: true, removed: r.total, accounts: r.accounts, days: r.days });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Clear the Telegram conversation memory that the server keeps (all chats, or a
+// single chatId). The bot cannot delete the user's own messages inside the
+// Telegram app — only what the server holds — so we say that plainly.
+app.post('/api/admin/telegram/clear', requireAuth, requireAdmin, (req, res) => {
+  try {
+    const id = (req.body && req.body.chatId) ? String(req.body.chatId) : '';
+    let cleared = 0;
+    if (id) { if (telegramHistory.delete(id)) cleared = 1; }
+    else { cleared = telegramHistory.size; telegramHistory.clear(); }
+    res.json({ ok: true, cleared,
+      note: 'حافظهٔ گفتگوی تلگرام روی سرور پاک شد. پیام‌هایی که خودت در اپِ تلگرام فرستادی را فقط از داخلِ تلگرام می‌شود پاک کرد.' });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -9340,6 +9483,16 @@ server.listen(PORT, HOST, () => {
   // used to be impossible to auto-remove and could grow to tens of GB) is
   // reclaimed even on an install that never runs a self-edit.
   try { pruneRollback(); } catch (e) {}
+  // Delete throwaway junk (rotated logs, .failed copies, __pycache__, .pyc, OS
+  // metadata) so the install never quietly bloats — the automatic side of the
+  // owner's "delete the useless files" request.
+  try { const j = runHousekeeping(); if (j.removed) console.log(`   🧹 Housekeeping: removed ${j.removed} junk item(s), freed ${j.freedHuman}.`); } catch (e) {}
+  // Apply the chat retention window (default two months) at boot.
+  try { const c = pruneOldChatsAll(); if (c.total) console.log(`   🗂  Chat retention: removed ${c.total} chat(s) older than ${c.days} days.`); } catch (e) {}
+  // And keep both running daily (unref'd so they never hold the process open).
+  try {
+    setInterval(() => { try { runHousekeeping(); } catch (e) {} try { pruneOldChatsAll(); } catch (e) {} }, 24 * 60 * 60 * 1000).unref();
+  } catch (e) {}
   if (ON_ONEDRIVE) console.log('   ⚠ App is inside a OneDrive folder — updates can be reverted by sync. Move it to e.g. C:\\setayesh.');
 });
 

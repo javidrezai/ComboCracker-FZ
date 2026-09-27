@@ -185,11 +185,16 @@ via the app's own self-editing feature.
   she tries the keyless local engines, and if even those are gone she answers
   in her own voice with `degraded` set — honest about what is wrong, never a
   red box.
-- **Chat memory is kept until the owner deletes it.** Nothing expires and
-  nothing is trimmed to make room. `PUT /api/chats` MERGES (a device with a
-  short local list must never wipe the archive) and only an explicit delete —
-  which writes a tombstone so it stays deleted on every device — removes a
-  conversation.
+- **Chat memory retention (9.9.213):** at the owner's explicit request chats
+  now expire after **two months of inactivity** (`CHAT_RETENTION_DAYS`, default
+  60; set 0 to keep forever, the old behaviour). `pruneOldChats` removes a chat
+  only when its LAST activity (`updated`) is a KNOWN age past the window — a
+  chat with no timestamp is never deleted on a guess. The sweep runs at boot and
+  daily (and on the Control-centre → Update → «پاک‌سازی» button), never on every
+  GET. Everything else is unchanged: `PUT /api/chats` MERGES (a device with a
+  short local list must never wipe the archive), an explicit delete writes a
+  tombstone so it stays deleted on every device, and expiry also tombstones so
+  no device resurrects an expired chat.
 - `LOCAL_FIRST=1` routes adults through the on-device engine (private but
   slow). Children are local-first regardless: that guarantee is theirs.
 

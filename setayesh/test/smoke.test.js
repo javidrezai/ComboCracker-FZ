@@ -189,6 +189,29 @@ test('integrity endpoint reports a healthy install', async () => {
   assert.equal(d.diskVersion, PKG.version, 'disk index.js version matches package');
 });
 
+test('maintenance routes: cleanup, chat prune, and Telegram wipe all answer', async () => {
+  const token = (await (await api('/api/login', { method: 'POST', body: ADMIN })).json()).token;
+  // Junk cleanup — never errors, reports a freed figure.
+  const clean = await api('/api/admin/cleanup', { method: 'POST', token });
+  assert.equal(clean.status, 200, 'cleanup must succeed');
+  const cd = await clean.json();
+  assert.ok(cd.ok && typeof cd.removed === 'number' && typeof cd.freedHuman === 'string', 'cleanup reports what it did');
+  // Chat retention prune — reports the active window (default 60 days).
+  const prune = await api('/api/admin/chats/prune', { method: 'POST', token });
+  assert.equal(prune.status, 200);
+  const pd = await prune.json();
+  assert.ok(pd.ok && typeof pd.removed === 'number', 'prune reports a count');
+  assert.equal(pd.days, 60, 'default retention is two months');
+  // Telegram memory wipe — admin only, always answers with the honest note.
+  const tg = await api('/api/admin/telegram/clear', { method: 'POST', token });
+  assert.equal(tg.status, 200);
+  const td = await tg.json();
+  assert.ok(td.ok && /تلگرام/.test(td.note || ''), 'telegram clear returns the honest note');
+  // All three are admin-only: a plain GET without admin must not reach them.
+  const noauth = await fetch(`${BASE}/api/admin/cleanup`, { method: 'POST' });
+  assert.equal(noauth.status, 401, 'cleanup is admin-gated');
+});
+
 test('login rejects a wrong password with 401', async () => {
   const r = await api('/api/login', { method: 'POST', body: { username: 'admin', password: 'wrong-pass' } });
   assert.equal(r.status, 401);
@@ -2128,6 +2151,38 @@ test('ollama: probe parses tags, ensureUp reports down cleanly, hints are honest
   assert.match(o.statusHint({ installed: true, running: false, models: [] }), /بالا نیامده/);
   assert.match(o.statusHint({ installed: true, running: true, models: [] }), /مدلی نصب نیست/);
   assert.match(o.statusHint({ installed: true, running: true, models: ['x'] }), /متصل/);
+});
+
+// housekeep.js — the safe junk classifier. It must recognise throwaway files
+// and NEVER flag real source/data. This is the guard on "delete the useless
+// files" so it can only ever remove garbage.
+test('housekeep: flags only junk, never source or data', () => {
+  const hk = require(path.join(ROOT, 'housekeep.js'));
+  // junk files
+  for (const j of ['.DS_Store', 'Thumbs.db', 'desktop.ini', 'error.log.old', 'error.log.3', 'foo.pyc', 'index.js~', '._resource'])
+    assert.equal(hk.isJunkFile(j), true, j + ' should be junk');
+  // real files must NEVER be junk
+  for (const keep of ['index.js', 'app.js', 'package.json', 'error.log', 'users.json', '.setayesh-users.json', 'README.md', 'main.py'])
+    assert.equal(hk.isJunkFile(keep), false, keep + ' must be kept');
+  // junk dirs vs real dirs
+  assert.equal(hk.isJunkDir('__pycache__'), true);
+  assert.equal(hk.isJunkDir('node_modules'), false);
+  assert.equal(hk.isJunkDir('public'), false);
+  // the plan only names junk and sums freed bytes
+  const plan = hk.cleanupPlan([
+    { name: 'index.js', isDir: false, size: 500000 },
+    { name: 'error.log.old', isDir: false, size: 2000000 },
+    { name: '__pycache__', isDir: true, size: 0 },
+    { name: 'notes.md', isDir: false, size: 100 },
+    { name: 'x.pyc', isDir: false, size: 300 },
+  ]);
+  const names = plan.remove.map((r) => r.name).sort();
+  assert.deepEqual(names, ['__pycache__', 'error.log.old', 'x.pyc'], 'only junk is removed');
+  assert.equal(plan.freed, 2000300, 'freed bytes summed');
+  assert.match(hk.humanBytes(2000300), /MB/);
+  // keepNewest keeps the newest N, returns the rest
+  const drop = hk.keepNewest([{ name: 'a', mtime: 1 }, { name: 'b', mtime: 3 }, { name: 'c', mtime: 2 }], 1);
+  assert.deepEqual(drop.sort(), ['a', 'c'], 'only the newest is kept');
 });
 
 // obsidian.js — read-only vault reader driven by the live config.

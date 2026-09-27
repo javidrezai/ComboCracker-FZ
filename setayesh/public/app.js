@@ -1,4 +1,4 @@
-/* SETAYESH_BUILD 9.9.212 */
+/* SETAYESH_BUILD 9.9.213 */
 (function(){
 'use strict';
 
@@ -2481,6 +2481,40 @@ $('ccRestart').addEventListener('click',function(){
       if(tries>30){ clearInterval(iv); ccNote('بالا نیامد — پنجره‌ی مشکی را چک کن.',true); }
     },1000);
   }).catch(function(e){ ccNote(e.message,true); });
+});
+
+/* Maintenance buttons: junk cleanup, chat-retention prune, Telegram wipe.
+   Wrapped in ready() so they bind after the elements exist (the load-order
+   lesson that kept dead buttons around). Each shows its result in ccMaintNote. */
+ready(function(){
+  function maint(msg){ var n=$('ccMaintNote'); if(n)n.textContent=msg; }
+  var cCleanup=$('ccCleanup'), cPrune=$('ccPruneChats'), cTg=$('ccClearTg');
+  if(cCleanup) cCleanup.addEventListener('click',function(){
+    cCleanup.disabled=true; maint(lang==='en'?'Cleaning…':'در حال پاک‌سازی…');
+    adminFetch('/api/admin/cleanup',{method:'POST'}).then(function(d){
+      maint(lang==='en'
+        ?('Done — removed '+d.removed+' junk item(s), freed '+d.freedHuman+'.')
+        :('انجام شد — '+d.removed+' فایل اضافه پاک شد، '+d.freedHuman+' آزاد شد.'));
+    }).catch(function(e){ maint((lang==='en'?'Failed: ':'خطا: ')+e.message); })
+      .then(function(){ cCleanup.disabled=false; });
+  });
+  if(cPrune) cPrune.addEventListener('click',function(){
+    cPrune.disabled=true; maint(lang==='en'?'Pruning old chats…':'در حال پاک‌کردن چت‌های قدیمی…');
+    adminFetch('/api/admin/chats/prune',{method:'POST'}).then(function(d){
+      maint(lang==='en'
+        ?('Removed '+d.removed+' chat(s) older than '+d.days+' days.')
+        :(d.removed+' چت قدیمی‌تر از '+d.days+' روز پاک شد.'));
+      if(d.removed){ try{ syncChatsFromServer(); }catch(e){} }
+    }).catch(function(e){ maint((lang==='en'?'Failed: ':'خطا: ')+e.message); })
+      .then(function(){ cPrune.disabled=false; });
+  });
+  if(cTg) cTg.addEventListener('click',function(){
+    cTg.disabled=true; maint(lang==='en'?'Clearing Telegram memory…':'در حال پاک‌کردن حافظهٔ تلگرام…');
+    adminFetch('/api/admin/telegram/clear',{method:'POST'}).then(function(d){
+      maint(d.note||(lang==='en'?'Telegram chat memory cleared.':'حافظهٔ گفتگوی تلگرام پاک شد.'));
+    }).catch(function(e){ maint((lang==='en'?'Failed: ':'خطا: ')+e.message); })
+      .then(function(){ cTg.disabled=false; });
+  });
 });
 function loadCCDevices(){
   var box=$('ccDevList'); box.innerHTML='<div class="tk-hint"><span class="spin"></span></div>';
