@@ -182,6 +182,11 @@ test('integrity endpoint reports a healthy install', async () => {
   const d = await (await api('/api/admin/integrity', { token })).json();
   assert.equal(d.ok, true, 'integrity should be ok: ' + JSON.stringify(d.stale || []));
   assert.equal(d.version, PKG.version);
+  // A healthy install (disk index.js == running version) is never "restart
+  // pending" — that flag only fires when an update landed on disk but the
+  // process still runs the old version. Here they match, so it must be false.
+  assert.equal(d.pendingRestart, false, 'healthy install is not restart-pending');
+  assert.equal(d.diskVersion, PKG.version, 'disk index.js version matches package');
 });
 
 test('login rejects a wrong password with 401', async () => {

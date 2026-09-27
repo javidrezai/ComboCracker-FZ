@@ -247,7 +247,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.210';
+const APP_VERSION = '9.9.211';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -1365,13 +1365,42 @@ function assetBuildVersion(rel) {
     return m ? m[1] : null;
   } catch (e) { return null; }
 }
+// The running server's index.js file ON DISK — its APP_VERSION line. When an
+// update lands (files written) but the app never restarts, the disk file is a
+// NEWER version than the process running in memory; a plain restart then boots
+// the new version and everything lines up — no re-download needed.
+function diskServerVersion() {
+  try {
+    const head = fs.readFileSync(path.join(DATA_DIR, 'index.js'), 'utf8').slice(0, 20000);
+    const m = head.match(/APP_VERSION\s*=\s*['"]([0-9]+\.[0-9]+\.[0-9]+)['"]/);
+    return m ? m[1] : null;
+  } catch (e) { return null; }
+}
 function frontendIntegrity() {
   const stale = [];
   for (const rel of INTEGRITY_FILES) {
     const v = assetBuildVersion(rel);
     if (v !== APP_VERSION) stale.push({ file: rel, found: v || 'نامشخص' });
   }
-  return { ok: stale.length === 0, version: APP_VERSION, stale };
+  // Is this a "restart pending" state rather than a broken/partial install?
+  // If index.js on disk is a DIFFERENT version than the one running in memory,
+  // the update already landed — the process just hasn't restarted onto it. One
+  // restart fixes it, so the client offers a restart button instead of sending
+  // the owner back to re-download the same ZIP (which is what made the banner
+  // come back every time). We only claim this when disk index.js differs from
+  // the running version AND the stale frontend files all match that disk
+  // version — i.e. a whole update landed together and only the restart is left.
+  const disk = diskServerVersion();
+  const pendingRestart = !!(disk && disk !== APP_VERSION
+    && stale.every((s) => s.found === disk));
+  return {
+    ok: stale.length === 0,
+    version: APP_VERSION,
+    stale,
+    diskVersion: disk,
+    pendingRestart,
+    restartSupported: RESTART_SUPPORTED,
+  };
 }
 app.get('/api/admin/integrity', requireAuth, requireAdmin, (req, res) => {
   res.set('Cache-Control', 'no-store');

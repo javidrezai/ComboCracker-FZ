@@ -1,4 +1,4 @@
-/* SETAYESH_BUILD 9.9.210 */
+/* SETAYESH_BUILD 9.9.211 */
 (function(){
 'use strict';
 
@@ -3614,14 +3614,50 @@ function checkIntegrity(){
     if(!d||d.ok)return;
     var old=document.getElementById('integrityBar'); if(old)old.remove();
     var names={'public/app.js':'صفحه‌ی اصلی','public/brainmap.js':'نقشه‌ی مغز','public/index.html':'پوسته'};
-    var which=(d.stale||[]).map(function(s){return (names[s.file]||s.file)+' (نسخه '+s.found+')';}).join('، ');
+    var namesEn={'public/app.js':'main page','public/brainmap.js':'brain map','public/index.html':'shell'};
+    var which=(d.stale||[]).map(function(s){return ((lang==='en'?namesEn:names)[s.file]||s.file)+' ('+(lang==='en'?'v':'نسخه ')+s.found+')';}).join(lang==='en'?', ':'، ');
     var bar=el('div'); bar.id='integrityBar';
-    bar.style.cssText='position:fixed;top:0;left:0;right:0;z-index:99999;background:#7f1d1d;color:#fff;'+
+    bar.style.cssText='position:fixed;top:0;left:0;right:0;z-index:99999;color:#fff;'+
       'padding:10px 14px;font-size:13px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;box-shadow:0 2px 10px rgba(0,0,0,.4)';
     var msg=el('span'); msg.style.flex='1';
-    msg.textContent='⚠ فایل‌های ظاهری اپ قدیمی مانده‌اند ('+which+') در حالی که سرور نسخه '+d.version+' است. برای دیدن مغز جدید و دکمه‌ها، تعمیر کن.';
-    var fix=el('button','btn'); fix.textContent=(lang==='en'?'Repair (reinstall)':'تعمیر (نصب مجدد)'); fix.style.cssText='background:#fff;color:#7f1d1d;font-weight:700;padding:5px 12px;font-size:12px';
-    fix.addEventListener('click',function(){ bar.remove(); openCC(); setTimeout(function(){ ccTab('update'); var rp=$('ccRepair'); if(rp){rp.checked=true;} var n=$('ccUpdNote'); if(n){n.textContent=(lang==='en'?'Repair mode is on — pick the same 9.9.70 ZIP so the missing files get installed.':'حالت تعمیر روشن است — همان فایل زیپ ۹.۹.۷۰ را انتخاب کن تا فایل‌های جاافتاده نصب شوند.');} },250); });
+    var fix=el('button','btn');
+    if(d.pendingRestart){
+      /* The update DID land on disk (index.js on disk is a newer version than the
+         running process) — the app just never restarted onto it. This is NOT a
+         broken install: one restart boots the new version and the banner clears.
+         Sending the owner to re-download the same ZIP is what made it come back
+         every single time. So: a calmer banner + a one-click restart. */
+      bar.style.background='#065f46'; /* green — "almost done", not an error */
+      msg.textContent=(lang==='en'
+        ?('Update '+d.diskVersion+' is installed on disk — the app just needs to restart to run it (currently running '+d.version+').')
+        :('بروزرسانی نسخه '+d.diskVersion+' روی سیستم نصب شده — فقط کافیست برنامه یک‌بار ری‌استارت شود تا روی همان نسخه بالا بیاید (الان نسخه '+d.version+' در حال اجراست).'));
+      fix.textContent=(lang==='en'?'Restart now':'ری‌استارت الان');
+      fix.style.cssText='background:#fff;color:#065f46;font-weight:700;padding:5px 12px;font-size:12px';
+      fix.addEventListener('click',function(){
+        fix.disabled=true; fix.textContent=(lang==='en'?'Restarting…':'در حال ری‌استارت…');
+        if(!d.restartSupported){
+          msg.textContent=(lang==='en'?'This app was not started with the new launcher — please close it and open it again.':'برنامه با لانچرِ جدید باز نشده — لطفاً ببندش و دوباره باز کن.');
+          fix.style.display='none'; return;
+        }
+        fetch('/api/admin/restart',{method:'POST',headers:authHeaders()}).then(function(r){return r.json();}).then(function(){
+          msg.textContent=(lang==='en'?'Restarting… this page will reload automatically in a few seconds.':'در حال ری‌استارت… این صفحه چند ثانیه دیگر خودش دوباره بارگذاری می‌شود.');
+          /* poll until the server answers with the new version, then reload */
+          var tries=0; var iv=setInterval(function(){ tries++;
+            fetch('/api/admin/integrity',{headers:authHeaders(),cache:'no-store'}).then(function(r){return r.ok?r.json():null;}).then(function(nd){
+              if(nd&&nd.version===d.diskVersion){ clearInterval(iv); location.reload(true); }
+              else if(tries>20){ clearInterval(iv); location.reload(true); }
+            }).catch(function(){ if(tries>20){ clearInterval(iv); location.reload(true); } });
+          },1500);
+        }).catch(function(){ fix.disabled=false; fix.textContent=(lang==='en'?'Restart now':'ری‌استارت الان'); });
+      });
+    } else {
+      bar.style.background='#7f1d1d';
+      msg.textContent=(lang==='en'
+        ?('The app\'s frontend files are out of date ('+which+') while the server is v'+d.version+'. Repair to see the new brain and buttons.')
+        :('⚠ فایل‌های ظاهری اپ قدیمی مانده‌اند ('+which+') در حالی که سرور نسخه '+d.version+' است. برای دیدن مغز جدید و دکمه‌ها، تعمیر کن.'));
+      fix.textContent=(lang==='en'?'Repair (reinstall)':'تعمیر (نصب مجدد)'); fix.style.cssText='background:#fff;color:#7f1d1d;font-weight:700;padding:5px 12px;font-size:12px';
+      fix.addEventListener('click',function(){ bar.remove(); openCC(); setTimeout(function(){ ccTab('update'); var rp=$('ccRepair'); if(rp){rp.checked=true;} var n=$('ccUpdNote'); if(n){n.textContent=(lang==='en'?'Repair mode is on — pick the latest full ZIP so the missing files get installed.':'حالت تعمیر روشن است — آخرین فایل زیپِ کامل را انتخاب کن تا فایل‌های جاافتاده نصب شوند.');} },250); });
+    }
     var x=el('button','btn ghost'); x.textContent=(lang==='en'?'Later':'بعداً'); x.style.cssText='color:#fff;border-color:rgba(255,255,255,.5);padding:5px 10px;font-size:12px';
     x.addEventListener('click',function(){ bar.remove(); });
     bar.appendChild(msg); bar.appendChild(fix); bar.appendChild(x);
