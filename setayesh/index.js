@@ -247,7 +247,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.217';
+const APP_VERSION = '9.9.218';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -6792,7 +6792,7 @@ app.get('/api/admin/local-models', requireAuth, requireAdmin, async (req, res) =
     hint: (upCount > 1 ? `🟢 ${upCount} سرورِ اولاما متصل‌اند. ` : '') + ollama.statusHint({ running: all.running, models: all.models, installed: all.installed }),
   });
 });
-app.post('/api/admin/local-models', requireAuth, requireAdmin, (req, res) => {
+app.post('/api/admin/local-models', requireAuth, requireAdmin, async (req, res) => {
   const models = Array.isArray((req.body || {}).models)
     ? [...new Set(req.body.models.map((x) => String(x).trim()).filter(Boolean))].slice(0, 30)
     : [];
@@ -6810,7 +6810,13 @@ app.post('/api/admin/local-models', requireAuth, requireAdmin, (req, res) => {
       enabled = true;
     } catch (e) {}
   }
-  res.json({ ok: true, active: (PROVIDERS.local.models || []).map((m) => m.id), localEnabled: enabled });
+  // HONESTY: saving a name only ENABLES the local engine — it does NOT mean
+  // Ollama is actually reachable. Saying "connected" when the server is down is
+  // exactly what made جاوید think Ollama worked while it wasn't even installed.
+  // So we probe now and return the REAL reachability; the UI words it honestly.
+  let running = false;
+  try { running = (await probeAllOllama({ ensure: true })).running; } catch (e) {}
+  res.json({ ok: true, active: (PROVIDERS.local.models || []).map((m) => m.id), localEnabled: enabled, running });
 });
 
 // Auto-sync the local model list with what Ollama ACTUALLY has installed, at

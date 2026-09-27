@@ -1,4 +1,4 @@
-/* SETAYESH_BUILD 9.9.217 */
+/* SETAYESH_BUILD 9.9.218 */
 (function(){
 'use strict';
 
@@ -2964,10 +2964,16 @@ function loadCCLocalModels(){
         // shows up in the picker immediately — no restart, no extra checkbox.
         if(typeof refreshConfig==='function')refreshConfig();
         var cl=$('ccLocal'); if(cl&&d.localEnabled)cl.checked=true;
-        n.style.color='#34d399';
-        n.textContent=(d.active&&d.active.length)
-          ? ('آماده شد ✅ موتور محلی روشن و وصل شد: '+d.active.join('، ')+'. حالا از فهرست موتورها انتخابش کن.')
-          : (lang==='en'?'Saved.':'ذخیره شد.');
+        // HONEST message: only say "connected" when Ollama actually answered
+        // (d.running). If it saved but Ollama isn't reachable, say so plainly —
+        // don't claim a connection that doesn't exist.
+        if(!(d.active&&d.active.length)){ n.style.color='#34d399'; n.textContent=(lang==='en'?'Saved.':'ذخیره شد.'); }
+        else if(d.running){ n.style.color='#34d399'; n.textContent=(lang==='en'
+          ? ('Ready ✅ local engine ON and CONNECTED: '+d.active.join(', ')+'. Pick it from the engine list.')
+          : ('آماده شد ✅ موتور محلی روشن و وصل شد: '+d.active.join('، ')+'. حالا از فهرست موتورها انتخابش کن.')); }
+        else { n.style.color='#fbbf24'; n.textContent=(lang==='en'
+          ? ('Saved ('+d.active.join(', ')+'), but Ollama is NOT running right now, so it can\'t answer yet. Start Ollama, then press the detect button.')
+          : ('ذخیره شد ('+d.active.join('، ')+') — ولی اولاما الان روشن نیست، پس هنوز نمی‌تواند جواب بدهد. اول اولاما را روشن کن، بعد «شناسایی از Ollama» را بزن.')); }
       })
       .catch(function(e){ n.style.color='#fb7185'; n.textContent=e.message; });
   });
