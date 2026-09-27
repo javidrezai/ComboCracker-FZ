@@ -247,7 +247,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.209';
+const APP_VERSION = '9.9.210';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -6432,9 +6432,20 @@ function ollamaHosts() {
   // few next ones (a second/third install), plus LM Studio's 1234. Probed in
   // parallel with a short timeout, so a handful of dead ports cost almost nothing
   // and whatever is actually running is found and used automatically.
-  const out = [norm(baseUrlFor('local') || 'http://localhost:11434')];
-  ['11435', '11436', '11437', '1234'].forEach((p) => out.push('http://localhost:' + p + '/v1'));
-  return [...new Set(out)];
+  // Probe 127.0.0.1 (IPv4) FIRST, then localhost. On Windows, Node's fetch
+  // (undici) resolves `localhost` to ::1 (IPv6) before 127.0.0.1, but Ollama
+  // binds 127.0.0.1 (IPv4) only — so a `localhost` probe gets ECONNREFUSED while
+  // the server is actually up, and Setayesh wrongly showed "اولاما نصب نیست" with
+  // every model as ✗. The numeric IPv4 address always reaches it; localhost is
+  // kept as a fallback for the rare IPv6-only bind (OLLAMA_HOST=[::1]).
+  const out = [];
+  const cfgBase = baseUrlFor('local');
+  if (cfgBase) out.push(norm(cfgBase));
+  ['11434', '11435', '11436', '11437', '1234'].forEach((p) => {
+    out.push('http://127.0.0.1:' + p + '/v1');
+    out.push('http://localhost:' + p + '/v1');
+  });
+  return [...new Set(out.map(norm).filter(Boolean))];
 }
 
 // modelId (tag) -> the native base URL of the Ollama server that actually has
@@ -6462,9 +6473,14 @@ async function probeAllOllama(opts) {
     return { base, running: !!state.running, installed: state.installed, models };
   }));
   const merged = [...new Set(results.flatMap((r) => r.models))];
+  const anyRunning = results.some((r) => r.running);
   return {
-    installed: ollama.installed(),
-    running: results.some((r) => r.running),
+    // A server that answers /api/tags is proof Ollama IS installed — trust that
+    // over the binary check, whose PATH may not include Ollama's dir when the
+    // launcher started the app. Only when NOTHING answers do we fall back to the
+    // `ollama --version` probe, so a running Ollama is never called "not installed".
+    installed: anyRunning || ollama.installed(),
+    running: anyRunning,
     models: merged,
     hosts: results.filter((r) => r.running || r.models.length),   // report servers that actually answered
   };

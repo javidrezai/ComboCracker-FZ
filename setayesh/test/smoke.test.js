@@ -2080,6 +2080,17 @@ test('ollama: probe parses tags, ensureUp reports down cleanly, hints are honest
   const up = async () => ({ json: async () => ({ models: [{ name: 'qwen2.5:7b' }, { name: 'llama3.2' }] }) });
   const p = await o.probe('http://h:11434/v1', up);
   assert.deepEqual(p, { running: true, models: ['qwen2.5:7b', 'llama3.2'] }, 'tags parsed, /v1 stripped');
+  // The probe must hit the native /api/tags endpoint (not /v1/...), whatever the
+  // base — this is how a running Ollama is detected and its real tags listed.
+  let hit = '';
+  await o.probe('http://127.0.0.1:11434/v1', async (u) => { hit = u; return { json: async () => ({ models: [] }) }; });
+  assert.equal(hit, 'http://127.0.0.1:11434/api/tags', 'probe strips /v1 and calls /api/tags on the IPv4 host');
+  // A running server must never read as "not installed": whenever running is
+  // true the hint is a 🟢/🟡 state, never the RED install prompt. index.js relies
+  // on this (it sets installed=true when any server answers) so a reachable
+  // Ollama on Windows is never wrongly reported as uninstalled.
+  assert.doesNotMatch(o.statusHint({ installed: true, running: true, models: ['x'] }), /اولاما نصب نیست/, 'running+models is never "Ollama not installed"');
+  assert.doesNotMatch(o.statusHint({ installed: true, running: true, models: [] }), /اولاما نصب نیست/, 'running (no models) is never "Ollama not installed"');
   const down = async () => { throw new Error('ECONNREFUSED'); };
   assert.deepEqual(await o.probe('http://h:11434', down), { running: false, models: [] }, 'down → not running');
   // ensureUp with a live service must NOT try to spawn — returns running fast.
