@@ -1,4 +1,4 @@
-/* SETAYESH_BUILD 9.9.208 */
+/* SETAYESH_BUILD 9.9.209 */
 (function(){
 'use strict';
 
@@ -407,7 +407,16 @@ function buildModelPicker(){
   });
   var want=provider+'|'+model;
   if(opts.some(function(o){return o.provider+'|'+o.model===want;}))sel.value=want;
-  else{provider=opts[0].provider;model=opts[0].model;sel.value=provider+'|'+model;}
+  else{
+    // The exact model isn't in the list (its id drifted, or the list was rebuilt
+    // on a background sync). KEEP the user's chosen ENGINE — pick that provider's
+    // first model — and only fall back to the first option if that engine is
+    // truly gone. Before this, every refresh silently reset the pick to opts[0]
+    // (Mistral/Codestral), so "use Gemini" never stuck. (جاوید's bug.)
+    var same=opts.filter(function(o){return o.provider===provider;})[0];
+    var pk=same||opts[0];
+    provider=pk.provider;model=pk.model;sel.value=provider+'|'+model;
+  }
   updateEngineTag();
 }
 
@@ -3353,9 +3362,12 @@ function saveEngineChoice(){ try{ localStorage.setItem(engineKey(), provider+'|'
 function restoreSavedEngine(){
   var saved=''; try{ saved=localStorage.getItem(engineKey())||''; }catch(e){}
   if(!saved)return;
-  var v=saved.split('|');
-  // only restore if that engine is still available (configured) on this server
-  if(allModelOptions().some(function(o){return o.provider===v[0]&&o.model===v[1];})){ provider=v[0]; model=v[1]; }
+  var v=saved.split('|'); var opts=allModelOptions();
+  // Restore the exact model if it still exists; otherwise keep the saved ENGINE
+  // (its first model) so a drifted model id never silently drops the user back
+  // to the default engine. Only ignore a saved engine that is truly gone.
+  if(opts.some(function(o){return o.provider===v[0]&&o.model===v[1];})){ provider=v[0]; model=v[1]; }
+  else { var same=opts.filter(function(o){return o.provider===v[0];})[0]; if(same){ provider=same.provider; model=same.model; } }
 }
 $('modelPicker').addEventListener('change',function(){
   var v=$('modelPicker').value.split('|');provider=v[0];model=v[1];updateEngineTag();
