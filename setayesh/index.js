@@ -247,7 +247,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.206';
+const APP_VERSION = '9.9.207';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -3897,7 +3897,14 @@ function resolveTarget(providerId, model, username, opts) {
   const models = PROVIDERS[id].models || [];
   const codeModel = (models.find((m) => m.best === 'code') || {}).id;
   const generalModel = (models.find((m) => m.best !== 'code') || {}).id;
-  const autoModel = tags.includes('code')
+  // A "give me a file/zip/app/game" request MUST run on a tool-capable GENERAL
+  // model — only that can call build_project/make_files and hand back a real
+  // download. A bare code-completion model (Mistral's Codestral) cannot call
+  // tools, so it fakes a link and the user gets a dead "download" text. So for a
+  // file task we force the general model even if the question also looks like
+  // code or a code model was picked/pinned.
+  const fileTask = (() => { try { return wantsFileDelivery(opts.message); } catch (e) { return false; } })();
+  const autoModel = (tags.includes('code') && !fileTask)
     ? (codeModel || generalModel)
     : (generalModel || codeModel);
   // The client can send a persisted model choice. If that choice is a
@@ -3907,7 +3914,7 @@ function resolveTarget(providerId, model, username, opts) {
   // question — can't run web_search, so it leaked the bare tool name "web_fetch"
   // instead of an answer. A pin/explicit code question still keeps the code model.
   let picked = (pin ? (modelOk ? model : null) : model);
-  if (picked && !tags.includes('code')) {
+  if (picked && (!tags.includes('code') || fileTask)) {
     const pm = models.find((m) => m.id === picked);
     if (pm && pm.best === 'code' && generalModel) picked = generalModel;
   }
