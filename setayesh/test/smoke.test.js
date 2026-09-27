@@ -210,6 +210,14 @@ test('maintenance routes: cleanup, chat prune, and Telegram wipe all answer', as
   // All three are admin-only: a plain GET without admin must not reach them.
   const noauth = await fetch(`${BASE}/api/admin/cleanup`, { method: 'POST' });
   assert.equal(noauth.status, 401, 'cleanup is admin-gated');
+  // Storage report: shows what is taking space, biggest first, with a total.
+  const st = await (await api('/api/admin/storage', { token })).json();
+  assert.ok(typeof st.total === 'number' && Array.isArray(st.top), 'storage report has a total and a top list');
+  assert.ok(typeof st.totalHuman === 'string', 'storage total is human-readable');
+  if (st.top.length) assert.ok(st.top[0].bytes >= st.top[st.top.length - 1].bytes, 'biggest first');
+  // cleanup also returns the storage breakdown so the owner sees what is left big.
+  const cd2 = await (await api('/api/admin/cleanup', { method: 'POST', token })).json();
+  assert.ok(cd2.storage && Array.isArray(cd2.storage.top), 'cleanup returns the storage breakdown');
 });
 
 test('login rejects a wrong password with 401', async () => {

@@ -1,4 +1,4 @@
-/* SETAYESH_BUILD 9.9.214 */
+/* SETAYESH_BUILD 9.9.215 */
 (function(){
 'use strict';
 
@@ -2489,12 +2489,18 @@ $('ccRestart').addEventListener('click',function(){
 ready(function(){
   function maint(msg){ var n=$('ccMaintNote'); if(n)n.textContent=msg; }
   var cCleanup=$('ccCleanup'), cPrune=$('ccPruneChats'), cTg=$('ccClearTg');
+  function showStorage(st){
+    if(!st||!st.top)return'';
+    var lines=st.top.map(function(r){return r.name+' — '+r.human;}).join('\n');
+    return (lang==='en'?'\n\nWhat is taking space (total '+st.totalHuman+'):\n':'\n\nچه چیزی جا گرفته (کل '+st.totalHuman+'):\n')+lines;
+  }
   if(cCleanup) cCleanup.addEventListener('click',function(){
     cCleanup.disabled=true; maint(lang==='en'?'Cleaning…':'در حال پاک‌سازی…');
     adminFetch('/api/admin/cleanup',{method:'POST'}).then(function(d){
-      maint(lang==='en'
-        ?('Done — removed '+d.removed+' junk item(s), freed '+d.freedHuman+'.')
-        :('انجام شد — '+d.removed+' فایل اضافه پاک شد، '+d.freedHuman+' آزاد شد.'));
+      var msg=(lang==='en'
+        ?('Done — removed '+d.removed+' junk item(s), freed '+d.freedHuman+(d.backupFreedHuman&&d.backupFreedHuman!=='0 B'?' (backups: '+d.backupFreedHuman+')':'')+'.')
+        :('انجام شد — '+d.removed+' فایل اضافه پاک شد، '+d.freedHuman+' آزاد شد'+(d.backupFreedHuman&&d.backupFreedHuman!=='0 B'?' (بک‌آپ‌ها: '+d.backupFreedHuman+')':'')+'.'));
+      var n=$('ccMaintNote'); if(n){ n.style.whiteSpace='pre-wrap'; n.textContent=msg+showStorage(d.storage); }
     }).catch(function(e){ maint((lang==='en'?'Failed: ':'خطا: ')+e.message); })
       .then(function(){ cCleanup.disabled=false; });
   });

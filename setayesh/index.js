@@ -247,7 +247,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.214';
+const APP_VERSION = '9.9.215';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -6182,6 +6182,67 @@ function runHousekeeping(opts) {
   }
   return { removed, freed, freedHuman: housekeep.humanBytes(freed), details };
 }
+
+// ---------------- Storage report ----------------
+// جاوید: پوشه ۱.۱۸ گیگابایت شده — کدام بخش این‌قدر بزرگ است؟ This measures the
+// real on-disk size of each top-level folder and the big state files, so the
+// culprit is VISIBLE instead of a mystery. Bounded walk with a node cap so it
+// never spins on a huge tree. Read-only — measures, never deletes.
+function dirSizeBounded(dir, cap) {
+  let total = 0, nodes = 0;
+  const stack = [dir];
+  while (stack.length && nodes < (cap || 200000)) {
+    const d = stack.pop(); nodes++;
+    let ents; try { ents = fs.readdirSync(d, { withFileTypes: true }); } catch (e) { continue; }
+    for (const e of ents) {
+      const full = path.join(d, e.name);
+      try {
+        if (e.isDirectory()) stack.push(full);
+        else { const st = fs.statSync(full); total += st.size; }
+      } catch (x) {}
+    }
+  }
+  return total;
+}
+function storageReport() {
+  const root = DATA_DIR;
+  const rows = [];
+  let ents; try { ents = fs.readdirSync(root, { withFileTypes: true }); } catch (e) { ents = []; }
+  for (const e of ents) {
+    if (e.name === '.git') continue;
+    const full = path.join(root, e.name);
+    let bytes = 0;
+    try { bytes = e.isDirectory() ? dirSizeBounded(full) : fs.statSync(full).size; } catch (x) {}
+    if (bytes > 0) rows.push({ name: e.name + (e.isDirectory() ? '/' : ''), bytes, human: housekeep.humanBytes(bytes) });
+  }
+  rows.sort((a, b) => b.bytes - a.bytes);
+  const total = rows.reduce((s, r) => s + r.bytes, 0);
+  return { total, totalHuman: housekeep.humanBytes(total), top: rows.slice(0, 15) };
+}
+
+// Trim the backups folder by TOTAL SIZE, not just count — the backup zips carry
+// memory/knowledge/research, which auto-research grows, so 14 of them can reach
+// hundreds of MB. Keep the newest few, and never let the whole folder exceed a
+// sane budget. Returns bytes freed.
+function trimBackupsBySize(keepNewest, maxTotalBytes) {
+  let freed = 0;
+  try {
+    const files = fs.readdirSync(BACKUP_DIR)
+      .filter((f) => /^backup-.*\.(zip|enc)$/.test(f))
+      .map((f) => { let st; try { st = fs.statSync(path.join(BACKUP_DIR, f)); } catch (e) { return null; } return { f, size: st.size, m: st.mtimeMs }; })
+      .filter(Boolean)
+      .sort((a, b) => b.m - a.m);   // newest first
+    let kept = 0, running = 0;
+    for (const b of files) {
+      kept++;
+      running += b.size;
+      const overCount = kept > keepNewest;
+      const overSize = running > maxTotalBytes;
+      if (overCount || overSize) { try { fs.unlinkSync(path.join(BACKUP_DIR, b.f)); freed += b.size; } catch (e) {} }
+    }
+  } catch (e) {}
+  return freed;
+}
 // EDITABLE_SOURCES / READABLE_SOURCES / SELF_MAP (self-edit allowlists + the
 // plain-language project map) are pure data and live in ./sourcemap.
 
@@ -6478,8 +6539,21 @@ app.post('/api/admin/cleanup', requireAuth, requireAdmin, (req, res) => {
   try {
     const junk = runHousekeeping();
     try { pruneRollback(); } catch (e) {}
-    res.json({ ok: true, removed: junk.removed, freed: junk.freed, freedHuman: junk.freedHuman, details: junk.details });
+    // Backups carry memory/knowledge and can reach hundreds of MB across many
+    // copies — keep the newest 6 and cap the folder at 150 MB.
+    let backupFreed = 0;
+    try { backupFreed = trimBackupsBySize(6, 150 * 1024 * 1024); } catch (e) {}
+    const freed = junk.freed + backupFreed;
+    // Also hand back the storage breakdown so the owner SEES what's left big.
+    let storage = null; try { storage = storageReport(); } catch (e) {}
+    res.json({ ok: true, removed: junk.removed, freed, freedHuman: housekeep.humanBytes(freed),
+      backupFreedHuman: housekeep.humanBytes(backupFreed), details: junk.details, storage });
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Read-only storage breakdown — what is taking space, biggest first.
+app.get('/api/admin/storage', requireAuth, requireAdmin, (req, res) => {
+  try { res.json(storageReport()); } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // Apply the chat retention window right now, across every account, and report
