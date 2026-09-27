@@ -19,6 +19,11 @@ function classifyQuestion(text, opts) {
   if (s.length > 4000) tags.push('long');
   // Things only a tool can answer — mail, calendar, files, the house itself.
   if (/\bemail\b|\bmail\b|\binbox\b|\bcalendar\b|ایمیل|میل|صندوق|تقویم|قرار|یادآور|فایل|زیپ|pdf/i.test(s)) tags.push('tools');
+  // "Build me an app/game/project/site and give me the file" needs a
+  // tool-capable engine that can call build_project/make_files and hand back a
+  // REAL download — not a bare code-completion model that only emits text.
+  if (/بساز|بسازی|درست ?کن|اپلیکیشن|\bاپ\b|بازی|پروژه|وب.?سایت|سایت|صفحه.?ی?.?وب|\bapp\b|\bgame\b|\bproject\b|\bwebsite\b|\bweb.?app\b|build me|make me|create (a|an)/i.test(s)
+      && !tags.includes('tools')) tags.push('tools');
   if (!tags.length && s.length < 220) tags.push('fast', 'chat');
   if (!tags.length) tags.push('general');
   return tags;

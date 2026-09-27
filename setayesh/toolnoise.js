@@ -55,6 +55,15 @@ function stripToolNoise(content) {
        // Handles one level of nesting in the arguments object, either field order.
        .replace(/\{\s*"(?:name|tool|function)"\s*:\s*"[^"]+"\s*,\s*"(?:arguments|parameters|args)"\s*:\s*(?:\{[^{}]*\}|\[[^\]]*\]|"[^"]*"|[^,}]+)\s*\}/gi, ' ')
        .replace(/\{\s*"(?:arguments|parameters|args)"\s*:\s*(?:\{[^{}]*\}|\[[^\]]*\]|"[^"]*"|[^,}]+)\s*,\s*"(?:name|tool|function)"\s*:\s*"[^"]+"\s*\}/gi, ' ');
+  // FAKE download links. A weak model (esp. a code model) imitates a ChatGPT-style
+  // sandbox and writes markdown links to made-up local paths like
+  //   [guessing-game.zip](sandbox/guessing-game.zip)   or  (file:///…) / (./x.zip)
+  // Setayesh has no sandbox; the REAL download is delivered separately by the
+  // server (sideEffects.download, rendered under the message). So strip any
+  // markdown link whose target is a bare local/sandbox/relative path — keep the
+  // visible label as plain text so the sentence still reads. Real links
+  // (http/https, mailto, or the server's /api/download) are left untouched.
+  t = t.replace(/\[([^\]\n]+)\]\((?!https?:\/\/|mailto:|\/api\/download)(?:sandbox|file|\.{0,2}\/|[A-Za-z]:\\)[^)\n]*\)/gi, '$1');
   t = t.replace(/[ \t]{2,}/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
   // A whole reply that is nothing but a bare tool name — a weak model emitted the
   // tool it meant to CALL as its answer (the "web_fetch" / "web_search" that

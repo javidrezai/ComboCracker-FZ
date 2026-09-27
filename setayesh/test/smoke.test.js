@@ -1819,6 +1819,25 @@ test('harmony tool-call text is parsed out and never leaks to the user', () => {
   assert.equal(tn.stripToolNoise('{"name":"web_search","arguments":{"query":"x"}}'), '', 'bare tool-call JSON strips to empty');
   // But a real sentence that merely mentions a brace is kept.
   assert.equal(tn.stripToolNoise('نتیجه: هوا آفتابی است.'), 'نتیجه: هوا آفتابی است.', 'a real sentence survives');
+  // Fake sandbox/local download links (a weak model imitating a code sandbox)
+  // must be stripped to their label — the REAL download comes from the server.
+  assert.equal(tn.stripToolNoise('این هم بازی: [guessing-game.zip](sandbox/guessing-game.zip)'), 'این هم بازی: guessing-game.zip', 'fake sandbox link stripped to label');
+  assert.equal(tn.stripToolNoise('[app.py](./app.py) آماده است'), 'app.py آماده است', 'fake relative link stripped');
+  // A REAL server download link and a real http link must survive untouched.
+  assert.equal(tn.stripToolNoise('دانلود: [بازی.zip](/api/download/job123/game.zip)'), 'دانلود: [بازی.zip](/api/download/job123/game.zip)', 'real /api/download link kept');
+  assert.equal(tn.stripToolNoise('[سایت](https://example.com)'), '[سایت](https://example.com)', 'real https link kept');
+});
+
+test('build requests route to a tool-capable engine and trigger file delivery', () => {
+  const { classifyQuestion } = require(path.join(ROOT, 'engineselect.js'));
+  const ap = require(path.join(ROOT, 'autopack.js'));
+  for (const q of ['یه بازی حدس عدد بساز', 'یک اپ ماشین‌حساب بساز', 'برام یه وب‌سایت درست کن', 'build me a todo app']) {
+    assert.ok(classifyQuestion(q).includes('tools'), 'build request → tools tag: ' + q);
+    assert.ok(ap.wantsFileDelivery(q), 'build request wants a real file: ' + q);
+  }
+  // A plain chat line must NOT be dragged into tools/file delivery.
+  assert.ok(!classifyQuestion('حالت چطوره؟').includes('tools'));
+  assert.ok(!ap.wantsFileDelivery('حالت چطوره؟'));
 });
 
 // ---- Dev libraries: download plan is injection-safe (v9.9.105) ----

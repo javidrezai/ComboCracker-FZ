@@ -16,7 +16,7 @@
 // Does the user's message actually ask for a file/zip/download/app/project?
 function wantsFileDelivery(message) {
   const s = String(message || '');
-  return /زیپ|zip|فایل|\bfiles?\b|دانلود|download|پروژه|project|\bاپ\b|\bapp\b|اپلیکیشن|application|بسته‌?ای?|package|export|خروجی|بهم بده|تحویل/i.test(s);
+  return /زیپ|zip|فایل|\bfiles?\b|دانلود|download|پروژه|project|\bاپ\b|\bapp\b|اپلیکیشن|application|بسته‌?ای?|package|export|خروجی|بهم بده|تحویل|بساز|بسازی|درست ?کن|بازی|\bgame\b|وب.?سایت|سایت|\bwebsite\b|صفحه.?ی?.?وب/i.test(s);
 }
 
 // Map a fenced-block language tag to a file extension.
