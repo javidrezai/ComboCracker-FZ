@@ -1,0 +1,8 @@
+.env
+__pycache__/
+*.pyc
+# لاگ‌های تولیدشدهٔ مغز (README نگه داشته می‌شود)
+vault/logs/*.md
+!vault/logs/README.md
+# کش بازیابی برداری
+vault/.index/

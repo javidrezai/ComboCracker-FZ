@@ -1,0 +1,17 @@
+[Unit]
+Description=Setayesh Brain (server) — auto-connects to Ollama and serves the webhook
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# مسیرها را هنگام نصب با install-server.sh جایگزین می‌شوند
+WorkingDirectory=__ROOT__/brain/server
+Environment=SETAYESH_VAULT=__ROOT__/vault
+Environment=OLLAMA_HOST=http://localhost:11434
+ExecStart=/usr/bin/env python3 __ROOT__/brain/server/main.py --serve
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
