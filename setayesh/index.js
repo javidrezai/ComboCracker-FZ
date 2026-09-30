@@ -126,6 +126,7 @@ const { PII_PATTERNS, HIGH_VALUE, SECRET_PATTERNS, KIND_LABEL } = require('./pri
 const { buildSynthesisPrompt } = require('./council');
 const { SEARCH_LABELS, defaultSearchEngines, searchOne } = require('./websearch');
 const { encryptBuffer, decryptBuffer } = require('./cryptobackup');
+const githubsync = require('./githubsync');
 const { githubSearchRepos: ghSearchRepos, githubGetFile: ghGetFile, verifyToken: ghVerifyToken } = require('./github');
 const { xmlToText, htmlToText, textToPrintableHtml } = require('./htmltext');
 const selfsign = require('./selfsign');
@@ -225,6 +226,12 @@ const DATA_DIR = IS_PACKAGED ? path.dirname(process.execPath) : __dirname;
 // when SETAYESH_DEBUG=1. dbg() is the quiet channel; ordinary console.* stays.
 const LOG_VERBOSE = /^(1|true|yes|on)$/i.test(String(process.env.SETAYESH_DEBUG || ''));
 function dbg(...args) { if (LOG_VERBOSE) console.warn(...args); }
+// vlog = a normal status line that is only worth showing in verbose mode. جاوید:
+// «در صفحهٔ سیاه کمترین اطلاعات نمایش داده شود.» So the boot banner keeps only the
+// essentials (name, address, version, keep-window-open, real security warnings)
+// and every detail line (engines, accounts, extensions, backup, formats, …) goes
+// through vlog — silent unless SETAYESH_DEBUG=1.
+function vlog(...args) { if (LOG_VERBOSE) console.log(...args); }
 
 // Self-update health. PENDING_UPDATE_FILE records the version we just wrote to
 // disk so the next boot can PROVE the update actually took effect. ON_ONEDRIVE
@@ -253,7 +260,7 @@ const TRUST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const USERS_FILE = process.env.SETAYESH_USERS_FILE || path.join(DATA_DIR, '.setayesh-users.json');
 const CONFIG_FILE = process.env.SETAYESH_CONFIG_FILE || path.join(DATA_DIR, '.setayesh-config');
 const PLUGINS_DIR = process.env.SETAYESH_PLUGINS_DIR || path.join(DATA_DIR, 'plugins');
-const APP_VERSION = '9.9.219';
+const APP_VERSION = '9.9.220';
 
 // Plugins are loaded and served by routes/plugins.js (registered below).
 
@@ -644,7 +651,7 @@ async function discoverGeminiModel() {
         return sc(b) - sc(a);
       });
       IMAGE_MODEL_RESOLVED = imgs[0];
-      console.log('   Gemini image model:', IMAGE_MODEL_RESOLVED);
+      vlog('   Gemini image model:', IMAGE_MODEL_RESOLVED);
     }
     const names = allNames.filter(n => /gemini/i.test(n) && !/embedding|aqa|imagen|image|tts|audio/i.test(n));
     if (!names.length) return;
@@ -1044,7 +1051,7 @@ const sessions = new Map(); // token -> { username, createdAt }
       sessions.set(token, { username: s.username, createdAt: s.createdAt });
       kept++;
     }
-    if (kept) console.log('   Restored saved sessions: ' + kept);
+    if (kept) vlog('   Restored saved sessions: ' + kept);
   } catch (e) { /* first run, or unreadable — start empty */ }
 })();
 
@@ -8246,6 +8253,129 @@ function scanUpdatesFolder() {
 
 setInterval(scanUpdatesFolder, 60000).unref();
 
+// ---------------- GitHub transport: auto-update + encrypted settings sync ----
+// جاوید: «آپدیت‌ها و تنظیمات از طریقِ گیت‌هاب منتقل شوند.» Setayesh can pull its
+// own newest release straight from GitHub (no more hand-carried zips) and can
+// back up / restore its settings through a private repo, encrypted on THIS
+// machine before it ever leaves. Everything needs the owner's GitHub repo and a
+// token, set from the control centre; nothing here weakens the local-first rule.
+const GITHUB_DEFAULT_REPO = 'javidrezai/ComboCracker-FZ';
+function githubRepo() { return githubsync.normalizeRepo(cfg.GITHUB_REPO || GITHUB_DEFAULT_REPO); }
+function githubHeaders() {
+  const h = { 'Accept': 'application/vnd.github+json', 'User-Agent': 'Setayesh-AI' };
+  const tok = String(cfg.GITHUB_TOKEN || process.env.SETAYESH_GITHUB_TOKEN || '').trim();
+  if (tok) h.Authorization = 'Bearer ' + tok;
+  return h;
+}
+// Check GitHub Releases for a newer version; if found, download the install zip
+// into UPDATES_DIR so the existing installer applies it (and restarts). Returns
+// an honest status object, never throws to the caller.
+async function checkGithubUpdate() {
+  const repo = githubRepo();
+  if (!repo) return { ok: false, reason: 'no-repo' };
+  let rel;
+  try {
+    const r = await fetchWithTimeout(`https://api.github.com/repos/${repo}/releases/latest`, { headers: githubHeaders(), timeoutMs: 15000 });
+    if (r.status === 404) return { ok: false, reason: 'no-release' };
+    if (r.status === 401 || r.status === 403) return { ok: false, reason: 'auth' };
+    if (!r.ok) return { ok: false, reason: 'github-' + r.status };
+    rel = await r.json();
+  } catch (e) { return { ok: false, reason: 'offline' }; }
+  const pick = githubsync.pickReleaseZip(rel);
+  if (!pick) return { ok: false, reason: 'no-zip-asset' };
+  if (!githubsync.isNewer(pick.version, APP_VERSION)) return { ok: true, upToDate: true, latest: pick.version, current: APP_VERSION };
+  // Newer → download the zip into updates/ (the scanner/admin installer applies it).
+  try {
+    const dl = await fetchWithTimeout(pick.downloadUrl, { headers: githubHeaders(), timeoutMs: 180000 });
+    if (!dl.ok) return { ok: false, reason: 'download-' + dl.status };
+    const buf = Buffer.from(await dl.arrayBuffer());
+    if (buf.length < 1000) return { ok: false, reason: 'empty-download' };
+    fs.mkdirSync(UPDATES_DIR, { recursive: true });
+    const name = (pick.assetName && /\.zip$/i.test(pick.assetName)) ? pick.assetName : ('setayesh-' + pick.version + '.zip');
+    fs.writeFileSync(path.join(UPDATES_DIR, name), buf);
+    return { ok: true, downloaded: true, latest: pick.version, current: APP_VERSION, file: name };
+  } catch (e) { return { ok: false, reason: 'download-failed' }; }
+}
+
+// Encrypted settings sync. The backup zip (accounts/config/memory/knowledge…) is
+// encrypted with the owner's passphrase HERE, then stored as one file in the
+// GitHub repo via the Contents API. Restore pulls + decrypts it. The passphrase
+// never leaves the machine, so GitHub only ever holds ciphertext.
+const SETTINGS_SYNC_PATH = 'setayesh-settings.enc';
+async function githubGetFile(pathname) {
+  const url = githubsync.contentsUrl(githubRepo(), pathname);
+  if (!url) throw new Error('no-repo');
+  const r = await fetchWithTimeout(url, { headers: githubHeaders(), timeoutMs: 20000 });
+  if (r.status === 404) return null;
+  if (!r.ok) throw new Error('github-' + r.status);
+  return r.json();   // { content(base64), sha, ... }
+}
+async function pushSettingsToGithub(passphrase) {
+  if (!githubRepo()) return { ok: false, reason: 'no-repo' };
+  if (!cfg.GITHUB_TOKEN && !process.env.SETAYESH_GITHUB_TOKEN) return { ok: false, reason: 'no-token' };
+  if (!passphrase) return { ok: false, reason: 'no-passphrase' };
+  // Build a fresh backup zip in memory from the same files runBackup captures.
+  const files = backupTargets();
+  if (!files.length) return { ok: false, reason: 'nothing-to-back-up' };
+  const entries = files.map((f) => ({ name: path.basename(f), data: fs.readFileSync(f) }));
+  const zip = buildZip(entries);
+  const enc = encryptBuffer(zip, passphrase);            // ciphertext, key stays local
+  let sha; try { const cur = await githubGetFile(SETTINGS_SYNC_PATH); sha = cur && cur.sha; } catch (e) {}
+  const url = githubsync.contentsUrl(githubRepo(), SETTINGS_SYNC_PATH);
+  const body = { message: 'Setayesh settings ' + new Date().toISOString(), content: Buffer.from(enc).toString('base64') };
+  if (sha) body.sha = sha;
+  const r = await fetchWithTimeout(url, { method: 'PUT', headers: Object.assign({ 'Content-Type': 'application/json' }, githubHeaders()), body: JSON.stringify(body), timeoutMs: 30000 });
+  if (!r.ok) return { ok: false, reason: 'github-' + r.status };
+  return { ok: true, bytes: enc.length, files: files.length };
+}
+async function pullSettingsFromGithub(passphrase) {
+  if (!githubRepo()) return { ok: false, reason: 'no-repo' };
+  if (!passphrase) return { ok: false, reason: 'no-passphrase' };
+  const meta = await githubGetFile(SETTINGS_SYNC_PATH);
+  if (!meta || !meta.content) return { ok: false, reason: 'not-found' };
+  let zip;
+  try {
+    const enc = Buffer.from(String(meta.content).replace(/\s+/g, ''), 'base64');
+    zip = decryptBuffer(enc, passphrase);
+  } catch (e) { return { ok: false, reason: 'bad-passphrase' }; }
+  // Restore each file next to its live path, keeping a .before-restore copy.
+  let restored = 0;
+  try {
+    const items = readZip(zip);   // ziputil → { name: dataBuffer }
+    for (const name of Object.keys(items)) {
+      if (name === '_info.txt') continue;
+      const target = backupTargets().find((f) => path.basename(f) === name)
+        || (/^\.setayesh-|\.json$|\.md$/.test(name) ? path.join(DATA_DIR, name) : null);
+      if (!target) continue;
+      try { if (fs.existsSync(target)) fs.copyFileSync(target, target + '.before-restore'); } catch (e) {}
+      fs.writeFileSync(target, items[name], { mode: 0o600 });
+      restored++;
+    }
+  } catch (e) { return { ok: false, reason: 'unpack-failed' }; }
+  return { ok: true, restored };
+}
+
+app.post('/api/admin/github/check-update', requireAuth, requireAdmin, async (req, res) => {
+  try { res.json(await checkGithubUpdate()); } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/admin/github/push-settings', requireAuth, requireAdmin, async (req, res) => {
+  try { res.json(await pushSettingsToGithub(String((req.body || {}).passphrase || ''))); } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/admin/github/pull-settings', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const out = await pullSettingsFromGithub(String((req.body || {}).passphrase || ''));
+    if (out.ok) reloadKeys();   // pick up restored config without a full restart
+    res.json(out);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+// Daily auto-check for a newer GitHub release (only when a repo/token is set and
+// auto-update is enabled). Silent when nothing is new.
+setInterval(() => {
+  if (!night.autoUpdate) return;
+  if (!cfg.GITHUB_TOKEN && !process.env.SETAYESH_GITHUB_TOKEN) return;   // don't hammer public API unauthenticated
+  checkGithubUpdate().then((r) => { if (r && r.downloaded) nightLog('نسخهٔ جدید از گیت‌هاب گرفته شد: ' + r.latest, 'info', 'downloaded update ' + r.latest + ' from GitHub'); }).catch(() => {});
+}, 6 * 60 * 60 * 1000).unref();
+
 app.get('/api/admin/auto-update', requireAuth, requireAdmin, (req, res) => {
   let pending = [], installed = [], rejected = [];
   const list = (d) => { try { return fs.readdirSync(path.join(UPDATES_DIR, d)); } catch (e) { return []; } };
@@ -9441,7 +9571,7 @@ server.listen(PORT, HOST, () => {
   // fresh on a timer so new memories, chats and notes become searchable.
   try {
     const st = reindexInsight();
-    if (st) console.log(`   ✓  Internal search ready — ${st.docs} items indexed (memory, chats, knowledge, repos).`);
+    if (st) vlog(`   ✓  Internal search ready — ${st.docs} items indexed (memory, chats, knowledge, repos).`);
   } catch (e) {}
   setInterval(() => { try { reindexInsight(); } catch (e) {} }, 5 * 60 * 1000).unref();
   // Discover installed Ollama models so the picker shows real tags (qwen2.5:7b),
@@ -9466,10 +9596,10 @@ server.listen(PORT, HOST, () => {
     console.log('   (on the phone, the first visit shows a one-time certificate warning → Advanced → Proceed)');
   }
   console.log('');
-  console.log(`   AI engines: ${configured.length ? configured.join(', ') : 'NONE — no API key configured'}`);
-  console.log(`   Accounts:   ${Array.from(users.keys()).join(', ')}`);
+  vlog(`   AI engines: ${configured.length ? configured.join(', ') : 'NONE — no API key configured'}`);
+  vlog(`   Accounts:   ${Array.from(users.keys()).join(', ')}`);
   const okPlugins = pluginRoutes.okCount();
-  console.log(`   Extensions: ${okPlugins} loaded  (drop .js files in ${PLUGINS_DIR})`);
+  vlog(`   Extensions: ${okPlugins} loaded  (drop .js files in ${PLUGINS_DIR})`);
   console.log(`   Version:    ${APP_VERSION}`);
   console.log('');
 
@@ -9514,8 +9644,7 @@ server.listen(PORT, HOST, () => {
     for (const w of warnings) console.log(`      ${w}`);
     console.log('');
   } else {
-    console.log('   ✓  Security check passed.');
-    console.log('');
+    vlog('   ✓  Security check passed.');
   }
 
   // Engines with no credit are worth flagging by name at startup — the raw
@@ -9525,7 +9654,7 @@ server.listen(PORT, HOST, () => {
     const h = engineHealth[id];
     if (h && h.needsAttention) brokenKeys.push(`${PROVIDERS[id].label}: ${h.needsAttention}`);
   }
-  if (brokenKeys.length) {
+  if (brokenKeys.length && LOG_VERBOSE) {
     console.log('');
     for (const b of brokenKeys) console.log('   ⚠  ' + b);
   }
@@ -9535,7 +9664,7 @@ server.listen(PORT, HOST, () => {
   // Snapshot on every start, so there is always a copy from before today's
   // session — the moment most likely to break something.
   const b = runBackup('startup');
-  if (b) console.log(`   Backup: ${b.file} (${b.files} files) → ${BACKUP_DIR}`);
+  if (b) vlog(`   Backup: ${b.file} (${b.files} files) → ${BACKUP_DIR}`);
   console.log('');
 
   // Warn plainly if the 3D library file is missing — that is the one thing
@@ -9545,7 +9674,7 @@ server.listen(PORT, HOST, () => {
       console.warn('   ⚠  public/three.min.js missing — the 3D brain will not render. Install the full package.');
     } else {
       const sz = fs.statSync(path.join(DATA_DIR, 'public', 'three.min.js')).size;
-      console.log('   3D library: three.min.js (' + Math.round(sz/1024) + ' KB) ✓');
+      vlog('   3D library: three.min.js (' + Math.round(sz/1024) + ' KB) ✓');
     }
   } catch (e) {}
 
@@ -9574,20 +9703,20 @@ server.listen(PORT, HOST, () => {
     const w = formats.writeFormatDocs(DATA_DIR);
     const tools = [formats.mediaTool('image') ? 'image' : '', formats.mediaTool('video') ? 'audio/video' : '']
       .filter(Boolean).join(', ') || 'none (text/data/Office/PDF still work)';
-    console.log(`   Formats: ${w.extensions} extensions, FORMATS.md written. Media codecs: ${tools}`);
+    vlog(`   Formats: ${w.extensions} extensions, FORMATS.md written. Media codecs: ${tools}`);
   } catch (e) { /* read-only install */ }
 
   // The dev-library shelf note, generated from the catalog so it never drifts.
   try {
     const d = devlibs.writeCatalogDocs(DATA_DIR);
-    console.log(`   Dev libraries: ${d.total} across ${d.languages} languages, DEV-LIBRARIES.md written.`);
+    vlog(`   Dev libraries: ${d.total} across ${d.languages} languages, DEV-LIBRARIES.md written.`);
   } catch (e) { /* read-only install */ }
 
   // If the previous boot was a self-update, prove it works or roll it back.
   checkPendingVerification();
 
   // Start answering Telegram (no-op unless a bot token is configured).
-  try { telegram.start(runTelegramTurn, handleTelegramCallback); if (telegram.configured()) console.log('   Telegram: bot polling started ✓'); } catch (e) {}
+  try { telegram.start(runTelegramTurn, handleTelegramCallback); if (telegram.configured()) vlog('   Telegram: bot polling started ✓'); } catch (e) {}
   // Prove whether the last install actually activated, and warn loudly if the app
   // is in a OneDrive folder (where updates silently get reverted).
   try { verifyPendingUpdate(); } catch (e) {}
@@ -9626,7 +9755,7 @@ function startHttps() {
       });
       httpsHandler = srv;
       TLS = cert;
-      console.log(`   ✓  Secure link ON — https live on the SAME port ${PORT}.`);
+      vlog(`   ✓  Secure link ON — https live on the SAME port ${PORT}.`);
       resolve({ ok: true, https: true });
     } catch (e) {
       resolve({ ok: false, https: false, error: e && e.message });

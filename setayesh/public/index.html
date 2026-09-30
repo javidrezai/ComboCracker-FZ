@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- SETAYESH_BUILD 9.9.219 -->
+<!-- SETAYESH_BUILD 9.9.220 -->
 <html lang="fa" dir="rtl">
 <head>
 <meta charset="UTF-8">
@@ -720,6 +720,20 @@
       <div class="tk-hint" style="margin-bottom:8px">حافظهٔ گفتگوی تلگرام روی سرور را خالی کن (پیام‌های داخل خودِ اپِ تلگرام را فقط از تلگرام می‌شود پاک کرد):</div>
       <button class="btn ghost" id="ccClearTg" style="width:100%">💬 پاک‌کردن چت تلگرام</button>
       <div id="ccMaintNote" style="font-size:12px;margin-top:8px;line-height:1.7;color:var(--cyan)"></div>
+
+      <div class="side-label" style="padding:0;margin:18px 0 6px">☁️ گیت‌هاب — آپدیت و انتقال تنظیمات</div>
+      <div class="tk-hint" style="margin-bottom:8px">ستایش می‌تواند آخرین نسخه را خودش از گیت‌هاب بگیرد و تنظیمات/حافظه را رمزنگاری‌شده در گیت‌هاب پشتیبان بگیرد تا روی هر دستگاهی برگردانی. برای ریپوی خصوصی به یک توکن نیاز است.</div>
+      <input class="input" id="ghRepo" placeholder="owner/repo (مثلاً javidrezai/ComboCracker-FZ)" style="margin-bottom:8px;direction:ltr">
+      <input class="input" id="ghToken" type="password" placeholder="GitHub token (برای ریپوی خصوصی)" style="margin-bottom:8px;direction:ltr">
+      <button class="btn ghost" id="ghSaveCfg" style="width:100%;margin-bottom:8px">💾 ذخیرهٔ ریپو/توکن</button>
+      <button class="btn ghost" id="ghCheckUpdate" style="width:100%;margin-bottom:8px">⬇️ بررسی و گرفتنِ آخرین نسخه از گیت‌هاب</button>
+      <div class="tk-hint" style="margin-bottom:6px">برای انتقالِ تنظیمات، یک رمزِ عبور بده (روی هر دستگاه همین رمز را بزن). رمز از سیستم خارج نمی‌شود — گیت‌هاب فقط دادهٔ رمزشده را نگه می‌دارد.</div>
+      <input class="input" id="ghPass" type="password" placeholder="رمزِ رمزنگاریِ تنظیمات" style="margin-bottom:8px;direction:ltr">
+      <div class="tk-row" style="gap:8px">
+        <button class="btn ghost" id="ghPush" style="flex:1">⬆️ پشتیبان به گیت‌هاب</button>
+        <button class="btn ghost" id="ghPull" style="flex:1">⬇️ برگرداندن از گیت‌هاب</button>
+      </div>
+      <div id="ghNote" style="font-size:12px;margin-top:8px;line-height:1.7;color:var(--cyan)"></div>
     </div>
 
     <div id="ccLook" class="ccpane" style="display:none">

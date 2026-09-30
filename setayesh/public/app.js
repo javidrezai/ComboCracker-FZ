@@ -1,4 +1,4 @@
-/* SETAYESH_BUILD 9.9.219 */
+/* SETAYESH_BUILD 9.9.220 */
 (function(){
 'use strict';
 
@@ -2520,6 +2520,48 @@ ready(function(){
       maint(d.note||(lang==='en'?'Telegram chat memory cleared.':'حافظهٔ گفتگوی تلگرام پاک شد.'));
     }).catch(function(e){ maint((lang==='en'?'Failed: ':'خطا: ')+e.message); })
       .then(function(){ cTg.disabled=false; });
+  });
+
+  /* GitHub: auto-update + encrypted settings sync. */
+  function ghNote(m){ var n=$('ghNote'); if(n)n.textContent=m; }
+  var ghReasons={ 'no-repo':'مخزن تنظیم نشده','no-release':'هنوز نسخه‌ای در Releasesِ گیت‌هاب منتشر نشده','auth':'توکن نامعتبر/دسترسی رد شد','no-token':'توکن لازم است','no-zip-asset':'در آخرین نسخه فایل zip نبود','offline':'اینترنت/گیت‌هاب در دسترس نیست','not-found':'پشتیبانی در گیت‌هاب پیدا نشد','bad-passphrase':'رمز اشتباه است','no-passphrase':'رمز را وارد کن','nothing-to-back-up':'چیزی برای پشتیبان نبود' };
+  function ghWhy(r){ return ghReasons[r]||r; }
+  var ghSave=$('ghSaveCfg'), ghCheck=$('ghCheckUpdate'), ghPush=$('ghPush'), ghPull=$('ghPull');
+  // Prefill repo/token from config.
+  try { adminFetch('/api/admin/settings').then(function(d){ if(d&&d.settings&&d.settings.GITHUB_REPO&&$('ghRepo'))$('ghRepo').value=d.settings.GITHUB_REPO.value||''; }).catch(function(){}); } catch(e){}
+  if(ghSave) ghSave.addEventListener('click',function(){
+    var updates={ GITHUB_REPO:($('ghRepo').value||'').trim() };
+    var tok=($('ghToken').value||'').trim(); if(tok)updates.GITHUB_TOKEN=tok;
+    ghNote(lang==='en'?'Saving…':'در حال ذخیره…');
+    adminFetch('/api/admin/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({updates:updates})})
+      .then(function(){ ghNote(lang==='en'?'Saved.':'ذخیره شد ✅'); $('ghToken').value=''; })
+      .catch(function(e){ ghNote((lang==='en'?'Failed: ':'خطا: ')+e.message); });
+  });
+  if(ghCheck) ghCheck.addEventListener('click',function(){
+    ghCheck.disabled=true; ghNote(lang==='en'?'Checking GitHub…':'در حال بررسیِ گیت‌هاب…');
+    adminFetch('/api/admin/github/check-update',{method:'POST'}).then(function(d){
+      if(d.ok&&d.downloaded) ghNote((lang==='en'?'Downloaded ':'گرفته شد: نسخهٔ ')+d.latest+(lang==='en'?' — it will install and restart shortly.':' — به‌زودی نصب و ری‌استارت می‌شود.'));
+      else if(d.ok&&d.upToDate) ghNote((lang==='en'?'Already up to date (':'همین الان به‌روزی (')+d.current+').');
+      else ghNote((lang==='en'?'Could not update: ':'نشد: ')+ghWhy(d.reason));
+    }).catch(function(e){ ghNote((lang==='en'?'Failed: ':'خطا: ')+e.message); })
+      .then(function(){ ghCheck.disabled=false; });
+  });
+  if(ghPush) ghPush.addEventListener('click',function(){
+    var pass=($('ghPass').value||''); if(!pass){ ghNote(lang==='en'?'Enter a passphrase first.':'اول رمز را وارد کن.'); return; }
+    ghPush.disabled=true; ghNote(lang==='en'?'Backing up to GitHub…':'در حال پشتیبان‌گیری به گیت‌هاب…');
+    adminFetch('/api/admin/github/push-settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({passphrase:pass})})
+      .then(function(d){ ghNote(d.ok?(lang==='en'?('Backed up '+d.files+' file(s) to GitHub ✅'):('پشتیبان گرفته شد ✅ ('+d.files+' فایل)')):(lang==='en'?'Failed: ':'نشد: ')+ghWhy(d.reason)); })
+      .catch(function(e){ ghNote((lang==='en'?'Failed: ':'خطا: ')+e.message); })
+      .then(function(){ ghPush.disabled=false; });
+  });
+  if(ghPull) ghPull.addEventListener('click',function(){
+    var pass=($('ghPass').value||''); if(!pass){ ghNote(lang==='en'?'Enter the passphrase first.':'اول رمز را وارد کن.'); return; }
+    if(!confirm(lang==='en'?'Restore settings from GitHub? This overwrites current settings/accounts.':'تنظیمات از گیت‌هاب برگردانده شود؟ تنظیمات/حساب‌های فعلی بازنویسی می‌شوند.')) return;
+    ghPull.disabled=true; ghNote(lang==='en'?'Restoring from GitHub…':'در حال برگرداندن از گیت‌هاب…');
+    adminFetch('/api/admin/github/pull-settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({passphrase:pass})})
+      .then(function(d){ ghNote(d.ok?(lang==='en'?('Restored '+d.restored+' file(s). Restart to fully apply.'):('برگردانده شد ✅ ('+d.restored+' فایل). برای اعمالِ کامل ری‌استارت کن.')):(lang==='en'?'Failed: ':'نشد: ')+ghWhy(d.reason)); })
+      .catch(function(e){ ghNote((lang==='en'?'Failed: ':'خطا: ')+e.message); })
+      .then(function(){ ghPull.disabled=false; });
   });
 });
 function loadCCDevices(){

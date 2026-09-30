@@ -2178,6 +2178,30 @@ test('ollama: probe parses tags, ensureUp reports down cleanly, hints are honest
   assert.match(o.statusHint({ installed: true, running: true, models: ['x'] }), /متصل/);
 });
 
+// githubsync.js — pure helpers for GitHub auto-update + settings sync.
+test('githubsync: repo parsing, version compare, and release-asset pick', () => {
+  const gs = require(path.join(ROOT, 'githubsync.js'));
+  assert.equal(gs.normalizeRepo('https://github.com/javidrezai/ComboCracker-FZ.git'), 'javidrezai/ComboCracker-FZ');
+  assert.equal(gs.normalizeRepo('javidrezai/ComboCracker-FZ'), 'javidrezai/ComboCracker-FZ');
+  assert.equal(gs.normalizeRepo('not a repo'), '');
+  assert.equal(gs.versionFromTag('v9.9.220'), '9.9.220');
+  assert.equal(gs.isNewer('9.9.220', '9.9.219'), true);
+  assert.equal(gs.isNewer('9.9.219', '9.9.219'), false);
+  assert.equal(gs.isNewer('9.9.9', '9.9.220'), false);   // numeric compare, not string
+  // Picks the full-install zip asset over a bare one, and reads the version.
+  const rel = { tag_name: 'v9.9.220', assets: [
+    { name: 'notes.txt', browser_download_url: 'x' },
+    { name: 'SETAYESH-9.9.220-full-with-node-libs.zip', browser_download_url: 'https://dl/full.zip' },
+    { name: 'other.zip', browser_download_url: 'https://dl/other.zip' },
+  ] };
+  const pick = gs.pickReleaseZip(rel);
+  assert.equal(pick.version, '9.9.220');
+  assert.match(pick.assetName, /full-with-node-libs/);
+  assert.equal(pick.downloadUrl, 'https://dl/full.zip');
+  assert.equal(gs.pickReleaseZip({ tag_name: 'v1', assets: [] }), null);
+  assert.match(gs.contentsUrl('a/b', 'setayesh-settings.enc'), /repos\/a\/b\/contents\/setayesh-settings\.enc$/);
+});
+
 // housekeep.js — the safe junk classifier. It must recognise throwaway files
 // and NEVER flag real source/data. This is the guard on "delete the useless
 // files" so it can only ever remove garbage.

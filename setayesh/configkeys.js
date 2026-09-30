@@ -42,6 +42,7 @@ const EDITABLE_KEYS = {
   NOTIFY_EMAIL:      { secret: false, label: 'ایمیل تو برای دریافت اعلان‌های ستایش' },
   SMTP_HOST:         { secret: false, label: 'سرور SMTP دستی (اختیاری)' },
   GITHUB_TOKEN:      { secret: true,  label: 'توکن GitHub (برای مخزن‌های خصوصی)' },
+  GITHUB_REPO:       { secret: false, label: 'مخزن GitHub برای آپدیت/تنظیمات (owner/repo)' },
   OBSIDIAN_VAULT:    { secret: false, label: 'مسیر والت Obsidian' },
   LOCAL_FIRST:       { secret: false, label: 'اول موتور محلی (۱ = همه چیز داخل خانه می‌ماند، ولی کندتر است)' },
   ENGINE_MODE:       { secret: false, label: 'حالت انتخاب موتور (smart = هوشمند و خودکار، manual = فقط موتوری که خودت انتخاب کردی)' },
